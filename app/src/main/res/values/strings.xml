@@ -1,0 +1,3 @@
+<resources>
+    <string name="accessibility_description">经你主动开启后，知衡读取其他应用当前窗口可见文字并在本机保存，用于个人浏览记录原型测试。不会上传数据；不会读取密码及可编辑输入框。可随时在知衡暂停或在系统关闭此服务。</string>
+</resources>

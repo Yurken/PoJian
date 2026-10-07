@@ -1,0 +1,129 @@
+package com.zhiheng.app.analysis
+
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.pdf.PdfDocument
+import java.io.OutputStream
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+object ReportExporter {
+    fun text(report: CognitiveReport, appendixLimit: Int = Int.MAX_VALUE): String = buildString {
+        val zone = ZoneId.of(report.zone)
+        fun time(value: Long) = Instant.ofEpochMilli(value).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+        appendLine("# 知衡 · 个人信息环境观察报告")
+        appendLine("生成时间：${time(report.generatedAt)}；时区：${report.zone}")
+        appendLine("观察区间：${time(report.start)} 至 ${time(report.end)}（${report.period}）")
+        appendLine("方法：${report.method}")
+        appendLine("浏览目的：${report.purpose}")
+        appendLine()
+        appendLine("## 1. 覆盖范围与数据质量")
+        appendLine("原始窗口记录 ${report.rawRecords} 条；合并连续相同画面 ${report.mergedSnapshots} 条；跳过系统桌面/无正文 ${report.skippedRecords} 条；保留可用快照 ${report.usableSnapshots} 条。")
+        appendLine("提取观点候选 ${report.claims.size} 个，覆盖 ${report.observedDays} 个自然日。同一快照可以包含多个候选，不能换算成独立帖子、阅读次数或浏览时长。")
+        appendLine("停留时长按相邻检查的单调时钟间隔估计；超过 6 秒的检查断档结束会话。不等于实际阅读、理解或视频观看时长；旧快照不补造时长。")
+        appendLine("数据来自当前保留的最多 5000 条采集记录，不覆盖视频画面、音频、未暴露节点的正文或已删除历史。")
+        appendLine()
+        appendLine("## 2. 主题与观点分布")
+        report.topics.forEach { appendLine("${it.topic}：${it.count}/${report.claims.size} 个观点候选（${percent(it.count, report.claims.size)}）") }
+        if (report.claims.isEmpty()) appendLine("没有匹配规则的观点候选。不要将其解释为没有浏览或没有信息茧房。")
+        appendLine("比例分母为提取到的观点候选，不是全部内容或停留时间。主题仅覆盖预设词表；立场未作语义验证。")
+        appendLine()
+        appendLine("## 3. 信息茧房观察")
+        report.findings.forEach {
+            appendLine("${it.topic}：${it.title}")
+            appendLine(it.explanation)
+            appendLine("核查事件：${it.eventIds.joinToString().ifBlank { "无" }}")
+        }
+        appendLine("线索规则：同主题至少 8 个不同事件、覆盖至少 3 个自然日；最大近似措辞组占比至少 70%，且有依据重复的候选占比至少 60%。这是未校准的工程阈值，不是科学诊断或认知风险评分。")
+        appendLine("未匹配到上述规则不代表没有信息茧房；应用数、主题集中、情绪和观点一致均不单独决定结论。")
+        appendLine()
+        appendLine("## 4. 来源与时间")
+        report.sourceCounts.entries.sortedByDescending { it.value }.forEach { appendLine("${it.key}：${it.value} 条原始记录") }
+        appendLine("应用来源不是作者、媒体或原始材料源头。跨应用内容可能同源；上述计数含尚未清洗的记录。")
+        report.hourlyClaims.forEachIndexed { hour, count -> if (count > 0) appendLine("${hour.toString().padStart(2, '0')}:00 时段：$count 个观点候选${if (report.period.contains("7")) "（七天合计）" else ""}") }
+        appendLine()
+        appendLine("## 5. 建议与核查")
+        appendLine("先检查下方引文是否属于正文、评论或引用，核对讨论对象、时间和适用条件，再比较原始数据、反例及行动建议。根据你的阶段性目的解释集中阅读。")
+        appendLine("如果同一判断反复出现，优先核查它是否引用同一材料；看到新数字或建议不代表该材料真实，也不代表已增加个人知识。")
+        appendLine()
+        appendLine("## 6. 观点与依据索引")
+        var remaining = appendixLimit
+        if (report.claims.size > appendixLimit) appendLine("PDF 附录仅列前 $appendixLimit 个候选以控制文件大小；全部候选请导出文本报告。统计与观察仍使用完整分析快照。")
+        report.groups.forEachIndexed { index, group ->
+            if (remaining <= 0) return@forEachIndexed
+            appendLine("### 组 ${index + 1} · ${group.topic} · ${group.observations.size} 个候选")
+            appendLine("代表原文：${group.quote}")
+            val shown = group.observations.take(remaining)
+            remaining -= shown.size
+            shown.forEach { observation ->
+                appendLine("事件 #${observation.eventId} | ${time(observation.timestamp)} | ${observation.packageName}")
+                appendLine("估计可见停留：${observation.durationMillis?.let { "${it / 1000} 秒" } ?: "旧记录未知"}（同一会话多观点共享时长，不可累加）")
+                appendLine("观点候选原文：${observation.quote}")
+                appendLine("条件：${observation.conditions.ifBlank { "规则未提取到明确条件" }}；归属：${if (observation.uncertainAttribution) "含引用/转折线索，未知" else "待核查，不代表作者或用户认同"}")
+                appendLine("历史比较：${observation.increment.label}；关联先前事件：${observation.previousEventId ?: "无"}")
+                observation.evidence.forEach { appendLine("同屏依据/条件候选：$it") }
+                if (observation.evidence.isEmpty()) appendLine("没有提取到依据片段；不能判定实质低增量。")
+                appendLine()
+            }
+        }
+        appendLine("## 7. 方法与限制")
+        appendLine("文本过滤 + 词表主题识别 + 判断句候选 + 中文字符二元组相似度 + 依据标记 + 按浏览时间排序的历史比较。")
+        appendLine("新版按连续可见内容记录会话；旧快照仅合并同应用相邻 30 秒内稳定正文相同的记录。近似观点阈值 0.65，依据重复阈值 0.85；保留时间/地区条件，比较最近最多 120 个同主题候选。所有阈值待标注数据验证。")
+        appendLine("同屏片段尚未证明是对该观点的支撑；未判断支持/反驳的真实语义、信息真实性、来源独立性或用户认同。新增片段不等同于实质信息增量。")
+        appendLine("未实现多模态模型、双路语义编码、交叉编码器、时序图神经网络、阅读投入估计、TEE 或远程证明。规则关系索引不能替代这些研究方法。")
+        appendLine("完全离线，无网络上传。PDF 和文本报告包含浏览引文，导出后由你自行管理；清空应用记录不会删除已导出的文件。")
+    }
+
+    fun writePdf(report: CognitiveReport, output: OutputStream) {
+        val document = PdfDocument()
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f; typeface = Typeface.create("sans-serif", Typeface.NORMAL) }
+        var number = 0
+        var page: PdfDocument.Page? = null
+        var y = 0f
+        fun newPage() {
+            page?.let { document.finishPage(it) }
+            number++
+            page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, number).create())
+            paint.color = Color.rgb(32, 139, 128)
+            paint.textSize = 10f
+            page!!.canvas.drawText("知衡 | 个人信息环境观察", 44f, 30f, paint)
+            page!!.canvas.drawText("$number", 540f, 817f, paint)
+            y = 60f
+        }
+        try {
+            newPage()
+            text(report, appendixLimit = 100).lines().forEach { raw ->
+                val heading = raw.startsWith("#")
+                val text = raw.removePrefix("### ").removePrefix("## ").removePrefix("# ")
+                val fontSize = if (raw.startsWith("# ")) 20f else if (heading) 14f else 11f
+                val height = if (heading) 24f else 18f
+                if (heading && y > 740f) newPage()
+                paint.textSize = fontSize
+                paint.color = if (heading) Color.rgb(32, 139, 128) else Color.rgb(35, 45, 55)
+                if (text.isEmpty()) { y += 8f; return@forEach }
+                var offset = 0
+                while (offset < text.length) {
+                    if (y + height > 785f) {
+                        newPage()
+                        paint.textSize = fontSize
+                        paint.color = if (heading) Color.rgb(32, 139, 128) else Color.rgb(35, 45, 55)
+                    }
+                    val count = paint.breakText(text, offset, text.length, true, 507f, null).coerceAtLeast(1)
+                    page!!.canvas.drawText(text.substring(offset, offset + count), 44f, y, paint)
+                    offset += count
+                    y += height
+                }
+            }
+            page?.let { document.finishPage(it) }
+            page = null
+            document.writeTo(output)
+        } finally {
+            page?.let { document.finishPage(it) }
+            document.close()
+        }
+    }
+
+    fun percent(part: Int, total: Int) = if (total == 0) "0.0%" else String.format(java.util.Locale.CHINA, "%.1f%%", part * 100.0 / total)
+}
