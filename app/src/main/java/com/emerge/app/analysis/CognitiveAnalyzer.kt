@@ -14,12 +14,17 @@ enum class EvidenceType(val label: String) {
     FACT("事实/数据线索"), CONDITION("适用条件"), ADVICE("行动建议"),
     EXPLANATION("原因/解释"), OTHER("其他线索")
 }
-data class EvidenceFragment(val text: String, val type: EvidenceType, val isNew: Boolean = false)
+/** A direct, retained historical quotation, not a claim of independent source or truth. */
+data class EvidenceHistoryMatch(val eventId: Long, val quote: String)
+data class EvidenceFragment(val text: String, val type: EvidenceType, val isNew: Boolean = false,
+    val historyMatches: List<EvidenceHistoryMatch> = emptyList())
 data class ClaimObservation(val eventId: Long, val timestamp: Long, val packageName: String,
     val topic: String, val quote: String, val evidence: List<String>, val conditions: String,
     val uncertainAttribution: Boolean, val increment: Increment, val previousEventId: Long?,
     val durationMillis: Long? = null, val evidenceDetails: List<EvidenceFragment> = emptyList(),
-    val subject: String = "")
+    val subject: String = "",
+    val comparedHistoryEventIds: List<Long> = emptyList(),
+    val historyComparisonTruncated: Boolean = false)
 data class ClaimGroup(val topic: String, val quote: String, val observations: List<ClaimObservation>)
 data class TopicCount(val topic: String, val count: Int)
 data class HourlyReview(val hour: Int, val recordCount: Int, val durationMillis: Long,
@@ -33,13 +38,17 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val claims: List<ClaimObservation>, val groups: List<ClaimGroup>, val topics: List<TopicCount>,
     val findings: List<ObservationFinding>, val observedDays: Int, val sourceCounts: Map<String, Int>,
     val purpose: String, val hourlyClaims: List<Int>, val zone: String,
-    val method: String = "本地文字识别规则 v0.3（未经过模型训练，结果需人工核实）",
+    val method: String = "本地文字识别规则 v0.4（联合历史片段对照；未经模型训练，结果需核实）",
     val hourlyReviews: List<HourlyReview> = emptyList(), val coverageSessions: Int = 0,
     val observedDurationMillis: Long = 0, val unknownDurationRecords: Int = 0,
     val topicExposure: List<TopicExposure> = emptyList(), val contentSignals: List<ContentSignal> = emptyList(),
     val comparisonStart: Long? = null, val comparisonRecords: Int = 0)
 
 class CognitiveAnalyzer {
+    private companion object {
+        const val HISTORY_LIMIT = 120
+        const val MATCHES_PER_FRAGMENT = 3
+    }
     private val topics = linkedMapOf(
         "就业与职场" to listOf("就业", "求职", "招聘", "岗位", "裁员", "秋招", "春招", "面试", "职场", "薪资", "工资", "程序员"),
         "教育与升学" to listOf("考研", "保研", "升学", "院校", "高考", "大学", "专业", "留学", "学历", "学费"),
@@ -55,6 +64,9 @@ class CognitiveAnalyzer {
     private val conditionMarker = Regex("未来|明年|今年|当前|过去|去年|现在|[0-9]{4}年|北京|上海|深圳|广州|地区|应届|嵌入式|互联网|医疗|制造业|如果[^，。；\\n]{0,30}")
     private val attributionMarker = Regex("有人说|有人认为|听说|据说|网传|引用|反驳|所谓|并非|不代表|不意味着|但|然而|不是.*而是|[“”\"]")
     private val numericTokens = Regex("[0-9]+(?:\\.[0-9]+)?(?:[%万亿年月日人个元])?")
+    // Small changes in negation, quantity direction or signed values must not be erased by similarity.
+    private val evidenceQualifiers = Regex("不少于|不超过|不低于|不高于|上升|下降|增加|减少|提高|降低|增长|下跌|至少|至多|超过|不足|不|没|未|无")
+    private val signedNumbers = Regex("[-+−<>≤≥]?\\s*[0-9]+(?:\\.[0-9]+)?(?:[%％万亿年月日人个元倍])?")
     private val emotionalExpression = Regex("焦虑|恐慌|恐惧|绝望|完蛋|没有未来|毁掉|再不[^，。；]{0,18}就|你还不[^，。；]{0,18}")
 
     fun analyze(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
@@ -65,6 +77,8 @@ class CognitiveAnalyzer {
         val ordered = events.filter { it.timestamp <= now }.sortedWith(compareBy<BrowseEvent> { it.timestamp }.thenBy { it.id })
         val selected = ordered.filter { window.contains(it) }
         val observations = mutableListOf<Pair<BrowseEvent, ClaimObservation>>()
+        // Per-analysis index: rebuilding after edits/deletion cannot retain stale evidence dependencies.
+        val historyByClaim = mutableMapOf<Triple<String, String, String>, MutableList<ClaimObservation>>()
         val usableEvents = mutableListOf<BrowseEvent>()
         val eventTopics = mutableMapOf<BrowseEvent, String>()
         val signals = mutableListOf<ContentSignal>()
@@ -105,22 +119,39 @@ class CognitiveAnalyzer {
                 val conditions = conditionMarker.findAll((listOf(quote) + evidence.map { it.text }).joinToString(" "))
                     .map { it.value }.distinct().sorted().joinToString("、")
                 val uncertain = attributionMarker.containsMatchIn(quote)
-                val relatedCandidates = if (uncertain || subject.isBlank()) emptyList() else observations.asReversed().asSequence()
-                    .map { it.second }.filter { it.eventId != event.id && it.topic == topic && !it.uncertainAttribution }
-                    .take(120).filter { it.subject == subject && polarity(it.quote) == polarity(quote) &&
-                        similarity(comparisonPart(it.quote), comparisonPart(quote)) >= 0.65 }.toList()
-                // An intervening different region must not hide an older same-condition observation.
-                val comparable = relatedCandidates.firstOrNull { it.conditions == conditions }
-                val related = comparable ?: relatedCandidates.firstOrNull()
-                fun reused(fragment: EvidenceFragment) = comparable?.evidenceDetails?.any {
-                    it.type == fragment.type && sameEvidence(fragment.text, it.text)
-                } == true
+                val historyKey = Triple(topic, subject, polarity(quote))
+                fun relatedCandidates(): Sequence<ClaimObservation> =
+                    if (uncertain || subject.isBlank()) emptySequence()
+                    else historyByClaim[historyKey].orEmpty().asReversed().asSequence().filter {
+                        checkCancellation()
+                        // A deterministic ID order is not evidence that simultaneous events preceded each other.
+                        it.eventId != event.id && it.timestamp < event.timestamp && !it.uncertainAttribution &&
+                            similarity(comparisonPart(it.quote), comparisonPart(quote)) >= 0.65
+                    }
+                // Filter scope before limiting recall; unrelated records cannot crowd out comparable history.
+                val recalled = relatedCandidates().filter { it.conditions == conditions }.take(HISTORY_LIMIT + 1).toList()
+                val truncated = recalled.size > HISTORY_LIMIT
+                val comparableHistory = recalled.take(HISTORY_LIMIT)
+                val comparable = comparableHistory.firstOrNull()
+                val related = comparable ?: relatedCandidates().firstOrNull()
+                // Compare each information fragment with the UNION of historical evidence, not just the latest item.
+                val matches = evidence.associateWith { fragment ->
+                    comparableHistory.asSequence().flatMap { prior ->
+                        checkCancellation()
+                        prior.evidenceDetails.asSequence().filter {
+                            it.type == fragment.type && sameEvidence(fragment.text, it.text)
+                        }.map { EvidenceHistoryMatch(prior.eventId, it.text) }
+                    }.distinct().take(MATCHES_PER_FRAGMENT).toList()
+                }
+                fun reused(fragment: EvidenceFragment) = matches[fragment].orEmpty().isNotEmpty()
                 val increment = when {
-                    uncertain -> Increment.UNKNOWN
+                    uncertain || subject.isBlank() -> Increment.UNKNOWN
                     related != null && related.conditions != conditions -> Increment.CONDITIONS
                     comparable == null -> Increment.FIRST
-                    evidence.isEmpty() || comparable.evidenceDetails.isEmpty() -> Increment.UNKNOWN
+                    evidence.isEmpty() || comparableHistory.all { it.evidenceDetails.isEmpty() } -> Increment.UNKNOWN
                     evidence.all { reused(it) } -> Increment.REPEATED
+                    // An unmatched fragment beyond a truncated recall is not enough to establish novelty.
+                    truncated -> Increment.UNKNOWN
                     else -> Increment.NEW
                 }
                 val changedConditions = if (increment == Increment.CONDITIONS) {
@@ -128,11 +159,14 @@ class CognitiveAnalyzer {
                         .map { it.value }.distinct().filter { related?.conditions?.contains(it) != true }
                         .map { EvidenceFragment(it, EvidenceType.CONDITION, isNew = true) }.toList()
                 } else emptyList()
-                val details = evidence.map { it.copy(isNew = increment == Increment.NEW && !reused(it)) } + changedConditions
-                observations += event to ClaimObservation(event.id, event.timestamp, event.packageName, topic, quote,
+                val details = evidence.map { it.copy(isNew = increment == Increment.NEW && !reused(it),
+                    historyMatches = matches[it].orEmpty()) } + changedConditions
+                val observation = ClaimObservation(event.id, event.timestamp, event.packageName, topic, quote,
                     details.map { it.text }, conditions, uncertain, increment, comparable?.eventId ?: related?.eventId,
                     if (within) window.durationMillis(event) else event.durationMillis.takeIf { window.durationKnown(event) },
-                    details, subject)
+                    details, subject, comparableHistory.map { it.eventId }.distinct(), truncated)
+                observations += event to observation
+                if (!uncertain && subject.isNotBlank()) historyByClaim.getOrPut(historyKey) { mutableListOf() } += observation
             }
         }
         val usableSet = usableEvents.toSet()
@@ -162,10 +196,14 @@ class CognitiveAnalyzer {
             val major = groups.first { it.topic == topic.topic }
             val majorIds = major.observations.map { it.eventId }.toSet()
             val repeated = members.filter { it.increment == Increment.REPEATED }.map { it.eventId }.distinct().size
+            val majorRepeated = major.observations.filter { it.increment == Increment.REPEATED }
+                .map { it.eventId }.distinct().size
+            val truncatedComparisons = members.count { it.historyComparisonTruncated }
             val topicDays = dates(ids)
             val title = when {
                 ids.size < 8 || topicDays < 3 -> "观察不足，暂时无法判断是否收窄"
-                majorIds.size.toDouble() / ids.size >= 0.7 && repeated.toDouble() / ids.size >= 0.6 -> "观察到持续低增量重复，建议回查来源"
+                majorIds.size.toDouble() / ids.size >= 0.7 && majorRepeated.toDouble() / ids.size >= 0.6 -> "观察到持续低增量重复，建议回查来源"
+                members.none { it.increment == Increment.NEW || it.increment == Increment.REPEATED } -> "依据或比较历史不足，暂时无法判断是否收窄"
                 members.any { it.increment == Increment.NEW } -> "观察到依据有补充，仍需核实内容"
                 else -> "暂未发现重复线索，不代表不存在信息茧房"
             }
@@ -173,7 +211,7 @@ class CognitiveAnalyzer {
             val majorDuration = majorIds.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
             val unknown = ids.count { currentEventsById[it]?.let { event -> !window.durationKnown(event) } == true }
             ObservationFinding(topic.topic, title,
-                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条；依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录预计停留共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条未统计时长。停留按记录去重；没有时长数据时无法判断是否阅读集中。内容的作者、立场和材料来源尚未做模型验证。",
+                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条，该组依据重复 $majorRepeated 条；全主题依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录预计停留共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条未统计时长。停留按记录去重；没有时长数据时无法判断是否阅读集中。有 $truncatedComparisons 个观点达到历史候选上限，未匹配部分保留为待定。片段新增只相对于本次可比历史，不证明事实真实或来源独立。内容的作者、立场和材料来源尚未做模型验证。",
                 majorIds.take(8))
         }.ifEmpty { listOf(ObservationFinding("全部", "没有识别到可分析的观点", "当前内容可能只有界面按钮、娱乐内容、短评，或缺少明确的判断句。娱乐内容仍计入接触统计；这不能用来推断信息茧房。", emptyList())) }
         val exposures = usableEvents.groupBy { eventTopics[it] ?: "未分类" }.map { (topic, entries) ->
@@ -245,7 +283,10 @@ class CognitiveAnalyzer {
         .findAll(claimPart(text)).map { it.value }.distinct().sorted().joinToString()
     private fun normalize(text: String) = text.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
     private fun sameEvidence(a: String, b: String): Boolean =
-        numericTokens.findAll(a).map { it.value }.toList() == numericTokens.findAll(b).map { it.value }.toList() && similarity(a, b) >= 0.85
+        signedNumbers.findAll(a).map { it.value.filterNot(Char::isWhitespace) }.toList() ==
+            signedNumbers.findAll(b).map { it.value.filterNot(Char::isWhitespace) }.toList() &&
+        evidenceQualifiers.findAll(a).map { it.value }.toList() == evidenceQualifiers.findAll(b).map { it.value }.toList() &&
+        similarity(a, b) >= 0.85
     private fun similarity(a: String, b: String): Double {
         val first = normalize(a)
         val second = normalize(b)

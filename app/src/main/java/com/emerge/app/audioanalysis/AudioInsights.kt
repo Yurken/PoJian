@@ -30,16 +30,23 @@ object LocalAudioInsights {
         val report = CognitiveAnalyzer().analyze(events, StatisticsPeriod.WEEK, now, ZoneId.systemDefault())
         val claims = report.claims.filter { it.eventId in selected }.mapNotNull { claim ->
             val segment = lookup[claim.eventId] ?: return@mapNotNull null
-            val evidence = claim.evidence.firstOrNull { segment.text.contains(it) }
+            // Show the actual changed fragment for novelty, rather than an arbitrary reused first line.
+            val visibleEvidence = claim.evidenceDetails.filter { segment.text.contains(it.text) }
+            val fragment = visibleEvidence.firstOrNull { it.isNew } ?: visibleEvidence.firstOrNull()
+            val evidence = fragment?.text
                 ?: claim.quote.takeIf { segment.text.contains(it) } ?: return@mapNotNull null
+            // A latest comparable claim need not contain the selected fragment. Link only a verified direct match.
+            val historicalMatch = fragment?.historyMatches?.firstOrNull { match ->
+                lookup[match.eventId]?.let { it.timestamp < segment.timestamp && it.text.contains(match.quote) } == true
+            }
             AudioClaimInsight(claim.quote, evidence, claim.eventId,
                 if (claim.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表你的看法",
-                claim.increment.label, claim.previousEventId,
-                claim.previousEventId?.let { lookup[it]?.text?.take(500) })
+                claim.increment.label, historicalMatch?.eventId, historicalMatch?.quote)
         }
         val summary = if (claims.isEmpty()) "没有识别到明确的观点。可以核对转写内容，或开启云端文字服务做进一步分析。"
             else "识别出 ${claims.size} 个观点，其中 ${claims.count { it.novelty == Increment.NEW.label }} 个依据有新增，${claims.count { it.novelty == Increment.REPEATED.label }} 个依据重复。"
-        return AudioInsightReport(summary, "本地文字规则 · 结果需核查", claims)
+        val comparisonNote = "比较采用同范围历史片段的联合覆盖；单条历史引文只展示其中一处匹配。新增片段不证明真实性或来源独立性。"
+        return AudioInsightReport(summary + "\n" + comparisonNote, "本地文字规则 v0.4 · 联合历史对照 · 结果需核查", claims)
     }
 
     /** Similarity retrieves candidates only; the analyzer still compares actual evidence and conditions. */
