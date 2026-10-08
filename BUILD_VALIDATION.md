@@ -1,52 +1,54 @@
-## V0.2.1 会话合并验证（2026-10-07）
+# 破茧 Emerge v0.3.0 构建与验证
 
-assembleDebug / lintDebug 构建检查通过；testDebugUnitTest 共 16 项全部通过。新增连续重复/计数变化、跨应用返回、明确会话时长与数字证据变化回归验证。
+验证日期：2026-10-08（Asia/Shanghai）。
 
-手动覆盖安装目标及测试 APK，在 emulator-5554 运行 AndroidJUnitRunner，3 项通过：分析界面、中文多页 PDF 导出与渲染、数据库 1→2 保留旧记录且时长未知。迁移使用独立测试数据库，未删除用户数据库。未运行 connectedDebugAndroidTest，未卸载目标应用。
+## 结果
 
-采集会话逻辑未在 OPPO 真机自动验证；跨应用节点、OEM 后台策略及内容识别误拆/误合仍需实测。APK SHA256: EE4C4B40CA8952AD2A667CD839FFCF656B976DED5E71235E303D611301A4B82D。
+- `assembleDebug`、`assembleDebugAndroidTest`、`testDebugUnitTest`、`lintDebug` 全部成功。
+- JVM 单元测试：**38 项通过，0 失败**。
+- Pixel 10 / API 37 / arm64 模拟器：**14 项通过，0 失败**。
+- lint：**0 errors、10 warnings**。警告为旧 target SDK、可升级的现有运行依赖及 kapt→KSP 建议；没有本次新增的资源未使用警告。
+- 首页、小时核查详情及多页中文 PDF 已检查截图，文字、分页和主要布局正常。
+- `git diff --check` 通过。
 
-# V0.2 构建与验证 — 2026-10-07
+## 环境与产物
 
-工程位置：E:\Projects\ZhiHeng。
-applicationId：com.zhiheng.app；版本 0.2.0 / versionCode 3。
-minSdk 29，compileSdk/targetSdk 34，Gradle 8.9，JDK 21，字节码目标 17。
+macOS arm64，Android Studio bundled JDK 21.0.10，Gradle 8.9，AGP 8.5.2，Kotlin 2.0.21；字节码目标 17。minSdk 29，compileSdk / targetSdk 34。测试依赖使用 AndroidX Test runner 1.7.0、JUnit extension 1.3.0、Espresso 3.7.0，以兼容新系统输入服务。
 
-## 已完成
+安装包：`app/build/outputs/apk/debug/Emerge-0.3.0-debug.apk`（调试签名）。
 
-- 完全离线的文本清洗、预设主题与观点候选提取。
-- 原文索引、条件与归属未知状态、按浏览时间比较最近同主题历史。
-- 依据片段新增/重复/未知/条件不同的规则区分。
-- 跨日持续重复线索观察，无心理或认知风险评分。
-- 概览分析控制、主题环图、观点原文对话框、小时回顾。
-- PDF 与 UTF-8 文本报告，通过系统文件选择器保存。
-- 未改动 Room schema，无破坏性数据库迁移；APK 可覆盖安装。
+SHA256：`140caa28ee3d2fd9345b8faa34fc63c4e44335ae9d93397d8c08498f1b80c940`。
 
-## 验证结果
+```sh
+./gradlew assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
+```
 
-- assembleDebug、lintDebug、testDebugUnitTest 成功。
-- lint：0 errors、1 warning（kapt 替换为 KSP 的性能建议）。
-- 12 项单元测试通过：9 项认知规则/报告测试，3 项统计窗口测试。
-- 2 项设备测试通过：使用内存合成数据渲染分析卡片；生成并渲染多页中文 PDF。
-- 在 emulator-5554（API 37）检查分析卡片截图，以及合成样例 PDF 的 4 页 PNG，中文正常、换行和边距正常。
-- PDF 附录最多 100 个候选，文本报告包含完整索引；统计与观察都使用完整分析快照。
-- 用户的 OPPO 手机没有连接到本机，尚未验证该手机的文件选择器导出和离线规则准确性。
+模拟器覆盖安装目标与测试 APK，再直接运行 AndroidJUnitRunner；未使用会自动卸载目标应用的 connected 测试任务，未卸载或清空应用。未操作真实手机。
 
-## 测试过程说明
+## 测试覆盖
 
-首次 connectedDebugAndroidTest 的工具在结束时卸载了模拟器目标应用，模拟器已有记录被清除；已重新安装，并已告知用户。后续通过直接运行 instrumentation 测试验证，未再自动卸载。测试样本只存于内存与缓存，不写入浏览事件数据库；用户的 OPPO 手机没有被操作。
+| 范围 | 已验证行为 |
+| --- | --- |
+| 自然日与小时 | 今天当地午夜边界、24 个整点桶、跨小时及跨午夜时长切分、窗口截断、每条会话时长守恒 |
+| 分母与未知 | 多观点不重复时长、旧记录保持未知、无可比时长时不显示伪造的 0% 占比 |
+| 历史比较 | 浏览顺序、窗口外保留历史、同主题不同对象、不同条件、A/B/A 条件匹配优先级、数字/建议新增、未知归属 |
+| 采集与删除 | 空白名单、旧版开启偏好、范围持久化与不可变集合、暂停/范围令牌失效、删除后不重插、旧采样失效、按应用删除保留其他应用 |
+| 界面 | 小时条点击、跨午夜会话在覆盖小时可回查、当前与前序原文、全文搜索与删除目标 |
+| 报告 | 多页中文 PDF 生成并逐页渲染、完整文本索引、原文与方法限制 |
+| 升级 | 更名后的标签、旧 launcher alias 指向新 MainActivity、辅助服务兼容类与绑定保护、Room 1→2 保留旧记录 |
 
-## 解释边界
+Room v2 JSON schema 与更名前完全一致，identity hash 保持 `777cfc8fd186e170116961bd7cbe45a6`。源码 namespace 改为 `com.emerge.app`；安装 ID、旧启动/服务组件和数据库文件名仅为保留安装与数据兼容。覆盖安装要求签名一致。
 
-这是用户确认的离线可解释原型。主题词表和字符相似度不能替代语义模型；同屏依据不一定真正支撑主张。规则阈值尚未通过人工标注真实数据校准，测试是工程回归检查，不是学术准确率评估。短时集中阅读不被直接判为信息茧房，未触发线索也不证明没有信息茧房。
+## 验证文件
 
-未实现第一章规划的多模态联合理解、双路编码、交叉编码器、时序图神经网络、阅读投入估计、情绪归因、TEE 或远程证明。这些不得写入第二三章已完成能力。
+- 单元测试：`app/build/reports/tests/testDebugUnitTest/index.html`
+- lint：`app/build/reports/lint-results-debug.html`
+- 设备测试：`app/build/reports/instrumentation-emulator.txt`
+- 界面截图：`app/build/reports/emerge-home.png`、`emerge-hourly.png`
+- PDF 首页面：`app/build/reports/emerge-report-page-1.png`
 
-报告文件含浏览引文；导出后用户自行管理，清空应用数据库不会删除外部文件。重新打开应用进程后需要重新分析，已导出报告仍保留。
+## 实际边界
 
-## 报告与检查文件
+规则与阈值尚未通过人工标注真实浏览数据校准；测试是工程回归，不能当作语义准确率、认知保护效果或真实注意力验证。跨应用节点覆盖、OEM 后台策略与文件选择器仍需按实际手机测试。
 
-lint：app/build/reports/lint-results-debug.html。
-单元测试：app/build/reports/tests/testDebugUnitTest/index.html。
-设备测试代码：app/src/androidTest/java/com/zhiheng/app/analysis/。
-APK：app/build/outputs/apk/debug/app-debug.apk（调试签名）。
+多模态模型、双路编码、交叉编码器、时序图学习、真实阅读区域校准、TEE 与远程证明尚未实现，详见 `docs/IMPLEMENTATION.md`。当前程序完全离线，但本地数据库尚无额外加密。已导出的外部文件由用户自行管理。

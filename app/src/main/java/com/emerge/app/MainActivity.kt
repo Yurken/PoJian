@@ -1,0 +1,158 @@
+package com.emerge.app
+
+import android.content.Intent
+import android.os.Bundle
+import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.emerge.app.data.BrowseEvent
+import com.emerge.app.ui.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            MaterialTheme(colorScheme = lightColorScheme(primary = Accent, background = PageBackground,
+                surface = Color.White, onSurface = Ink, onBackground = Ink)) {
+                EmergeScreen { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EmergeScreen(onOpenSettings: () -> Unit) {
+    val model: BrowseViewModel = viewModel()
+    val all by model.allEvents.collectAsStateWithLifecycle()
+    val count by model.count.collectAsStateWithLifecycle()
+    val enabled by model.captureEnabled.collectAsStateWithLifecycle()
+    val allowed by model.allowedPackages.collectAsStateWithLifecycle()
+    val availableApps by model.availableApps.collectAsStateWithLifecycle()
+    val appsLoading by model.appsLoading.collectAsStateWithLifecycle()
+    val permission by model.serviceEnabled.collectAsStateWithLifecycle()
+    val diagnostics by model.diagnostics.collectAsStateWithLifecycle()
+    val message by model.message.collectAsStateWithLifecycle()
+    val analysis by model.analysis.collectAsStateWithLifecycle()
+    val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        if (uri != null) model.exportReport(uri, true) else model.cancelExport()
+    }
+    val textSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+        if (uri != null) model.exportReport(uri, false) else model.cancelExport()
+    }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var period by rememberSaveable { mutableStateOf(StatisticsPeriod.DAY) }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var confirmClear by remember { mutableStateOf(false) }
+    var showApps by rememberSaveable { mutableStateOf(false) }
+    var deleteEvent by remember { mutableStateOf<BrowseEvent?>(null) }
+    var deletePackage by remember { mutableStateOf<CaptureApp?>(null) }
+    val owner = LocalLifecycleOwner.current
+    DisposableEffect(owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                model.refreshPermission()
+                now = System.currentTimeMillis()
+                model.refreshReportWindow(now)
+            }
+        }
+        owner.lifecycle.addObserver(observer)
+        model.refreshPermission()
+        onDispose { owner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(period) { model.setPeriod(period) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            model.refreshReportWindow(now)
+            delay(60_000)
+        }
+    }
+    val statistics by produceState(calculateStatistics(emptyList(), period, now), all, period, now) {
+        val snapshotNow = System.currentTimeMillis()
+        value = withContext(Dispatchers.Default) { calculateStatistics(all, period, snapshotNow) }
+    }
+    val appNames = remember(availableApps) { availableApps.associate { it.packageName to it.label } }
+    val selectedApps = remember(allowed, appNames) { allowed.sorted().map { CaptureApp(it, appNames[it] ?: it) } }
+    val titles = listOf("概览", "记录", "我的")
+    val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
+    Scaffold(containerColor = PageBackground,
+        topBar = { TopAppBar(title = { Text(if (tab == 0) "信息环境" else titles[tab]) },
+            colors = TopAppBarDefaults.topAppBarColors(containerColor = PageBackground)) },
+        bottomBar = {
+            NavigationBar(containerColor = Color.White) {
+                titles.forEachIndexed { index, title ->
+                    NavigationBarItem(selected = tab == index, onClick = { tab = index },
+                        icon = { Icon(painterResource(icons[index]), contentDescription = null) },
+                        label = { Text(title) },
+                        colors = NavigationBarItemDefaults.colors(selectedIconColor = Accent,
+                            selectedTextColor = Accent, indicatorColor = Color(0xFFE6F1E9)))
+                }
+            }
+        }
+    ) { padding ->
+        when (tab) {
+            0 -> OverviewScreen(statistics, period, { period = it; model.setPeriod(it) }, enabled && diagnostics.connected && allowed.isNotEmpty(),
+                when {
+                    allowed.isEmpty() -> "未选择范围"
+                    !enabled -> "已暂停"
+                    diagnostics.connected -> "采集中"
+                    permission -> "待连接"
+                    else -> "待授权"
+                },
+                appNames, onRecords = { tab = 1 }, onSettings = { tab = 2 }, modifier = Modifier.padding(padding),
+                analysis = analysis, rawEvents = all,
+                onAnalyze = { purpose -> model.updatePurpose(purpose); model.analyze(period) },
+                onPurposeChange = model::updatePurpose, selectedAppCount = allowed.size,
+                onExport = { report, pdf ->
+                    if (model.prepareExport(report)) {
+                        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
+                        if (pdf) pdfSaver.launch("破茧-Emerge-信息环境报告-$stamp.pdf")
+                        else textSaver.launch("破茧-Emerge-信息环境报告-$stamp.txt")
+                    }
+                })
+            1 -> RecordsScreen(all, count, appNames, Modifier.padding(padding),
+                onDelete = { deleteEvent = it }, onSettings = { tab = 2 })
+            2 -> SettingsScreen(permission, enabled, count, model::setCapture, onOpenSettings,
+                { confirmClear = true }, message, Modifier.padding(padding), diagnostics,
+                selectedApps, onChooseApps = { showApps = true })
+        }
+    }
+    if (showApps) AppPickerDialog(availableApps, allowed, appsLoading,
+        remember(all) { all.groupingBy { it.packageName }.eachCount() },
+        onDismiss = { showApps = false }, onApply = { model.setAllowedPackages(it); showApps = false },
+        onDeletePackage = { deletePackage = it })
+    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
+        title = { Text("清空本地记录？") }, text = { Text("会先暂停采集，再删除全部记录与当前分析。此操作无法撤销，已导出的文件需要自行删除。") },
+        confirmButton = { TextButton(onClick = { model.clearHistory(); confirmClear = false }) { Text("暂停并清空") } },
+        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } })
+    deleteEvent?.let { event ->
+        AlertDialog(onDismissRequest = { deleteEvent = null }, title = { Text("删除这条记录？") },
+            text = { Text("事件 #${event.id} 将从本机删除，观点、引文与报告会按剩余记录重新分析。此操作无法撤销。") },
+            confirmButton = { TextButton(onClick = { model.deleteEvent(event.id); deleteEvent = null }) { Text("删除") } },
+            dismissButton = { TextButton(onClick = { deleteEvent = null }) { Text("取消") } })
+    }
+    deletePackage?.let { application ->
+        AlertDialog(onDismissRequest = { deletePackage = null }, title = { Text("删除此应用的记录？") },
+            text = { Text("会先暂停采集，再删除「${application.label}」的全部本地历史，并更新观点、引文与报告。此操作无法撤销。") },
+            confirmButton = { TextButton(onClick = { model.deletePackage(application.packageName); deletePackage = null }) { Text("删除历史") } },
+            dismissButton = { TextButton(onClick = { deletePackage = null }) { Text("取消") } })
+    }
+}

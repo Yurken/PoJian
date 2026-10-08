@@ -1,3 +1,7 @@
 <resources>
-    <string name="accessibility_description">经你主动开启后，知衡读取其他应用当前窗口可见文字并在本机保存，用于个人浏览记录原型测试。不会上传数据；不会读取密码及可编辑输入框。可随时在知衡暂停或在系统关闭此服务。</string>
+    <string name="app_name">破茧</string>
+    <string name="brand_name">破茧 Emerge</string>
+    <string name="brand_tagline">看见信息边界，拓宽判断依据。</string>
+    <string name="capture_service_name">破茧浏览采集</string>
+    <string name="accessibility_description">经你选择采集应用并主动开启后，破茧仅读取所选应用当前窗口提供的可见文字，在本机生成个人信息环境回顾。默认不采集、不上传；跳过密码和可编辑输入框，正文仍可能含个人信息。可在破茧暂停、调整范围或删除记录，也可在系统关闭此服务。</string>
 </resources>

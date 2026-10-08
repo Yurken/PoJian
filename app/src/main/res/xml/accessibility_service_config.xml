@@ -6,4 +6,4 @@
     android:canRetrieveWindowContent="true"
     android:accessibilityFlags="flagIncludeNotImportantViews|flagReportViewIds|flagRetrieveInteractiveWindows"
     android:description="@string/accessibility_description"
-    android:settingsActivity="com.zhiheng.app.MainActivity" />
+    android:settingsActivity="com.emerge.app.MainActivity" />
