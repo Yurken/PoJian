@@ -70,8 +70,8 @@ class CognitiveAnalyzerTest {
     @Test fun reportContainsProvenanceAndMethodLimits() {
         val report = analyze(event(7, now, "当前就业形势很差，因为招聘岗位同比减少20%"))
         val text = ReportExporter.text(report)
-        assertTrue(text.contains("事件 #7"))
-        assertTrue(text.contains("未实现多模态模型"))
+        assertTrue(text.contains("记录 #7"))
+        assertTrue(text.contains("没有使用多模态模型"))
         assertTrue(text.contains("不代表没有信息茧房"))
         assertTrue(text.contains("当前就业形势很差"))
     }
@@ -217,7 +217,7 @@ class CognitiveAnalyzerTest {
         assertTrue(text.contains("破茧 Emerge"))
         assertTrue(text.contains("00:00–01:00"))
         assertTrue(text.contains("23:00–00:00"))
-        assertTrue(text.contains("不推断用户情绪"))
+        assertTrue(text.contains("不推断你的情绪"))
     }
 
     @Test fun callerCanCancelAnalysisBeforePublishingAResult() {

@@ -59,24 +59,24 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), verticalAlignment = Alignment.Top) {
-                FactValue(stats.total.toString(), "已保存记录", "${stats.appCount} 个来源应用", Modifier.weight(1f))
+                FactValue(stats.total.toString(), "已保存记录", "来自 ${stats.appCount} 个应用", Modifier.weight(1f))
                 val duration = when {
                     stats.total == 0 -> "—"
                     stats.unknownDurationRecords == stats.total -> "未知"
                     else -> compactDuration(stats.observedDurationMillis)
                 }
-                FactValue(duration, "估计可见停留", if (stats.unknownDurationRecords > 0)
-                    "${stats.unknownDurationRecords} 条时长未知" else "按采集记录合计", Modifier.weight(1f))
+                FactValue(duration, "预计停留时长", if (stats.unknownDurationRecords > 0)
+                    "${stats.unknownDurationRecords} 条未统计时长" else "根据采集记录估算", Modifier.weight(1f))
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         if (rawEvents.isEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("从一小段浏览开始", style = MaterialTheme.typography.titleLarge)
-                Text("选择想观察的应用，开启采集。浏览后回到这里，看看自己接触了哪些内容。",
+                Text("先选择想记录的应用并开启采集。浏览一段时间后回到这里，看看自己都接触了什么内容。",
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = onSettings, shape = RoundedCornerShape(8.dp)) { Text("设置采集范围") }
-                Text("文字留在本机。你可以随时暂停或删除。", color = Muted,
+                Text("所有内容只保存在这台设备上，你可以随时暂停或删除。", color = Muted,
                     style = MaterialTheme.typography.bodySmall)
             }
         } else item {
@@ -104,7 +104,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                             trackColor = MaterialTheme.colorScheme.surfaceVariant)
                     }
                 }
-                Text("分母：${stats.total} 条采集记录。应用数量不代表独立的信息源。", color = Muted,
+                Text("共 ${stats.total} 条记录。注意：应用数量不等于信息来源数量。", color = Muted,
                     style = MaterialTheme.typography.bodySmall)
             }
         }

@@ -71,12 +71,12 @@ class InterfaceUiTest {
         val report = CognitiveAnalyzer().analyze(records, StatisticsPeriod.DAY, now)
         renderOverview(records, report, now, dark = false)
         compose.onNodeWithText("未知", useUnmergedTree = true).assertIsDisplayed()
-        compose.onNodeWithText("1 条时长未知", useUnmergedTree = true).assertIsDisplayed()
+        compose.onNodeWithText("1 条未统计时长", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("24 小时信息回顾").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("8时，1条记录，时长未知，点击查看详情")
+        compose.onNodeWithContentDescription("8时，1条记录，未统计时长，点击查看详情")
             .performScrollTo().performClick()
         compose.onNode(hasText("08:00—09:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
-        compose.onNode(hasText("1 条时长未知", substring = true) and
+        compose.onNode(hasText("1 条未统计时长", substring = true) and
             hasAnyAncestor(hasTestTag("hourly-review-details"))).assertExists()
     }
 
@@ -98,12 +98,12 @@ class InterfaceUiTest {
         compose.onNodeWithText("今日观察").assertIsDisplayed()
         saveScreenshot("emerge-ui-overview-dark-large.png")
         compose.onNodeWithText("24 小时信息回顾").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("8时，1条记录，估计可见停留1 分 20 秒，点击查看详情")
+        compose.onNodeWithContentDescription("8时，1条记录，预计停留1 分 20 秒，点击查看详情")
             .performScrollTo().performClick()
         compose.onNode(hasText("08:00—09:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
         compose.onNodeWithTag("hourly-review-details")
-            .performScrollToNode(hasText("当前采集原文：", substring = true))
-        compose.onNodeWithText("当前采集原文：", substring = true).assertIsDisplayed()
+            .performScrollToNode(hasText("本条采集原文：", substring = true))
+        compose.onNodeWithText("本条采集原文：", substring = true).assertIsDisplayed()
         saveScreenshot("emerge-ui-evidence-dark-large.png")
     }
 

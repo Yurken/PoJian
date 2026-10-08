@@ -105,7 +105,7 @@ class RecordControlUiTest {
             }
         }
 
-        compose.onNodeWithText("尚未选择采集范围").assertIsDisplayed()
+        compose.onNodeWithText("尚未选择要记录的应用").assertIsDisplayed()
         compose.onNodeWithTag("capture-toggle").assertIsNotEnabled().assertIsOff()
             .performTouchInput { click() }
         compose.runOnIdle { assertEquals(0, captureChanges) }
@@ -131,9 +131,9 @@ class RecordControlUiTest {
         compose.runOnIdle { permission = true }
         assertCaptureStatus("已开启 · 等待服务连接")
         compose.runOnIdle { connected = true }
-        assertCaptureStatus("已开启 · 正在观察所选应用")
+        assertCaptureStatus("运行中 · 正在记录所选应用")
         compose.onNodeWithTag("capture-toggle").performClick()
-        assertCaptureStatus("已暂停采集")
+        assertCaptureStatus("采集已暂停")
         compose.onNodeWithTag("capture-toggle").assertIsOff()
     }
 

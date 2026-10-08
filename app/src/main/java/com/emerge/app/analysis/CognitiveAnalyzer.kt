@@ -7,12 +7,12 @@ import java.time.ZoneId
 import kotlin.math.max
 
 enum class Increment(val label: String) {
-    FIRST("首次观察"), NEW("新增依据片段"), REPEATED("近似复述且依据重复"),
-    UNKNOWN("归属或依据不足，增量未知"), CONDITIONS("时间或条件不同，分别保留")
+    FIRST("首次出现"), NEW("依据有新增"), REPEATED("重复出现，依据没变"),
+    UNKNOWN("出处或依据不足，暂无法判断"), CONDITIONS("时间或条件不同，单独保留")
 }
 enum class EvidenceType(val label: String) {
     FACT("事实/数据线索"), CONDITION("适用条件"), ADVICE("行动建议"),
-    EXPLANATION("原因/解释"), OTHER("其他依据线索")
+    EXPLANATION("原因/解释"), OTHER("其他线索")
 }
 data class EvidenceFragment(val text: String, val type: EvidenceType, val isNew: Boolean = false)
 data class ClaimObservation(val eventId: Long, val timestamp: Long, val packageName: String,
@@ -33,7 +33,7 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val claims: List<ClaimObservation>, val groups: List<ClaimGroup>, val topics: List<TopicCount>,
     val findings: List<ObservationFinding>, val observedDays: Int, val sourceCounts: Map<String, Int>,
     val purpose: String, val hourlyClaims: List<Int>, val zone: String,
-    val method: String = "离线文本规则基线 v0.3（未训练，待人工核查）",
+    val method: String = "本地文字识别规则 v0.3（未经过模型训练，结果需人工核实）",
     val hourlyReviews: List<HourlyReview> = emptyList(), val coverageSessions: Int = 0,
     val observedDurationMillis: Long = 0, val unknownDurationRecords: Int = 0,
     val topicExposure: List<TopicExposure> = emptyList(), val contentSignals: List<ContentSignal> = emptyList(),
@@ -89,7 +89,7 @@ class CognitiveAnalyzer {
                 usableEvents += event
                 eventTopics[event] = detectTopic(lines.joinToString(" ")) ?: "未分类"
                 lines.filter { emotionalExpression.containsMatchIn(it) }.take(2).forEach {
-                    signals += ContentSignal(event.id, "内容含焦虑/紧迫表达线索", it)
+                    signals += ContentSignal(event.id, "原文含焦虑或紧迫的表达", it)
                 }
             }
             val candidates = lines.filter { it.length in 8..240 && predicate.containsMatchIn(it) &&
@@ -163,18 +163,18 @@ class CognitiveAnalyzer {
             val repeated = members.filter { it.increment == Increment.REPEATED }.map { it.eventId }.distinct().size
             val topicDays = dates(ids)
             val title = when {
-                ids.size < 8 || topicDays < 3 -> "观察不足，不能评估持续窄化"
-                majorIds.size.toDouble() / ids.size >= 0.7 && repeated.toDouble() / ids.size >= 0.6 -> "观察到持续低增量重复线索，建议核查"
-                members.any { it.increment == Increment.NEW } -> "观察到依据片段补充，仍需核查内容"
-                else -> "暂未满足重复线索规则，不代表不存在信息茧房"
+                ids.size < 8 || topicDays < 3 -> "观察不足，暂时无法判断是否收窄"
+                majorIds.size.toDouble() / ids.size >= 0.7 && repeated.toDouble() / ids.size >= 0.6 -> "观察到持续低增量重复，建议回查来源"
+                members.any { it.increment == Increment.NEW } -> "观察到依据有补充，仍需核实内容"
+                else -> "暂未发现重复线索，不代表不存在信息茧房"
             }
             val knownDuration = ids.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
             val majorDuration = majorIds.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
             val unknown = ids.count { currentEventsById[it]?.let { event -> !window.durationKnown(event) } == true }
             ObservationFinding(topic.topic, title,
-                "${ids.size} 个接触条目中有 ${members.size} 个观点候选，覆盖 $topicDays 个自然日；最大近似措辞组覆盖 ${majorIds.size} 条；依据重复 $repeated 条，新增片段 ${members.count { it.increment == Increment.NEW }} 个，增量未知 ${members.count { it.increment == Increment.UNKNOWN }} 个。该主题候选所属条目的窗口内估计可见停留 ${knownDuration / 1000} 秒，其中最大措辞组 ${majorDuration / 1000} 秒，$unknown 条时长未知。时长按条目去重；没有测得时长时不能判断阅读投入是否集中。对象、立场及材料源头尚未做模型验证。",
+                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条；依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录预计停留共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条未统计时长。停留按记录去重；没有时长数据时无法判断是否阅读集中。内容的作者、立场和材料来源尚未做模型验证。",
                 majorIds.take(8))
-        }.ifEmpty { listOf(ObservationFinding("全部", "未提取到可分析观点", "当前文字可能只有界面标签、娱乐内容、短评或缺少明确判断。娱乐内容保留接触统计；不能据此推断信息茧房。", emptyList())) }
+        }.ifEmpty { listOf(ObservationFinding("全部", "没有识别到可分析的观点", "当前内容可能只有界面按钮、娱乐内容、短评，或缺少明确的判断句。娱乐内容仍计入接触统计；这不能用来推断信息茧房。", emptyList())) }
         val exposures = usableEvents.groupBy { eventTopics[it] ?: "未分类" }.map { (topic, entries) ->
             TopicExposure(topic, entries.size, entries.sumOf { window.durationMillis(it) ?: 0 })
         }.sortedWith(compareByDescending<TopicExposure> { it.durationMillis }.thenByDescending { it.recordCount }.thenBy { it.topic })

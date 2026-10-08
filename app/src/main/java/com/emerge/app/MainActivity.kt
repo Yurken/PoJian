@@ -101,7 +101,7 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
     }
     val appNames = remember(availableApps) { availableApps.associate { it.packageName to it.label } }
     val selectedApps = remember(allowed, appNames) { allowed.sorted().map { CaptureApp(it, appNames[it] ?: it) } }
-    val titles = listOf("概览", "记录", "控制")
+    val titles = listOf("概览", "记录", "设置")
     val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
     val showLocalLabel = LocalConfiguration.current.screenWidthDp >= 360 && LocalDensity.current.fontScale <= 1.2f
     Scaffold(containerColor = PageBackground,
@@ -153,8 +153,8 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                 onExport = { report, pdf ->
                     if (model.prepareExport(report)) {
                         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
-                        if (pdf) pdfSaver.launch("破茧-Emerge-信息环境报告-$stamp.pdf")
-                        else textSaver.launch("破茧-Emerge-信息环境报告-$stamp.txt")
+                        if (pdf) pdfSaver.launch("破茧-Emerge-信息环境回顾-$stamp.pdf")
+                        else textSaver.launch("破茧-Emerge-信息环境回顾-$stamp.txt")
                     }
                 })
             1 -> RecordsScreen(all, count, appNames, contentModifier,
@@ -170,18 +170,18 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
         onDismiss = { showApps = false }, onApply = { model.setAllowedPackages(it); showApps = false },
         onDeletePackage = { deletePackage = it })
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false },
-        title = { Text("清空本地记录？") }, text = { Text("会先暂停采集，再删除全部记录与当前分析。此操作无法撤销，已导出的文件需要自行删除。") },
+        title = { Text("清空本地记录？") }, text = { Text("将先暂停采集，再删除全部记录和当前分析。此操作无法撤销；已导出的文件不受影响，需自行删除。") },
         confirmButton = { TextButton(onClick = { model.clearHistory(); confirmClear = false }) { Text("暂停并清空") } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } })
     deleteEvent?.let { event ->
         AlertDialog(onDismissRequest = { deleteEvent = null }, title = { Text("删除这条记录？") },
-            text = { Text("事件 #${event.id} 将从本机删除，观点、引文与报告会按剩余记录重新分析。此操作无法撤销。") },
+            text = { Text("事件 #${event.id} 将从本机删除，观点和报告会按剩余记录重新分析。此操作无法撤销。") },
             confirmButton = { TextButton(onClick = { model.deleteEvent(event.id); deleteEvent = null }) { Text("删除") } },
             dismissButton = { TextButton(onClick = { deleteEvent = null }) { Text("取消") } })
     }
     deletePackage?.let { application ->
         AlertDialog(onDismissRequest = { deletePackage = null }, title = { Text("删除此应用的记录？") },
-            text = { Text("会先暂停采集，再删除「${application.label}」的全部本地历史，并更新观点、引文与报告。此操作无法撤销。") },
+            text = { Text("将先暂停采集，再删除「${application.label}」在本机的全部历史记录，并更新分析报告。此操作无法撤销。") },
             confirmButton = { TextButton(onClick = { model.deletePackage(application.packageName); deletePackage = null }) { Text("删除历史") } },
             dismissButton = { TextButton(onClick = { deletePackage = null }) { Text("取消") } })
     }

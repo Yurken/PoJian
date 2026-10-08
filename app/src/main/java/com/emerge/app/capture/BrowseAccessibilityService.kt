@@ -41,8 +41,8 @@ open class BrowseAccessibilityService : AccessibilityService() {
                     sessions.reset()
                     app.captureDiagnostics.update { it.copy(result = when {
                         !enabled -> "采集已暂停"
-                        packages.isEmpty() -> "请先选择允许采集的应用，当前不会读取正文"
-                        else -> "采集范围已更新，等待选中应用的可见内容"
+                        packages.isEmpty() -> "请先选择要记录的应用，当前不会读取任何内容"
+                        else -> "采集范围已更新，等待所选应用的内容"
                     }) }
                 }
             }
@@ -67,7 +67,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
             pending?.cancel()
             sessions.reset()
             app.captureDiagnostics.update { it.copy(lastCheck = System.currentTimeMillis(), result =
-                if (excluded(name)) "当前是破茧、系统界面或输入法，已跳过" else "当前应用不在选定范围内，不读取正文") }
+                if (excluded(name)) "当前是破茧、系统界面或输入法，已跳过" else "当前应用不在选择范围内，不会读取内容") }
             return
         }
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -106,7 +106,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
             root = rootInActiveWindow
             if (root == null) {
                 sessions.reset()
-                app.captureDiagnostics.update { it.copy(lastCheck = now, result = "收到了服务连接，但当前窗口节点为空") }
+                app.captureDiagnostics.update { it.copy(lastCheck = now, result = "已连接服务，但当前窗口没有内容节点") }
                 return
             }
             val activePackage = root.packageName?.toString()
@@ -118,7 +118,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
             val permission = activePackage?.let(app.captureSettings::permissionToken)
             if (activePackage == null || permission == null) {
                 sessions.reset()
-                app.captureDiagnostics.update { it.copy(lastCheck = now, result = "当前应用不在选定范围内，不读取正文") }
+                app.captureDiagnostics.update { it.copy(lastCheck = now, result = "当前应用不在选择范围内，不会读取内容") }
                 return
             }
             // Check the active package before traversing any visible text or descriptions.
@@ -126,7 +126,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
             app.captureDiagnostics.update { it.copy(lastCheck = now, lastPackage = activePackage) }
             if (text.isBlank()) {
                 sessions.reset()
-                app.captureDiagnostics.update { it.copy(result = "窗口可访问，但没有可读取的可见文字（画面或节点限制）") }
+                app.captureDiagnostics.update { it.copy(result = "可以访问窗口，但读不到可见文字（受画面或节点限制）") }
                 return
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) { sessions.reset(); return }
@@ -143,9 +143,9 @@ open class BrowseAccessibilityService : AccessibilityService() {
             sessions.saved(sample, id)
             app.captureDiagnostics.update { it.copy(lastSaved = if (id == null) it.lastSaved else now,
                 result = when {
-                    id == null -> "记录已删除或采集范围已变化，已丢弃此次采样"
-                    sample.continuing -> "同一内容持续可见，已更新估计停留 ${sample.event.durationMillis / 1000} 秒"
-                    else -> "已开始一条浏览会话"
+                    id == null -> "记录已删除或采集范围有变化，本次采样已丢弃"
+                    sample.continuing -> "同一内容仍在显示，停留时长已更新为 ${sample.event.durationMillis / 1000} 秒"
+                    else -> "已开始记录一段浏览"
                 }) }
 
         } catch (error: Exception) {
@@ -191,7 +191,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
         app.captureDiagnostics.update { it.copy(result = "系统中断了辅助功能反馈，等待下一次采集") }
     }
     override fun onUnbind(intent: Intent?): Boolean {
-        app.captureDiagnostics.update { it.copy(connected = false, result = "系统已断开辅助功能服务，请重新启用") }
+        app.captureDiagnostics.update { it.copy(connected = false, result = "系统已断开辅助功能服务，请重新开启") }
         scope.cancel()
         return super.onUnbind(intent)
     }

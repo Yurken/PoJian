@@ -63,7 +63,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp)) {
         item {
             Text("信息足迹", style = MaterialTheme.typography.headlineMedium, color = Ink)
-            MetadataText("本地保存 $count 条 · 按浏览发生时间回看", Modifier.padding(top = 6.dp))
+            MetadataText("本机已保存 $count 条 · 按浏览时间回看", Modifier.padding(top = 6.dp))
             OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
                 label = { Text("搜索原文或应用") }, singleLine = true, shape = RoundedCornerShape(10.dp),
                 trailingIcon = {
@@ -82,9 +82,9 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
         }
         if (filtered.isEmpty()) item {
             WhiteCard {
-                SectionTitle(if (hasFilter) "没有匹配的记录" else "等待第一条信息足迹")
-                Text(if (hasFilter) "换一个关键词或应用，继续查找本地原文。"
-                    else "选择要记录的应用，授权并开启采集后，这里会留下实际保存的可见文字。",
+                SectionTitle(if (hasFilter) "没有找到相关记录" else "还没有任何记录")
+                Text(if (hasFilter) "换个关键词或应用名再试试。"
+                    else "选择要记录的应用并完成授权后，这里会保存你浏览时看到的文字。",
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
                 if (hasFilter) TextButton(onClick = { query = ""; selectedPackage = null }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("查看全部记录")
@@ -109,12 +109,12 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                     Column(Modifier.weight(1f)) {
                         Text(appNames[event.packageName] ?: event.packageName, color = Ink,
                             style = MaterialTheme.typography.titleSmall)
-                        MetadataText(if (event.sampleCount > 0) "可见停留约 ${formatDuration(event.durationMillis)}"
-                            else "旧版快照 · 停留时长未知", Modifier.padding(top = 4.dp, bottom = 10.dp))
+                        MetadataText(if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)}（估算）"
+                            else "旧版本记录 · 未统计停留时长", Modifier.padding(top = 4.dp, bottom = 10.dp))
                         if (expanded) {
                             QuoteBlock(event.visibleText)
                             MetadataText("事件 #${event.id} · ${event.packageName}", Modifier.padding(top = 8.dp))
-                            if (event.sampleCount > 0) MetadataText("${event.sampleCount} 次有效检查 · 可见停留不等于真实阅读")
+                            if (event.sampleCount > 0) MetadataText("已检查 ${event.sampleCount} 次 · 停留时长不等于实际阅读时间")
                         } else Text(event.visibleText, maxLines = 3, overflow = TextOverflow.Ellipsis,
                             color = Ink, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -182,11 +182,11 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
     onOpenSettings: () -> Unit, onClear: () -> Unit, message: String?, modifier: Modifier = Modifier,
     diagnostics: CaptureStatus = CaptureStatus(), selectedApps: List<CaptureApp> = emptyList(), onChooseApps: () -> Unit = {}) {
     val captureState = when {
-        selectedApps.isEmpty() -> "尚未选择采集范围"
-        !enabled -> "已暂停采集"
+        selectedApps.isEmpty() -> "尚未选择要记录的应用"
+        !enabled -> "采集已暂停"
         !permission -> "已开启 · 等待系统授权"
         !diagnostics.connected -> "已开启 · 等待服务连接"
-        else -> "已开启 · 正在观察所选应用"
+        else -> "运行中 · 正在记录所选应用"
     }
     LazyColumn(modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
@@ -200,16 +200,16 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text("采集总控", color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            Text("采集开关", color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 style = MaterialTheme.typography.titleMedium)
                             Text(captureState, color = MaterialTheme.colorScheme.onPrimaryContainer,
                                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
                         }
                         Switch(checked = enabled, onCheckedChange = onCapture, enabled = selectedApps.isNotEmpty(),
-                            modifier = Modifier.testTag("capture-toggle").semantics { contentDescription = "允许采集"; stateDescription = captureState })
+                            modifier = Modifier.testTag("capture-toggle").semantics { contentDescription = "开启采集"; stateDescription = captureState })
                     }
-                    Text(if (selectedApps.isEmpty()) "先选择至少一个应用，再授权并开启采集。"
-                        else "仅观察选中应用的可见文字，可随时关闭。",
+                    Text(if (selectedApps.isEmpty()) "请先选择至少一个应用，再授权并开启采集。"
+                        else "只记录所选应用页面上可见的文字，可随时关闭。",
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                     message?.let { Text(it, color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -219,15 +219,15 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
         }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle("采集范围", "默认不采集任何应用，由你主动选择。")
+                SectionTitle("采集范围", "默认不记录任何应用，由你主动选择。")
                 Text(if (selectedApps.isEmpty()) "尚未选择应用" else "已选择 ${selectedApps.size} 个应用", color = Ink,
                     style = MaterialTheme.typography.titleMedium)
                 if (selectedApps.isNotEmpty()) Text(selectedApps.joinToString("、") { it.label }, color = Muted,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                 OutlinedButton(onClick = onChooseApps, shape = RoundedCornerShape(8.dp), modifier = Modifier.heightIn(min = 48.dp)) {
-                    Text("选择应用与管理记录（${selectedApps.size}）")
+                    Text("选择应用（已选 ${selectedApps.size} 个）")
                 }
-                MetadataText("保存新范围会暂停采集，历史记录仍可回看。")
+                MetadataText("调整应用后采集会暂时停止，历史记录不受影响。")
             }
         }
         item {
@@ -239,13 +239,13 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 OutlinedButton(onClick = onOpenSettings, shape = RoundedCornerShape(8.dp), modifier = Modifier.heightIn(min = 48.dp)) {
                     Text(if (permission) "查看系统辅助功能授权" else "前往系统授权")
                 }
-                MetadataText("在系统中启用「破茧浏览采集」，返回后打开采集总控。")
-                ExpandableNote("采集诊断", "本次进程收到事件 ${diagnostics.eventsReceived} 次\n" +
+                MetadataText("请在系统设置中开启「破茧浏览采集」，然后回到这里打开采集开关。")
+                ExpandableNote("采集诊断", "本次运行已接收事件 ${diagnostics.eventsReceived} 次\n" +
                     "最近应用：${diagnostics.lastPackage}\n" +
                     "最近检查：${diagnosticTime(diagnostics.lastCheck)}\n" +
                     "最近保存：${diagnosticTime(diagnostics.lastSaved)}\n" +
                     "最近结果：${diagnostics.result}\n\n" +
-                    "若已授权但未连接，可在系统中关闭再开启辅助服务。部分应用不会暴露正文；当前不能理解视频画面和音频。")
+                    "如果已授权但仍未连接，可以试试在系统中关闭再重新开启辅助服务。部分应用不会提供正文；目前也无法识别视频画面和音频内容。")
             }
         }
         item {
@@ -253,28 +253,28 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
             Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("本地存储")
                 Text("$count 条已保存记录", color = Ink, style = MaterialTheme.typography.titleLarge)
-                Text("数据保存在此设备，不上传。最多保留 5000 条，超出后删除最早记录。数据库尚未额外加密。",
+                Text("数据只保存在这台设备上，不会上传。最多保留 5000 条，超出后自动删除最早的记录。目前数据库未做额外加密。",
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
                 OutlinedButton(onClick = onClear, enabled = count > 0, shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.heightIn(min = 48.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
                     Text("暂停并清空全部记录")
                 }
-                MetadataText("删除会更新本机分析；已导出的文件需要自行删除。")
-                ExpandableNote("浏览目的与报告如何保存", "浏览目的会保留。首次主动分析后，记录变化会更新当前观察。报告暂不持久保存，重启应用后需要重新生成。导出的 PDF 或文本是生成时的快照。")
+                MetadataText("删除后分析结果会同步更新；已导出的文件需要自行删除。")
+                ExpandableNote("浏览目的与报告的保存方式", "浏览目的会一直保留。报告不会长期保存，重启应用后需要重新生成；导出的 PDF 或文本是当时内容的存档。")
             }
         }
         item {
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                SectionTitle("隐私与观察边界")
-                Text("辅助功能读取所选应用当前窗口提供的可见文字、应用名称与时间，用于在本机回顾信息接触。可见正文仍可能包含个人信息，请按需开启，结束后暂停。",
+                SectionTitle("隐私说明")
+                Text("开启后，破茧会读取所选应用当前页面上的文字、应用名称和时间，帮你回顾自己的浏览内容。页面文字可能包含个人信息，请按需开启，不用时记得暂停。",
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
-                ExpandableNote("查看采集说明与观察边界", "采集跳过密码和可编辑输入框，过滤本应用、系统设置及部分键盘，但无法保证排除正文中的所有个人信息。\n\n" +
-                    "可见停留不代表真实阅读、理解或认同。未记录的内容保留为未知，内容中的焦虑表达也不代表你的心理状态。")
+                ExpandableNote("查看采集说明与边界", "采集会自动跳过密码框和输入框，也不会记录破茧本身、系统设置和输入法，但无法保证排除正文中的所有个人信息。\n\n" +
+                    "停留时长不代表真实阅读、理解或认同。没有记录到的内容就是未知，内容中的情绪表达也不代表你的心理状态。")
                 ExpandableNote("关于${stringResource(R.string.brand_name)}", stringResource(R.string.brand_tagline) +
-                    "\n\n个人信息环境自查 · 离线文字规则原型。\n\n" +
-                    "回顾接触的观点、比较依据变化，再自主决定是否补充材料。当前尚未接入多模态、语义模型、时序图学习或可信执行环境。观点和依据候选需要回到原文核查。")
+                    "\n\n帮你回顾接触到的信息，拓宽判断依据 · 离线文字分析原型。\n\n" +
+                    "回顾接触到的观点，比较依据的变化，再自己决定要不要补充材料。目前仅支持本地文字分析，识别出的观点和依据请务必回到原文核实。")
             }
         }
     }
@@ -307,8 +307,8 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
             LazyColumn(Modifier.testTag("capture-app-options").weight(1f)) {
                 item(key = "capture-heading") {
                     Column {
-                        Text("选择采集应用", color = Ink, style = MaterialTheme.typography.headlineSmall)
-                        MetadataText("已选 ${draft.size} 个 · 保存后会暂停采集，需重新开启。", Modifier.padding(top = 6.dp))
+                        Text("选择要采集的应用", color = Ink, style = MaterialTheme.typography.headlineSmall)
+                        MetadataText("已选 ${draft.size} 个 · 保存后需重新开启采集。", Modifier.padding(top = 6.dp))
                         OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth()
                             .padding(vertical = if (compactHeight) 4.dp else 12.dp),
                             singleLine = true, label = { Text("搜索应用") }, shape = RoundedCornerShape(10.dp),
@@ -317,7 +317,7 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
                     }
                 }
                 if (filtered.isEmpty() && !loading) item {
-                    Text("没有匹配的应用。可启动应用、已选应用及有历史记录的应用会出现在这里。", color = Muted,
+                    Text("没有找到应用。已安装的可启动应用、已选应用和有历史记录的应用会显示在这里。", color = Muted,
                         style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 20.dp))
                 }
                 items(filtered, key = { it.packageName }) { application ->

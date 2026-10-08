@@ -58,7 +58,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     init {
         viewModelScope.launch {
             allEvents.collect {
-                invalidate("记录已更新，正在同步报告", cancelAnalysis = false, clearReport = false)
+                invalidate("记录已更新，正在同步回顾", cancelAnalysis = false, clearReport = false)
                 scheduleAnalysis()
             }
         }
@@ -79,7 +79,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                     } catch (error: Exception) {
                         if (error is CancellationException) throw error
                         appsState.value = known.map { CaptureApp(it, it) }.sortedBy { it.packageName }
-                        messageState.value = "暂时无法加载已安装应用，仍可管理已选应用和历史记录"
+                        messageState.value = "暂时无法加载应用列表，仍可管理已选应用和历史记录"
                     } finally {
                         appsLoadingState.value = false
                     }
@@ -90,7 +90,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     fun setPeriod(value: StatisticsPeriod) {
         if (period == value) return
         period = value
-        invalidate("观察区间已变更，等待分析")
+        invalidate("时间范围已切换，正在重新整理")
         scheduleAnalysis()
     }
 
@@ -99,7 +99,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         if (analysisState.value.purpose == purpose) return
         preferences.edit().putString("purpose", purpose).apply()
         analysisState.update { it.copy(purpose = purpose) }
-        invalidate("浏览目的已更新，等待分析")
+        invalidate("浏览目的已保存，正在重新整理")
         scheduleAnalysis()
     }
 
@@ -109,7 +109,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         if (day != reportDay || zone.id != reportZone) {
             reportDay = day
             reportZone = zone.id
-            invalidate("自然日已切换，等待分析")
+            invalidate("日期已切换，正在重新整理")
             scheduleAnalysis()
         }
     }
@@ -150,10 +150,10 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             val purpose = analysisState.value.purpose
             val snapshot = allEvents.value.toList()
             if (snapshot.isEmpty()) {
-                analysisState.update { it.copy(running = false, report = null, status = "暂无记录，采集后将自动更新") }
+                analysisState.update { it.copy(running = false, report = null, status = "暂无记录，采集后会自动更新") }
                 return@launch
             }
-            analysisState.update { it.copy(running = true, status = "正在离线分析最新记录", error = null) }
+            analysisState.update { it.copy(running = true, status = "正在本地分析最新记录", error = null) }
             try {
                 val result = withContext(Dispatchers.Default) {
                     val computationContext = currentCoroutineContext()
@@ -162,7 +162,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 ensureActive()
                 analysisState.update { it.copy(running = false, report = result, stale = generation != version,
-                    status = if (generation == version) "已更新 · 后续记录将自动分析" else "新记录已到达，正在继续更新") }
+                    status = if (generation == version) "已更新，有新记录会自动重新分析" else "有新记录，正在继续更新") }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 if (generation == version) analysisState.update { it.copy(running = false, error = "分析失败，请重试", status = "分析未完成") }
@@ -188,7 +188,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun exportReport(uri: Uri, pdf: Boolean) {
         val report = exportSnapshot ?: run {
-            analysisState.update { it.copy(exporting = false, exportMessage = "记录或观察范围已变更，请保存最新报告") }
+            analysisState.update { it.copy(exporting = false, exportMessage = "记录或时间范围已变化，请重新导出最新回顾") }
             return
         }
         val version = exportGeneration
@@ -245,11 +245,11 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         if (enabled && allowedPackages.value.isEmpty()) {
-            messageState.value = "请先选择至少一个允许采集的应用"
+            messageState.value = "请先选择至少一个要记录的应用"
             return
         }
         app.captureSettings.setEnabled(enabled)
-        messageState.value = if (enabled) "已开启，仅记录你选中的应用" else "采集已暂停"
+        messageState.value = if (enabled) "已开启，只记录所选应用" else "采集已暂停"
     }
 
     fun setAllowedPackages(packages: Set<String>) {
@@ -257,7 +257,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         setCapture(false)
         invalidate("采集范围已变更，等待分析")
         app.captureSettings.setAllowedPackages(packages)
-        messageState.value = "范围已保存，采集已暂停；确认后可重新开启"
+        messageState.value = "已保存，采集已暂停，确认后请重新开启"
         scheduleAnalysis()
     }
 
