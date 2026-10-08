@@ -6,7 +6,7 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
     </queries>
-    <application android:name=".EmergeApplication" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@drawable/ic_emerge" android:label="@string/app_name" android:supportsRtl="true" android:theme="@style/Theme.Emerge">
+    <application android:name=".EmergeApplication" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:label="@string/app_name" android:supportsRtl="true" android:theme="@style/Theme.Emerge">
         <activity android:name=".MainActivity" android:exported="true" />
         <!-- Preserve installed launcher shortcuts while moving source code to Emerge. -->
         <activity-alias android:name="com.zhiheng.app.MainActivity" android:targetActivity=".MainActivity" android:exported="true" android:label="@string/app_name">

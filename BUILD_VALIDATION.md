@@ -52,3 +52,16 @@ Room v2 JSON schema 与更名前完全一致，identity hash 保持 `777cfc8fd18
 规则与阈值尚未通过人工标注真实浏览数据校准；测试是工程回归，不能当作语义准确率、认知保护效果或真实注意力验证。跨应用节点覆盖、OEM 后台策略与文件选择器仍需按实际手机测试。
 
 多模态模型、双路编码、交叉编码器、时序图学习、真实阅读区域校准、TEE 与远程证明尚未实现，详见 `docs/IMPLEMENTATION.md`。当前程序完全离线，但本地数据库尚无额外加密。已导出的外部文件由用户自行管理。
+
+## Logo 接入验证（2026-10-08）
+
+将 `docs/brand/emerge-logo-v1.png` 接入启动图标，提供五种屏幕密度的透明前景、独立背景以及 Android 13 单色主题图标。旧启动别名继续继承应用图标。
+
+- `assembleDebug`、`lintDebug` 成功；lint 为 0 errors、10 warnings，没有新增图标警告。
+- 已检查圆形、圆角方形、单色及 48px 本地预览，右上金色翼尖与茧形轮廓完整。
+- 已检查实际 APK 中的 adaptive icon，背景、前景和 monochrome 资源均已打包。
+- 本次资源更新的验证范围为构建、lint、APK 资源及本地裁切预览。
+
+安装包：`app/build/outputs/apk/debug/Emerge-0.3.0-logo-debug.apk`。
+
+SHA256：`4df31c89a4f521b291d64ef3fcd9cc34daa2cac1ca750eb29c95e255a863cf5d`。
