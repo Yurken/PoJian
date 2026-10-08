@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -120,27 +119,26 @@ internal fun QuoteBlock(text: String, modifier: Modifier = Modifier) {
 internal fun ExpandableNote(title: String, body: String, modifier: Modifier = Modifier) {
     var expanded by rememberSaveable(title) { mutableStateOf(false) }
     Column(modifier.fillMaxWidth()) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
             modifier = Modifier.fillMaxWidth()
-                .defaultMinSize(minHeight = 48.dp)
+                .defaultMinSize(minHeight = 44.dp)
                 .clickable(role = Role.Button, onClickLabel = if (expanded) "收起说明" else "展开说明") {
                     expanded = !expanded
                 }
                 .semantics { stateDescription = if (expanded) "已展开" else "已收起" }
-                .padding(vertical = 8.dp),
+                .padding(vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = Ink,
+                style = MaterialTheme.typography.bodySmall,
+                color = Muted,
                 modifier = Modifier.weight(1f)
             )
             Text(
                 text = if (expanded) "收起 −" else "展开 ＋",
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 color = Accent
             )
         }

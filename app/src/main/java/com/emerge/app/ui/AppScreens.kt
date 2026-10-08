@@ -70,12 +70,16 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
+        if (period == StatisticsPeriod.DAY && stats.total > 0) item {
+            MiniHourlyTrend(stats.trend)
+        }
         if (rawEvents.isEmpty()) item {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("从一小段浏览开始", style = MaterialTheme.typography.titleLarge)
-                Text("先选择想记录的应用并开启采集。浏览一段时间后回到这里，看看自己都接触了什么内容。",
-                    color = Muted, style = MaterialTheme.typography.bodyMedium)
-                Button(onClick = onSettings, shape = RoundedCornerShape(8.dp)) { Text("设置采集范围") }
+                GuideStep(1, "选择要记录的应用", "在「设置」页挑选你想回顾的应用")
+                GuideStep(2, "开启系统授权", "在系统设置中启用「破茧浏览采集」")
+                GuideStep(3, "打开采集开关", "正常浏览，回到这里看回顾")
+                Button(onClick = onSettings, shape = RoundedCornerShape(8.dp)) { Text("去设置") }
                 Text("所有内容只保存在这台设备上，你可以随时暂停或删除。", color = Muted,
                     style = MaterialTheme.typography.bodySmall)
             }
@@ -107,6 +111,47 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                 Text("共 ${stats.total} 条记录。注意：应用数量不等于信息来源数量。", color = Muted,
                     style = MaterialTheme.typography.bodySmall)
             }
+        }
+    }
+}
+
+@Composable
+private fun GuideStep(number: Int, title: String, detail: String) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(24.dp).clip(CircleShape)
+            .background(MaterialTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+            Text(number.toString(), color = MaterialTheme.colorScheme.onPrimaryContainer,
+                style = MaterialTheme.typography.labelMedium)
+        }
+        Column {
+            Text(title, style = MaterialTheme.typography.bodyMedium, color = Ink)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+    }
+}
+
+/** Compact hour-of-day bars shown directly on the overview, no analysis required. */
+@Composable
+private fun MiniHourlyTrend(trend: List<TrendBucket>) {
+    val maximum = (trend.maxOfOrNull { it.count } ?: 0).coerceAtLeast(1)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("今日浏览分布", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            MetadataText("按小时统计")
+        }
+        Row(Modifier.fillMaxWidth().height(28.dp), horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.Bottom) {
+            trend.take(24).forEach { bucket ->
+                val fraction = bucket.count.toFloat() / maximum
+                Box(Modifier.weight(1f).fillMaxWidth()
+                    .height(if (bucket.count == 0) 3.dp else (4 + 24 * fraction).dp)
+                    .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                    .background(if (bucket.count == 0) MaterialTheme.colorScheme.surfaceVariant else Accent))
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf("00", "06", "12", "18", "24").forEach { MetadataText(it) }
         }
     }
 }

@@ -107,16 +107,20 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                     Text(timeFormat.format(Instant.ofEpochMilli(event.timestamp).atZone(zone)), color = Muted,
                         style = MaterialTheme.typography.labelMedium, modifier = Modifier.widthIn(min = 44.dp).padding(top = 3.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(appNames[event.packageName] ?: event.packageName, color = Ink,
-                            style = MaterialTheme.typography.titleSmall)
-                        MetadataText(if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)}（估算）"
-                            else "旧版本记录 · 未统计停留时长", Modifier.padding(top = 4.dp, bottom = 10.dp))
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(appNames[event.packageName] ?: event.packageName, color = Ink,
+                                style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f),
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            MetadataText(if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)}"
+                                else "旧版本", Modifier.padding(start = 8.dp))
+                        }
                         if (expanded) {
                             QuoteBlock(event.visibleText)
-                            MetadataText("事件 #${event.id} · ${event.packageName}", Modifier.padding(top = 8.dp))
+                            MetadataText("记录 #${event.id} · ${event.packageName}", Modifier.padding(top = 8.dp))
                             if (event.sampleCount > 0) MetadataText("已检查 ${event.sampleCount} 次 · 停留时长不等于实际阅读时间")
-                        } else Text(event.visibleText, maxLines = 3, overflow = TextOverflow.Ellipsis,
-                            color = Ink, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp)
+                        } else Text(event.visibleText, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            color = Ink, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp,
+                            modifier = Modifier.padding(top = 4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp),
                                 contentPadding = PaddingValues(horizontal = 0.dp)) {
@@ -255,10 +259,9 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 Text("$count 条已保存记录", color = Ink, style = MaterialTheme.typography.titleLarge)
                 Text("数据只保存在这台设备上，不会上传。最多保留 5000 条，超出后自动删除最早的记录。目前数据库未做额外加密。",
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = onClear, enabled = count > 0, shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                    Text("暂停并清空全部记录")
+                TextButton(onClick = onClear, enabled = count > 0,
+                    modifier = Modifier.heightIn(min = 48.dp).align(Alignment.Start)) {
+                    Text("暂停并清空全部记录", color = MaterialTheme.colorScheme.error)
                 }
                 MetadataText("删除后分析结果会同步更新；已导出的文件需要自行删除。")
                 ExpandableNote("浏览目的与报告的保存方式", "浏览目的会一直保留。报告不会长期保存，重启应用后需要重新生成；导出的 PDF 或文本是当时内容的存档。")

@@ -116,8 +116,13 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }, actions = {
-                    if (showLocalLabel) Text("本地运行", color = Muted, style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(end = 20.dp))
+                    if (showLocalLabel) Surface(shape = RoundedCornerShape(50),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.padding(end = 20.dp)) {
+                        Text("本地运行", color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
+                    }
                 }, colors = TopAppBarDefaults.topAppBarColors(containerColor = PageBackground))
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }

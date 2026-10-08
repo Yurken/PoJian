@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -386,32 +387,41 @@ private fun HourlyBars(report: CognitiveReport, selected: Int?, onSelect: (Int) 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             listOf("00", "06", "12", "18", "24").forEach { MetadataText(it) }
         }
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            repeat(24) { hour ->
-                val review = report.hourlyReviews.firstOrNull { it.hour == hour }
-                val duration = review?.durationMillis ?: 0L
-                val records = review?.recordCount ?: 0
-                val unknown = review?.unknownDurationRecords ?: 0
-                val description = when {
-                    records == 0 -> "${hour}时，暂无记录，点击查看详情"
-                    unknown == records && duration == 0L -> "${hour}时，${records}条记录，未统计时长，点击查看详情"
-                    unknown > 0 -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，${unknown}条未统计时长，点击查看详情"
-                    else -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，点击查看详情"
+        val pageBackground = MaterialTheme.colorScheme.background
+        Box(Modifier.fillMaxWidth()) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                repeat(24) { hour ->
+                    val review = report.hourlyReviews.firstOrNull { it.hour == hour }
+                    val duration = review?.durationMillis ?: 0L
+                    val records = review?.recordCount ?: 0
+                    val unknown = review?.unknownDurationRecords ?: 0
+                    val description = when {
+                        records == 0 -> "${hour}时，暂无记录，点击查看详情"
+                        unknown == records && duration == 0L -> "${hour}时，${records}条记录，未统计时长，点击查看详情"
+                        unknown > 0 -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，${unknown}条未统计时长，点击查看详情"
+                        else -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，点击查看详情"
+                    }
+                    Column(Modifier.width(48.dp).heightIn(min = 48.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (selected == hour) Accent else Color.Transparent)
+                        .clickable(role = Role.Button) { onOpen(hour) }
+                        .semantics(mergeDescendants = true) { contentDescription = description }
+                        .padding(vertical = 7.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(hour.toString().padStart(2, '0'), color = if (selected == hour) MaterialTheme.colorScheme.onPrimary else Ink,
+                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        Text("$records 条", color = if (selected == hour) MaterialTheme.colorScheme.onPrimary else Muted,
+                            fontSize = 10.sp)
+                    }
                 }
-                Column(Modifier.width(48.dp).heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (selected == hour) Accent else Color.Transparent)
-                    .clickable(role = Role.Button) { onOpen(hour) }
-                    .semantics(mergeDescendants = true) { contentDescription = description }
-                    .padding(vertical = 7.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(hour.toString().padStart(2, '0'), color = if (selected == hour) MaterialTheme.colorScheme.onPrimary else Ink,
-                        fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Text("$records 条", color = if (selected == hour) MaterialTheme.colorScheme.onPrimary else Muted,
-                        fontSize = 10.sp)
-                }
+            }
+            Box(Modifier.matchParentSize()) {
+                Box(Modifier.align(Alignment.CenterStart).width(14.dp).fillMaxHeight()
+                    .background(Brush.horizontalGradient(listOf(pageBackground, Color.Transparent))))
+                Box(Modifier.align(Alignment.CenterEnd).width(14.dp).fillMaxHeight()
+                    .background(Brush.horizontalGradient(listOf(Color.Transparent, pageBackground))))
             }
         }
     }
