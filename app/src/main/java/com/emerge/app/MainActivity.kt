@@ -113,28 +113,35 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
     }
     val appNames = remember(availableApps) { availableApps.associate { it.packageName to it.label } }
     val selectedApps = remember(allowed, appNames) { allowed.sorted().map { CaptureApp(it, appNames[it] ?: it) } }
-    val audioActions = rememberAudioActions(audioModel, selectedApps) { tab = 2; showApps = true }
+    val audioActions = rememberAudioActions(audioModel, selectedApps) { tab = 3; showApps = true }
     BackHandler(showAudioRecords) { showAudioRecords = false }
-    val titles = listOf("概览", "记录", "设置")
-    val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
+    val titles = listOf("分析", "足迹", "录制", "设置")
+    val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_recording, R.drawable.ic_profile)
+    val pauseAudio: (() -> Unit)? = if (audioRuntime.isCapturing) ({
+        if (audioRuntime.isPaused) audioModel.runtime.resumePlayback() else audioModel.runtime.pausePlayback()
+    }) else null
     val showLocalLabel = LocalConfiguration.current.screenWidthDp >= 360 && LocalDensity.current.fontScale <= 1.2f
     Scaffold(containerColor = PageBackground,
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             Column {
                 TopAppBar(title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Image(painterResource(R.mipmap.ic_launcher_artwork), contentDescription = null,
-                            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
-                                .background(Color(0xFF0E332C)).padding(3.dp))
-                        Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)))
+                        Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleMedium,
                             maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                     }
                 }, actions = {
                     if (showLocalLabel) Surface(shape = RoundedCornerShape(50),
                         color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier.padding(end = 20.dp)) {
-                        Text(if (audioConfig.enabled) "云端增强" else "本地运行", color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        Text(when {
+                            audioRuntime.isCapturing -> if (audioRuntime.isPaused) "已暂停" else "记录中"
+                            audioRuntime.isImporting -> "转写中"
+                            audioConfig.enabled -> "云端增强"
+                            else -> "本地运行"
+                        }, color = MaterialTheme.colorScheme.onPrimaryContainer,
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                     }
@@ -149,7 +156,7 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                         icon = { Icon(painterResource(icons[index]), contentDescription = null) },
                         label = { Text(title) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = Accent,
-                            selectedTextColor = Accent, indicatorColor = MaterialTheme.colorScheme.primaryContainer))
+                            selectedTextColor = Accent, indicatorColor = Color.Transparent))
                 }
             }
         }
@@ -169,7 +176,7 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                     !diagnostics.connected -> "待连接"
                     else -> "采集中"
                 },
-                appNames, onRecords = { tab = 1 }, onSettings = { tab = 2 }, modifier = contentModifier,
+                appNames, onRecords = { tab = 1 }, onSettings = { tab = 3 }, modifier = contentModifier,
                 analysis = analysis, rawEvents = all,
                 onAnalyze = { purpose -> model.updatePurpose(purpose); model.analyze(period) },
                 onPurposeChange = model::updatePurpose, selectedAppCount = allowed.size, now = now,
@@ -180,18 +187,18 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                         else textSaver.launch("破茧-Emerge-信息环境回顾-$stamp.txt")
                     }
                 }, audioContent = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AudioEntryCard(audioState, audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
-                            audioModel::stopTask, { showAudioRecords = true }, onCancelDownload = audioModel.runtime::cancelDownload)
-                        if (audioRuntime.isCapturing) OutlinedButton(onClick = {
-                            if (audioRuntime.isPaused) audioModel.runtime.resumePlayback() else audioModel.runtime.pausePlayback()
-                        }, modifier = Modifier.fillMaxWidth()) { Text(if (audioRuntime.isPaused) "继续记录声音" else "暂停记录声音") }
-                    }
+                    AudioEntryCard(audioState, audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
+                        audioModel::stopTask, { showAudioRecords = true }, onCancelDownload = audioModel.runtime::cancelDownload,
+                        compact = true, onPauseResume = pauseAudio, isPaused = audioRuntime.isPaused)
                 })
             1 -> RecordsScreen(all, count, appNames, contentModifier,
-                onDelete = { deleteEvent = it }, onSettings = { tab = 2 },
+                onDelete = { deleteEvent = it }, onSettings = { tab = 3 },
                 audioContent = { AudioRecordsEntry(audioSessions.size, { showAudioRecords = true }) })
-            2 -> SettingsScreen(permission, enabled, count, model::setCapture, onOpenSettings,
+            2 -> RecordingScreen(audioState, audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
+                audioModel::stopTask, { showAudioRecords = true }, modifier = contentModifier,
+                onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio,
+                isPaused = audioRuntime.isPaused)
+            3 -> SettingsScreen(permission, enabled, count, model::setCapture, onOpenSettings,
                 { confirmClear = true }, message, contentModifier, diagnostics,
                 selectedApps, onChooseApps = { showApps = true }, audioContent = {
                     AudioSettingsSection(audioState, audioModel::downloadModel, audioModel.runtime::cancelDownload,

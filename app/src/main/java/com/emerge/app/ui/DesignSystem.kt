@@ -26,7 +26,6 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 
 val Accent: Color
@@ -53,10 +52,10 @@ internal val ChartColors: List<Color>
         val scheme = MaterialTheme.colorScheme
         return if (scheme.background.luminance() < 0.5f) {
             listOf(scheme.primary, scheme.secondary, scheme.tertiary,
-                Color(0xFFA8B8A5), Color(0xFFC7AEA3), Color(0xFF9FAEA5))
+                Color(0xFF94A3B8), Color(0xFF5EEAD4), Color(0xFFC4B5FD))
         } else {
             listOf(scheme.primary, scheme.secondary, scheme.tertiary,
-                Color(0xFF6F8469), Color(0xFF976F60), Color(0xFF7A8880))
+                Color(0xFF64748B), Color(0xFF0F766E), Color(0xFF7C3AED))
         }
     }
 
@@ -75,7 +74,7 @@ internal fun WhiteCard(
         shadowElevation = 0.dp
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = content
         )
@@ -109,7 +108,7 @@ internal fun QuoteBlock(text: String, modifier: Modifier = Modifier) {
             Text(
                 text = text,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Serif)
+                style = MaterialTheme.typography.bodyLarge
             )
         }
     }
@@ -121,7 +120,7 @@ internal fun ExpandableNote(title: String, body: String, modifier: Modifier = Mo
     Column(modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth()
-                .defaultMinSize(minHeight = 44.dp)
+                .defaultMinSize(minHeight = 48.dp)
                 .clickable(role = Role.Button, onClickLabel = if (expanded) "收起说明" else "展开说明") {
                     expanded = !expanded
                 }
@@ -132,7 +131,7 @@ internal fun ExpandableNote(title: String, body: String, modifier: Modifier = Mo
         ) {
             Text(
                 text = title,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = Muted,
                 modifier = Modifier.weight(1f)
             )

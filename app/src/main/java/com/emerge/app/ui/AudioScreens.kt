@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -39,6 +40,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.time.Instant
@@ -115,45 +117,112 @@ fun AudioEntryCard(
     onCancelTask: () -> Unit,
     onOpenRecords: () -> Unit,
     modifier: Modifier = Modifier,
-    onCancelDownload: () -> Unit = onCancelTask
+    onCancelDownload: () -> Unit = onCancelTask,
+    compact: Boolean = false,
+    onPauseResume: (() -> Unit)? = null,
+    isPaused: Boolean = false
 ) {
     val canStart = state.modelState.status == AudioModelStatus.READY && state.task == null
     WhiteCard(modifier.testTag("audio-entry")) {
-        Text("声音里的信息", style = MaterialTheme.typography.titleLarge,
-            fontFamily = FontFamily.Serif, color = Ink)
-        Text("把听到的内容留下来，回看观点和依据。", color = Muted,
-            style = MaterialTheme.typography.bodyMedium)
-        ModelPreparation(state.modelState, onDownloadModel, onCancelDownload)
-        state.task?.let { AudioTaskProgress(it, onCancelTask) }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("播放声音", style = MaterialTheme.typography.titleSmall,
+                fontFamily = FontFamily.SansSerif, color = Ink, modifier = Modifier.weight(1f))
+            AudioStatusLabel(when {
+                state.task?.phase == AudioTaskPhase.CAPTURING && isPaused -> "已暂停"
+                state.task?.phase == AudioTaskPhase.CAPTURING -> "记录中"
+                state.task?.phase == AudioTaskPhase.TRANSCRIBING -> "转写中"
+                state.task != null -> "准备中"
+                state.modelState.status == AudioModelStatus.READY -> "本地转写"
+                state.modelState.status == AudioModelStatus.DOWNLOADING -> "下载中"
+                else -> "待准备"
+            })
+        }
+        if (state.task == null || state.modelState.status != AudioModelStatus.READY) {
+            ModelPreparation(state.modelState, onDownloadModel, onCancelDownload, compact = true)
+        }
+        state.task?.let {
+            AudioTaskProgress(it, onCancelTask, compact, onPauseResume, isPaused)
+        }
         if (state.task == null) {
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onImport, enabled = canStart, shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("audio-import")) {
-                    Text("导入音频")
-                }
-                OutlinedButton(onClick = onCapture, enabled = canStart, shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("audio-capture")) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = onCapture, enabled = canStart, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-capture"),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
                     Text("记录播放声音")
                 }
+                OutlinedButton(onClick = onImport, enabled = canStart, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-import"),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
+                    Text("导入音频")
+                }
             }
-            MetadataText("播放声音需要系统授权，部分应用可能不允许录制。")
         }
         state.message?.takeIf { it.isNotBlank() }?.let {
             Text(it, color = Muted, style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
         }
-        TextButton(onClick = onOpenRecords, modifier = Modifier.heightIn(min = 48.dp),
-            contentPadding = PaddingValues(horizontal = 0.dp)) {
-            Text(if (state.sessionCount > 0) "查看 ${state.sessionCount} 条音频记录 ›" else "查看音频记录 ›")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetadataText("不保留原声", Modifier.weight(1f))
+            TextButton(onClick = onOpenRecords, modifier = Modifier.heightIn(min = 48.dp),
+                contentPadding = PaddingValues(horizontal = 0.dp)) {
+                Text(if (state.sessionCount > 0) "音频记录 ${state.sessionCount} ›" else "音频记录 ›")
+            }
+        }
+    }
+}
+
+/** Dedicated recording destination; the same state and actions also power the overview card. */
+@Composable
+fun RecordingScreen(
+    state: AudioUiState,
+    onImport: () -> Unit,
+    onCapture: () -> Unit,
+    onDownloadModel: () -> Unit,
+    onCancelTask: () -> Unit,
+    onOpenRecords: () -> Unit,
+    modifier: Modifier = Modifier,
+    onCancelDownload: () -> Unit = onCancelTask,
+    onPauseResume: (() -> Unit)? = null,
+    isPaused: Boolean = false
+) {
+    LazyColumn(modifier.fillMaxSize().testTag("recording-screen"),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        item {
+            Text("声音记录", style = MaterialTheme.typography.headlineSmall,
+                fontFamily = FontFamily.SansSerif, color = Ink,
+                modifier = Modifier.padding(vertical = 8.dp))
+        }
+        item {
+            AudioEntryCard(state, onImport, onCapture, onDownloadModel, onCancelTask,
+                onOpenRecords, onCancelDownload = onCancelDownload,
+                onPauseResume = onPauseResume, isPaused = isPaused)
+        }
+        item {
+            ExpandableNote("录制与导入说明",
+                "记录所选应用播放的声音，单次最长 5 分钟；也可以导入音频或视频音轨。" +
+                    "每次录制需要系统授权，部分应用不允许录制。转写在本机完成，只保存文字和时间。")
         }
     }
 }
 
 @Composable
-private fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, onCancel: () -> Unit) {
+private fun AudioStatusLabel(label: String) {
+    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer) {
+        Text(label, style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp))
+    }
+}
+
+@Composable
+private fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, onCancel: () -> Unit,
+    compact: Boolean = false) {
     when (state.status) {
-        AudioModelStatus.READY -> MetadataText("本地语音模型已就绪 · 不保留原声")
-        AudioModelStatus.DOWNLOADING -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AudioModelStatus.READY -> if (!compact) MetadataText("本地语音模型已就绪")
+        AudioModelStatus.DOWNLOADING -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("正在下载语音模型", style = MaterialTheme.typography.bodyMedium,
                     color = Ink, modifier = Modifier.weight(1f))
@@ -163,44 +232,77 @@ private fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, o
             AudioProgress(state.progress, "模型下载进度")
             state.detail?.takeIf { it.isNotBlank() }?.let { MetadataText(it) }
         }
-        AudioModelStatus.MISSING, AudioModelStatus.ERROR -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(if (state.status == AudioModelStatus.ERROR) "模型下载失败，请重试" else "首次使用需要下载语音模型",
-                style = MaterialTheme.typography.titleSmall, color = Ink)
-            MetadataText(state.detail?.takeIf { it.isNotBlank() }
-                ?: "下载后就能在本机转写，音频不用上传。")
-            OutlinedButton(onClick = onDownload, shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.heightIn(min = 48.dp).testTag("audio-download-model")) {
-                Text(if (state.status == AudioModelStatus.ERROR) "重新下载" else "下载语音模型")
+        AudioModelStatus.MISSING, AudioModelStatus.ERROR -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (state.status == AudioModelStatus.ERROR) "模型下载失败" else "首次使用需下载模型",
+                    style = MaterialTheme.typography.bodyMedium, color = Ink, modifier = Modifier.weight(1f))
+                TextButton(onClick = onDownload, modifier = Modifier.heightIn(min = 48.dp)
+                    .testTag("audio-download-model")) {
+                    Text(if (state.status == AudioModelStatus.ERROR) "重新下载" else "下载模型")
+                }
             }
+            state.detail?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall,
+                    color = if (state.status == AudioModelStatus.ERROR) MaterialTheme.colorScheme.error else Muted)
+            }
+            if (!compact && state.detail.isNullOrBlank()) MetadataText("下载后即可在本机转写。")
         }
     }
 }
 
 @Composable
-private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit) {
-    Column(Modifier.fillMaxWidth().testTag("audio-task"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(when (task.phase) {
-                AudioTaskPhase.PREPARING -> "正在准备"
-                AudioTaskPhase.CAPTURING -> "正在记录播放声音"
-                AudioTaskPhase.TRANSCRIBING -> "正在转写音频"
-            }, style = MaterialTheme.typography.titleMedium, color = Ink, modifier = Modifier.weight(1f)
-                .semantics { liveRegion = LiveRegionMode.Polite })
-            if (task.elapsedMillis > 0) MetadataText(audioTimestamp(task.elapsedMillis))
+private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compact: Boolean,
+    onPauseResume: (() -> Unit)?, isPaused: Boolean) {
+    Column(Modifier.fillMaxWidth().testTag("audio-task"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(task.title.ifBlank {
+                when (task.phase) {
+                    AudioTaskPhase.PREPARING -> "正在准备"
+                    AudioTaskPhase.CAPTURING -> "正在记录播放声音"
+                    AudioTaskPhase.TRANSCRIBING -> "正在转写音频"
+                }
+            }, style = MaterialTheme.typography.bodyMedium, color = Ink,
+                modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (task.phase == AudioTaskPhase.CAPTURING || task.elapsedMillis > 0) {
+                Text(audioTimestamp(task.elapsedMillis), color = Accent,
+                    style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Medium)
+                if (task.phase == AudioTaskPhase.CAPTURING) MetadataText("/ 05:00")
+            }
         }
-        if (task.title.isNotBlank()) Text(task.title, color = Muted, maxLines = 2,
-            overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-        AudioProgress(if (task.phase == AudioTaskPhase.CAPTURING) null else task.progress, "音频处理进度")
+        if (task.phase == AudioTaskPhase.CAPTURING) {
+            // Capture has no amplitude measurements. Show elapsed time against its actual limit.
+            LinearProgressIndicator(progress = { (task.elapsedMillis / 300_000f).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().semantics {
+                    contentDescription = "录制进度，已记录 ${audioTimestamp(task.elapsedMillis)}，最长 5 分钟"
+                })
+        } else AudioProgress(task.progress, "音频处理进度")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (task.phase == AudioTaskPhase.CAPTURING && onPauseResume != null) {
+                Button(onClick = onPauseResume, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-pause-resume")) {
+                    Text(if (isPaused) "继续记录" else "暂停记录")
+                }
+            }
+            OutlinedButton(onClick = onStop, shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-stop-task")) {
+                Text(if (task.phase == AudioTaskPhase.CAPTURING) "停止记录" else "停止处理")
+            }
+        }
         if (task.partialText.isNotBlank()) {
-            MetadataText("已识别的文字")
-            QuoteBlock(task.partialText, Modifier.testTag("audio-live-transcript"))
+            if (compact) Surface(shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow) {
+                Text(task.partialText, color = Muted, style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(10.dp).testTag("audio-live-transcript"))
+            } else {
+                MetadataText("实时转写")
+                QuoteBlock(task.partialText, Modifier.testTag("audio-live-transcript"))
+            }
         } else MetadataText(if (task.phase == AudioTaskPhase.CAPTURING)
-            "请播放想回顾的内容，识别到语音后会在这里显示文字。" else "识别到语音后会在这里显示文字。")
-        OutlinedButton(onClick = onStop, shape = RoundedCornerShape(8.dp),
-            modifier = Modifier.heightIn(min = 48.dp).testTag("audio-stop-task")) {
-            Text(if (task.phase == AudioTaskPhase.CAPTURING) "停止记录" else "停止处理")
-        }
+            "等待播放声音…" else "等待识别结果…")
     }
 }
 
@@ -210,9 +312,12 @@ private fun AudioProgress(progress: Float?, label: String) {
         .semantics { contentDescription = label })
     else {
         val fraction = progress.coerceIn(0f, 1f)
-        LinearProgressIndicator(progress = { fraction }, modifier = Modifier.fillMaxWidth()
-            .semantics { contentDescription = label })
-        MetadataText("${(fraction * 100).toInt()}%")
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            LinearProgressIndicator(progress = { fraction }, modifier = Modifier.weight(1f)
+                .semantics { contentDescription = label })
+            MetadataText("${(fraction * 100).toInt()}%")
+        }
     }
 }
 
@@ -239,13 +344,13 @@ fun AudioRecordsScreen(
     canImport: Boolean = true
 ) {
     LazyColumn(modifier.fillMaxSize().testTag("audio-record-list"),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp),
-                modifier = Modifier.heightIn(min = 48.dp)) { Text("‹ 返回信息足迹") }
-            Text("音频记录", style = MaterialTheme.typography.headlineLarge,
-                fontFamily = FontFamily.Serif, color = Ink)
+                modifier = Modifier.heightIn(min = 48.dp)) { Text("‹ 返回") }
+            Text("音频记录", style = MaterialTheme.typography.headlineSmall,
+                fontFamily = FontFamily.SansSerif, color = Ink)
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 MetadataText("本机已保存 ${sessions.size} 段转写", Modifier.weight(1f))
                 TextButton(onClick = onImport, enabled = canImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入音频") }
@@ -253,29 +358,29 @@ fun AudioRecordsScreen(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         if (sessions.isEmpty()) item {
-            Column(Modifier.padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SectionTitle("听过的内容也能回看")
-                Text("导入一段音频，或在概览页开始记录播放声音。转写后可以核对原文、修订文字，再比较观点与依据。",
-                    color = Muted, style = MaterialTheme.typography.bodyMedium)
-                MetadataText("这里保存转写文字，不保留原声。")
+            WhiteCard {
+                SectionTitle("还没有音频记录")
+                MetadataText("导入音频，或从录制页开始记录播放声音。")
+                OutlinedButton(onClick = onImport, enabled = canImport,
+                    shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("导入音频")
+                }
             }
         }
         items(sessions.sortedByDescending { it.createdAt }, key = { it.id }) { session ->
-            Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "查看音频转写") { onSession(session) }
-                .testTag("audio-session-${session.id}").padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            WhiteCard(Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "查看音频转写") { onSession(session) }
+                .testTag("audio-session-${session.id}")) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                     Text(session.title, style = MaterialTheme.typography.titleMedium, color = Ink,
                         modifier = Modifier.weight(1f).padding(end = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    MetadataText(session.statusLabel)
+                    AudioStatusLabel(session.statusLabel)
                 }
                 MetadataText("${audioDate(session.createdAt)} · ${session.sourceLabel} · 音频 ${audioTimestamp(session.durationMillis)}")
                 val excerpt = session.segments.joinToString(" ") { it.correctedText ?: it.originalText }
                 Text(excerpt.ifBlank { session.errorMessage ?: "尚未识别到文字" }, color = if (excerpt.isBlank()) Muted else Ink,
-                    style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 session.analysisLabel?.let { MetadataText(it) }
-                Text("查看转写 ›", color = Accent, style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(vertical = 8.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text("查看转写 ›", color = Accent, style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -298,16 +403,15 @@ fun AudioSessionDetailSheet(
     ModalBottomSheet(onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface) {
-        Column(modifier.fillMaxWidth().fillMaxHeight(0.94f).padding(horizontal = 20.dp)) {
+        Column(modifier.fillMaxWidth().fillMaxHeight(0.94f).padding(horizontal = 16.dp)) {
             LazyColumn(Modifier.weight(1f).testTag("audio-detail-segments"),
-                contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+                contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item(key = "heading") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(session.title, style = MaterialTheme.typography.headlineSmall, color = Ink)
                         MetadataText("${session.sourceLabel} · ${audioDate(session.createdAt)}")
                         MetadataText("音频时长 ${audioTimestamp(session.durationMillis)} · ${session.segments.size} 段转写 · ${session.statusLabel}")
-                        MetadataText("音频长度不代表实际观看或收听时长。")
-                        Text("识别可能有误，可以对照语境修订文字。", color = Muted, style = MaterialTheme.typography.bodySmall)
+                        ExpandableNote("转写说明", "音频长度不代表实际观看或收听时长。识别可能有误，可以对照语境修订文字。")
                         session.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodyMedium) }
                         session.analysisLabel?.let { MetadataText(it) }
@@ -316,9 +420,9 @@ fun AudioSessionDetailSheet(
                 }
                 item(key = "analysis") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SectionTitle("音频回顾", "根据转写文字提取观点，与已保存的内容比较。")
+                        SectionTitle("音频回顾")
                         Button(onClick = onAnalyze, enabled = session.segments.isNotEmpty() && !session.analyzing,
-                            shape = RoundedCornerShape(8.dp), modifier = Modifier.heightIn(min = 48.dp)
+                            shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)
                                 .testTag("audio-analyze-session")) {
                             Text(if (session.analyzing) "正在分析" else if (session.analysisSummary != null || session.claims.isNotEmpty())
                                 "更新音频回顾" else "生成音频回顾")
@@ -383,13 +487,13 @@ fun AudioSessionDetailSheet(
                             OutlinedTextField(value = draft, onValueChange = { draft = it },
                                 label = { Text("修订转写") }, minLines = 3,
                                 modifier = Modifier.fillMaxWidth().testTag("audio-edit-${segment.id}"),
-                                shape = RoundedCornerShape(8.dp))
+                                shape = RoundedCornerShape(12.dp))
                             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Button(onClick = {
                                     onSaveSegment(segment.id, draft.trim())
                                     editingId = null
                                     draft = ""
-                                }, enabled = draft.isNotBlank() && !session.analyzing, shape = RoundedCornerShape(8.dp),
+                                }, enabled = draft.isNotBlank() && !session.analyzing, shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                                         .testTag("audio-save-${segment.id}")) { Text("保存修订") }
                                 TextButton(onClick = { editingId = null; draft = "" }, modifier = Modifier.align(Alignment.End)
@@ -427,10 +531,9 @@ fun AudioSettingsSection(
     modifier: Modifier = Modifier
 ) {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        SectionTitle("语音与分析", "把视频里的声音转成可以回查的文字。")
+        SectionTitle("语音与分析")
         ModelPreparation(state.modelState, onDownloadModel, onCancelDownload)
-        Text("语音转写在本机完成，默认只保存文字和时间，不保留原声。", color = Muted,
-            style = MaterialTheme.typography.bodyMedium)
+        MetadataText("本机转写 · 只保存文字和时间")
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {

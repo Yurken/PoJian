@@ -1,6 +1,6 @@
 # 破茧 Emerge 构建与验证
 
-验证日期：2026-10-08（Asia/Shanghai）。保留 v0.3.0 / v0.3.1 基线记录；最新 v0.4.0 音频优先版本验证见末节。
+验证日期：2026-10-08（Asia/Shanghai）。保留 v0.3.0 / v0.3.1 / v0.4.0 基线记录；最新 v0.4.1 功能极简 2.0 验证见末节。
 
 ## 结果
 
@@ -136,3 +136,24 @@ SHA-256：`9984531554ed208b5077ac3172b0f0b59e2b30e00bf6f4dae5e665f6400ecb23`。
 - 上游来源：`docs/THIRD_PARTY_AUDIO.md`
 
 目标短视频平台真机内录兼容、10 分钟连续输入、20 段 CER/关键语义错误、内存温升耗电及语义分类 F1 尚未测量。测试播放器内录成功不能代替目标平台兼容结论；本轮工程测试不代表识别准确率、认知保护效果或真实注意力验证。原声回放、独立 VAD、自动跨视频归并和视觉理解尚未实现。
+
+## v0.4.1 功能极简 2.0 适配（2026-10-08）
+
+按用户提供的蓝白 HTML 参考实现原生 Compose 界面。底栏为分析、足迹、录制、设置；统一冷灰背景、白色细边框卡片、蓝色操作、无衬线字体及系统深色主题。常用操作前置，长说明折叠，原文预览可展开。
+
+- 分析页使用真实记录数绘制 24 小时热图；未生成回顾也可按时段查原文。360dp 小屏为 6 列 × 4 行，点击区域至少 48dp，窄屏自动减少列数。
+- 观点依据用蓝色新增、橙色重复和灰色其余观察组成比例条；首次、条件差异和未知保留在完整分母中。默认展示前三组说法，其余按需展开。
+- 录制卡与独立录制页使用真实任务状态、已用时间、进度和转写文字，接入暂停、继续、停止；模型未就绪时仍禁止启动。不显示模拟声波或虚构分数。
+- 足迹保留日期、来源、关键词筛选、完整原文及删除；设置保留采集范围、系统授权、模型及云端文字服务控制。音频偏移与浏览停留分别显示。
+
+### 验证与产物
+
+- `assembleDebug`、`assembleDebugAndroidTest`、`testDebugUnitTest`、`lintDebug` 成功，参数 `--offline -PemergeAbi=arm64-v8a`；JVM 53 项通过。
+- 独立 API 37 / arm64 / 16KB 页模拟器先以 411dp、最终以 360dp 宽运行全量设备回归，均为 **47 项通过、0 失败、3 项跳过**；跳过项需语音模型与公开 WAV/AAC 夹具，本轮干净模拟器未安装。界面回归覆盖四页导航、跨午夜时长分摊、未知时长、模型门控、录制操作、原文核查、筛选/删除、迁移、持久化及深色 130% 字体。没有操作既有 `emulator-5554` 或真机；真实识别的既有验证见 v0.4.0 节。
+- lint 0 errors、11 项既有/构建 ABI warnings；`git diff --check` 通过。
+
+安装包：`Emerge-0.4.1-arm64-debug.apk`，versionCode 8，调试签名，稳定 applicationId `com.zhiheng.app`，59,322,325 字节（约 56.6 MiB）。语音模型仍由用户另行下载。
+
+SHA-256：`6758c94e0c7e8b5722d99c7da8963df226f36802def392042b16aaf41e6cef1d`。
+
+设备记录：`app/build/reports/emerge-minimal-instrumentation.txt`。四页截图：`app/build/reports/emerge-minimal-analysis.png`、`emerge-minimal-footprints.png`、`emerge-minimal-recording.png`、`emerge-minimal-settings.png`；活动录制测试截图：`emerge-minimal-active-recording.png`。热图及深色大字截图使用测试夹具，未向生产代码或用户数据库写入示例数据。
