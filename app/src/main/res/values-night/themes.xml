@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.Emerge" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#171C1B</item>
+        <item name="android:navigationBarColor">#1D2321</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:colorAccent">#B1D5C4</item>
+        <item name="android:windowBackground">#171C1B</item>
+    </style>
+</resources>

@@ -48,7 +48,7 @@ class AnalysisUiTest {
         }
         compose.onNodeWithContentDescription("0时，2条记录，估计可见停留20 秒，点击查看详情")
             .performScrollTo().performClick()
-        compose.onNodeWithText("00:00—01:00").assertIsDisplayed()
+        compose.onNode(hasText("00:00—01:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
         compose.onNodeWithText("2 条可用接触记录 · 20 秒").assertIsDisplayed()
         compose.onAllNodesWithText("当前采集原文：", substring = true).onFirst().assertExists()
         compose.onNodeWithTag("hourly-review-details")
@@ -76,6 +76,7 @@ class AnalysisUiTest {
             .performScrollTo().performClick()
         compose.onNodeWithText("0 条时长未知 · 1 个观点候选").assertIsDisplayed()
         compose.onAllNodesWithText("事件 #9", substring = true).onFirst().assertExists()
+        compose.onNodeWithText("本时段估计可见停留：1 分 0 秒 · 同屏候选共享，不能累加").assertExists()
         compose.onNodeWithText("当前采集原文：", substring = true).assertExists()
     }
 

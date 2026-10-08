@@ -7,13 +7,23 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -21,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.ui.*
+import com.emerge.app.ui.theme.EmergeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -29,8 +40,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme(primary = Accent, background = PageBackground,
-                surface = Color.White, onSurface = Ink, onBackground = Ink)) {
+            EmergeTheme {
                 EmergeScreen { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
             }
         }
@@ -91,36 +101,55 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
     }
     val appNames = remember(availableApps) { availableApps.associate { it.packageName to it.label } }
     val selectedApps = remember(allowed, appNames) { allowed.sorted().map { CaptureApp(it, appNames[it] ?: it) } }
-    val titles = listOf("概览", "记录", "我的")
+    val titles = listOf("概览", "记录", "控制")
     val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
+    val showLocalLabel = LocalConfiguration.current.screenWidthDp >= 360 && LocalDensity.current.fontScale <= 1.2f
     Scaffold(containerColor = PageBackground,
-        topBar = { TopAppBar(title = { Text(if (tab == 0) "信息环境" else titles[tab]) },
-            colors = TopAppBarDefaults.topAppBarColors(containerColor = PageBackground)) },
+        topBar = {
+            Column {
+                TopAppBar(title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Image(painterResource(R.mipmap.ic_launcher_artwork), contentDescription = null,
+                            modifier = Modifier.size(30.dp).clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF0E332C)).padding(3.dp))
+                        Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleLarge,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    }
+                }, actions = {
+                    if (showLocalLabel) Text("本地运行", color = Muted, style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(end = 20.dp))
+                }, colors = TopAppBarDefaults.topAppBarColors(containerColor = PageBackground))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+        },
         bottomBar = {
-            NavigationBar(containerColor = Color.White) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 titles.forEachIndexed { index, title ->
                     NavigationBarItem(selected = tab == index, onClick = { tab = index },
                         icon = { Icon(painterResource(icons[index]), contentDescription = null) },
                         label = { Text(title) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = Accent,
-                            selectedTextColor = Accent, indicatorColor = Color(0xFFE6F1E9)))
+                            selectedTextColor = Accent, indicatorColor = MaterialTheme.colorScheme.primaryContainer))
                 }
             }
         }
     ) { padding ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        val contentModifier = Modifier.padding(padding).widthIn(max = 760.dp).fillMaxWidth()
         when (tab) {
-            0 -> OverviewScreen(statistics, period, { period = it; model.setPeriod(it) }, enabled && diagnostics.connected && allowed.isNotEmpty(),
+            0 -> OverviewScreen(statistics, period, { period = it; model.setPeriod(it) },
+                enabled && permission && diagnostics.connected && allowed.isNotEmpty(),
                 when {
                     allowed.isEmpty() -> "未选择范围"
                     !enabled -> "已暂停"
-                    diagnostics.connected -> "采集中"
-                    permission -> "待连接"
-                    else -> "待授权"
+                    !permission -> "待授权"
+                    !diagnostics.connected -> "待连接"
+                    else -> "采集中"
                 },
-                appNames, onRecords = { tab = 1 }, onSettings = { tab = 2 }, modifier = Modifier.padding(padding),
+                appNames, onRecords = { tab = 1 }, onSettings = { tab = 2 }, modifier = contentModifier,
                 analysis = analysis, rawEvents = all,
                 onAnalyze = { purpose -> model.updatePurpose(purpose); model.analyze(period) },
-                onPurposeChange = model::updatePurpose, selectedAppCount = allowed.size,
+                onPurposeChange = model::updatePurpose, selectedAppCount = allowed.size, now = now,
                 onExport = { report, pdf ->
                     if (model.prepareExport(report)) {
                         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
@@ -128,11 +157,12 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                         else textSaver.launch("破茧-Emerge-信息环境报告-$stamp.txt")
                     }
                 })
-            1 -> RecordsScreen(all, count, appNames, Modifier.padding(padding),
+            1 -> RecordsScreen(all, count, appNames, contentModifier,
                 onDelete = { deleteEvent = it }, onSettings = { tab = 2 })
             2 -> SettingsScreen(permission, enabled, count, model::setCapture, onOpenSettings,
-                { confirmClear = true }, message, Modifier.padding(padding), diagnostics,
+                { confirmClear = true }, message, contentModifier, diagnostics,
                 selectedApps, onChooseApps = { showApps = true })
+        }
         }
     }
     if (showApps) AppPickerDialog(availableApps, allowed, appsLoading,

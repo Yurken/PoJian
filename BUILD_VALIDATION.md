@@ -1,6 +1,6 @@
-# 破茧 Emerge v0.3.0 构建与验证
+# 破茧 Emerge 构建与验证
 
-验证日期：2026-10-08（Asia/Shanghai）。
+验证日期：2026-10-08（Asia/Shanghai）。以下为 v0.3.0 功能基线记录，v0.3.1 界面优化验证见末节。
 
 ## 结果
 
@@ -65,3 +65,32 @@ Room v2 JSON schema 与更名前完全一致，identity hash 保持 `777cfc8fd18
 安装包：`app/build/outputs/apk/debug/Emerge-0.3.0-logo-debug.apk`。
 
 SHA256：`4df31c89a4f521b291d64ef3fcd9cc34daa2cac1ca750eb29c95e255a863cf5d`。
+
+
+## v0.3.1 界面优化验证（2026-10-08）
+
+依据用户选定的 Gemini 建议，统一暖纸白、深林绿、细边框与小圆角；新增系统深色主题。三页分别为概览、记录、控制。完整 24 小时时间带、按主题与候选分母区分的横条、可滚动原文核查面板、按日期及应用筛选、浏览目的草稿编辑均使用真实保留记录。示例中的观点立场和同源判断未加入程序。
+
+- `assembleDebug`、`assembleDebugAndroidTest`、`testDebugUnitTest`、`lintDebug` 成功。
+- JVM 单元测试 **38 项通过，0 失败**。
+- 独立临时 Pixel 10 / API 37 / arm64 模拟器 **21 项设备测试通过，0 失败**，包含新增 7 项界面测试。
+- lint **0 errors、10 warnings**，均为既有 SDK、依赖及 kapt 建议，无新增资源或界面警告。
+- 交互覆盖：16 个应用的列表尾部可达、应用/关键词交集、精确删除、范围草稿取消/保存、空范围禁用开关、授权与连接状态、浏览目的保留自定义文本及取消、未知停留保持未知、深色 130% 字体原文核查。
+- 跨午夜详情进一步验证候选显示该小时分摊的停留，避免误用整个窗口的时长。
+- 已检查浅色、深色、130% 字体及原文核查截图；另在系统深色、320dp 宽与短屏、200% 字体下实测主界面和应用选择面板，键盘弹出后输入、取消和保存均可操作。紧凑面板保留系统栏安全区。
+- `git diff --check` 通过。
+- 仅在本次创建的独立临时设备运行测试，未操作既有模拟器或真实手机；测试数据仅存在于测试代码中。
+
+安装包：`Emerge-0.3.1-debug.apk`（versionCode 6，调试签名）。另存于 `app/build/outputs/apk/debug/Emerge-0.3.1-debug.apk`。
+
+SHA256：`a9e84ebf7bdbd35ca385042161770e686884fa02662db6a50b9d687c225a0814`。
+
+验证产物：
+
+- 全部设备测试：`app/build/reports/instrumentation-emerge-0.3.1.txt`
+- 浅色概览：`app/build/reports/emerge-ui-overview-light.png`
+- 深色与 130% 字体概览：`app/build/reports/emerge-ui-overview-dark-large.png`
+- 深色原文核查：`app/build/reports/emerge-ui-evidence-dark-large.png`
+- 短屏 200% 字体与键盘：`app/build/reports/emerge-native-picker-keyboard-final-200.png`
+
+既有离线规则、采集范围、保留上限、删除与导出一致性及升级兼容机制保持有效；本轮工程验证不代表观点提取准确率或信息茧房干预效果。
