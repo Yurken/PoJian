@@ -19,6 +19,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
     private var pending: Job? = null
     private val sessions = CaptureSessionTracker()
     private var settingsJob: Job? = null
+    private var monitorBridge: com.emerge.app.monitoring.MonitorAccessibilityBridge? = null
     private var latestType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
     private val app get() = application as EmergeApplication
     private val supported = setOf(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
@@ -27,6 +28,8 @@ open class BrowseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        monitorBridge?.stop()
+        monitorBridge = com.emerge.app.monitoring.MonitorAccessibilityBridge(this, app).also { it.start() }
         if (!scope.isActive) scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
         app.captureDiagnostics.update { it.copy(connected = true, result = "服务已连接，等待浏览内容") }
         // A bounded periodic sample prevents endlessly animated feeds from starving the debounce.
@@ -59,6 +62,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        monitorBridge?.onEvent(event)
         if (event == null || event.eventType !in supported) return
         app.captureDiagnostics.update { it.copy(connected = true, eventsReceived = it.eventsReceived + 1) }
         if (!app.captureSettings.enabled.value || app.captureSettings.allowedPackages.value.isEmpty()) return
@@ -186,16 +190,19 @@ open class BrowseAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
+        monitorBridge?.interrupt()
         pending?.cancel()
         sessions.reset()
         app.captureDiagnostics.update { it.copy(result = "系统中断了辅助功能反馈，等待下一次采集") }
     }
     override fun onUnbind(intent: Intent?): Boolean {
+        monitorBridge?.stop(); monitorBridge = null
         app.captureDiagnostics.update { it.copy(connected = false, result = "系统已断开辅助功能服务，请重新开启") }
         scope.cancel()
         return super.onUnbind(intent)
     }
     override fun onDestroy() {
+        monitorBridge?.stop(); monitorBridge = null
         app.captureDiagnostics.update { it.copy(connected = false, result = "辅助功能服务已停止") }
         scope.cancel()
         super.onDestroy()

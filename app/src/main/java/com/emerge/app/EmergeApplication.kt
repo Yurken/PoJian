@@ -16,4 +16,11 @@ class EmergeApplication : Application() {
     val audioCoordinator by lazy { com.emerge.app.audioanalysis.AudioCoordinator(this) }
     val captureSettings by lazy { CaptureSettings(this) }
     val captureDiagnostics = CaptureDiagnostics()
+    val monitor by lazy { com.emerge.app.monitoring.MonitorRuntime(this) }
+
+    override fun onCreate() {
+        super.onCreate()
+        // The accessibility service and audio ingestion continue to publish while the Activity is backgrounded.
+        monitor
+    }
 }

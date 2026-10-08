@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">破茧</string>
     <string name="brand_name">破茧 Emerge</string>
-    <string name="brand_tagline">看清信息环境，拓宽判断依据。</string>
+    <string name="brand_tagline">察觉观点重复，查证眼前信息。</string>
     <string name="capture_service_name">破茧浏览采集</string>
-    <string name="accessibility_description">经你主动选择应用并开启后，破茧只读取所选应用当前页面上的可见文字，在你的手机上生成浏览回顾。默认不采集、不上传；自动跳过密码和输入框。正文仍可能包含个人信息，请按需开启。你可以随时暂停、调整范围或删除记录，也可以随时在系统设置中关闭此服务。</string>
+    <string name="accessibility_description">经你选择应用并主动开启后，破茧读取所选应用的可见文字，提供观点观察与悬浮球提醒。另行开启关键画面分析后，Android 11 及以上可采样当前画面；启用云端网关及自动分析选项后会发送相应文字或画面用于理解和外部证据核查。默认不采集，实时核查与画面上传默认关闭。自动跳过密码和输入框，但屏幕画面仍可能含个人信息。可随时暂停、修改范围、删除材料或关闭辅助功能。</string>
 </resources>
