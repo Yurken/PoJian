@@ -6,11 +6,14 @@ import com.emerge.app.capture.CaptureSettings
 import com.emerge.app.capture.CaptureDiagnostics
 import com.emerge.app.data.BrowseDatabase
 import com.emerge.app.data.BrowseRepository
+import com.emerge.app.data.AudioRepository
 
 class EmergeApplication : Application() {
     // Keep the existing database filename so a rebrand never strands local history.
-    val database by lazy { Room.databaseBuilder(this, BrowseDatabase::class.java, "zhiheng.db").addMigrations(BrowseDatabase.MIGRATION_1_2).build() }
+    val database by lazy { Room.databaseBuilder(this, BrowseDatabase::class.java, "zhiheng.db").addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3).build() }
     val repository by lazy { BrowseRepository(database) }
+    val audioRepository by lazy { AudioRepository(database) }
+    val audioCoordinator by lazy { com.emerge.app.audioanalysis.AudioCoordinator(this) }
     val captureSettings by lazy { CaptureSettings(this) }
     val captureDiagnostics = CaptureDiagnostics()
 }

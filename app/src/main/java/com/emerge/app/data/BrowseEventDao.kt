@@ -13,6 +13,8 @@ interface BrowseEventDao {
     fun observeCount(): Flow<Int>
     @Insert suspend fun insert(event: BrowseEvent): Long
     @Update suspend fun update(event: BrowseEvent): Int
+    @Query("UPDATE browse_events SET visibleText = :text WHERE id = :id")
+    suspend fun updateText(id: Long, text: String): Int
     @Query("DELETE FROM browse_events WHERE id = :id") suspend fun deleteEvent(id: Long)
     @Query("DELETE FROM browse_events WHERE packageName = :packageName") suspend fun deletePackage(packageName: String)
     @Query("DELETE FROM browse_events") suspend fun clear()

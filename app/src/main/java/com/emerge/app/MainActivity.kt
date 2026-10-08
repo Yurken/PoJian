@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -51,6 +52,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun EmergeScreen(onOpenSettings: () -> Unit) {
     val model: BrowseViewModel = viewModel()
+    val audioModel: AudioViewModel = viewModel()
+    val audioState by audioModel.ui.collectAsStateWithLifecycle()
+    val audioSessions by audioModel.sessions.collectAsStateWithLifecycle()
+    val audioConfig by audioModel.config.collectAsStateWithLifecycle()
+    val audioRuntime by audioModel.runtime.state.collectAsStateWithLifecycle()
+    val audioAlert by audioModel.alert.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(audioAlert) { audioAlert?.let { snackbar.showSnackbar(it) } }
     val all by model.allEvents.collectAsStateWithLifecycle()
     val count by model.count.collectAsStateWithLifecycle()
     val enabled by model.captureEnabled.collectAsStateWithLifecycle()
@@ -72,6 +81,9 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var confirmClear by remember { mutableStateOf(false) }
     var showApps by rememberSaveable { mutableStateOf(false) }
+    var showAudioRecords by rememberSaveable { mutableStateOf(false) }
+    var audioDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showCloud by rememberSaveable { mutableStateOf(false) }
     var deleteEvent by remember { mutableStateOf<BrowseEvent?>(null) }
     var deletePackage by remember { mutableStateOf<CaptureApp?>(null) }
     val owner = LocalLifecycleOwner.current
@@ -88,7 +100,7 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
     LaunchedEffect(period) { model.setPeriod(period) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(all, period) {
         while (true) {
             now = System.currentTimeMillis()
             model.refreshReportWindow(now)
@@ -96,15 +108,18 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
         }
     }
     val statistics by produceState(calculateStatistics(emptyList(), period, now), all, period, now) {
-        val snapshotNow = System.currentTimeMillis()
+        val snapshotNow = now
         value = withContext(Dispatchers.Default) { calculateStatistics(all, period, snapshotNow) }
     }
     val appNames = remember(availableApps) { availableApps.associate { it.packageName to it.label } }
     val selectedApps = remember(allowed, appNames) { allowed.sorted().map { CaptureApp(it, appNames[it] ?: it) } }
+    val audioActions = rememberAudioActions(audioModel, selectedApps) { tab = 2; showApps = true }
+    BackHandler(showAudioRecords) { showAudioRecords = false }
     val titles = listOf("概览", "记录", "设置")
     val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
     val showLocalLabel = LocalConfiguration.current.screenWidthDp >= 360 && LocalDensity.current.fontScale <= 1.2f
     Scaffold(containerColor = PageBackground,
+        snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             Column {
                 TopAppBar(title = {
@@ -119,7 +134,7 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                     if (showLocalLabel) Surface(shape = RoundedCornerShape(50),
                         color = MaterialTheme.colorScheme.primaryContainer,
                         modifier = Modifier.padding(end = 20.dp)) {
-                        Text("本地运行", color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        Text(if (audioConfig.enabled) "云端增强" else "本地运行", color = MaterialTheme.colorScheme.onPrimaryContainer,
                             style = MaterialTheme.typography.labelSmall,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp))
                     }
@@ -130,7 +145,7 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
                 titles.forEachIndexed { index, title ->
-                    NavigationBarItem(selected = tab == index, onClick = { tab = index },
+                    NavigationBarItem(selected = tab == index, onClick = { tab = index; showAudioRecords = false },
                         icon = { Icon(painterResource(icons[index]), contentDescription = null) },
                         label = { Text(title) },
                         colors = NavigationBarItemDefaults.colors(selectedIconColor = Accent,
@@ -141,7 +156,10 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
     ) { padding ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         val contentModifier = Modifier.padding(padding).widthIn(max = 760.dp).fillMaxWidth()
-        when (tab) {
+        if (showAudioRecords) AudioRecordsScreen(audioSessions, onSession = { audioDetailId = it.id },
+            onImport = audioActions.onImport, onBack = { showAudioRecords = false }, modifier = contentModifier,
+            canImport = audioState.modelState.status == AudioModelStatus.READY && audioState.task == null)
+        else when (tab) {
             0 -> OverviewScreen(statistics, period, { period = it; model.setPeriod(it) },
                 enabled && permission && diagnostics.connected && allowed.isNotEmpty(),
                 when {
@@ -161,15 +179,34 @@ private fun EmergeScreen(onOpenSettings: () -> Unit) {
                         if (pdf) pdfSaver.launch("破茧-Emerge-信息环境回顾-$stamp.pdf")
                         else textSaver.launch("破茧-Emerge-信息环境回顾-$stamp.txt")
                     }
+                }, audioContent = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AudioEntryCard(audioState, audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
+                            audioModel::stopTask, { showAudioRecords = true }, onCancelDownload = audioModel.runtime::cancelDownload)
+                        if (audioRuntime.isCapturing) OutlinedButton(onClick = {
+                            if (audioRuntime.isPaused) audioModel.runtime.resumePlayback() else audioModel.runtime.pausePlayback()
+                        }, modifier = Modifier.fillMaxWidth()) { Text(if (audioRuntime.isPaused) "继续记录声音" else "暂停记录声音") }
+                    }
                 })
             1 -> RecordsScreen(all, count, appNames, contentModifier,
-                onDelete = { deleteEvent = it }, onSettings = { tab = 2 })
+                onDelete = { deleteEvent = it }, onSettings = { tab = 2 },
+                audioContent = { AudioRecordsEntry(audioSessions.size, { showAudioRecords = true }) })
             2 -> SettingsScreen(permission, enabled, count, model::setCapture, onOpenSettings,
                 { confirmClear = true }, message, contentModifier, diagnostics,
-                selectedApps, onChooseApps = { showApps = true })
+                selectedApps, onChooseApps = { showApps = true }, audioContent = {
+                    AudioSettingsSection(audioState, audioModel::downloadModel, audioModel.runtime::cancelDownload,
+                        { showCloud = true })
+                })
         }
         }
     }
+    audioDetailId?.let { id ->
+        audioSessions.firstOrNull { it.id == id }?.let { session ->
+            AudioSessionDetailSheet(session, onDismiss = { audioDetailId = null }, onSaveSegment = audioModel::editSegment,
+                onDelete = { audioModel.deleteSession(id); audioDetailId = null }, onAnalyze = { audioModel.analyze(id) }, message = audioAlert)
+        }
+    }
+    if (showCloud) AudioCloudDialog(audioConfig, onDismiss = { showCloud = false }, onSave = audioModel::saveConfig)
     if (showApps) AppPickerDialog(availableApps, allowed, appsLoading,
         remember(all) { all.groupingBy { it.packageName }.eachCount() },
         onDismiss = { showApps = false }, onApply = { model.setAllowedPackages(it); showApps = false },

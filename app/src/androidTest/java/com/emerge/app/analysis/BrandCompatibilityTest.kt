@@ -2,10 +2,12 @@ package com.emerge.app.analysis
 
 import android.content.ComponentName
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.emerge.app.MainActivity
 import com.emerge.app.capture.BrowseAccessibilityService
+import com.emerge.app.audio.ProjectionAudioService
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -31,12 +33,23 @@ class BrandCompatibilityTest {
         assertEquals("android.permission.BIND_ACCESSIBILITY_SERVICE", service.permission)
     }
 
-    @Test fun localPrototypeHasNoNetworkOrRecordingPermissions() {
+    @Test fun audioUsesExplicitCapturePermissionsWithoutBroadStorageOrMicrophoneServiceAccess() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
-        val permissions = context.packageManager.getPackageInfo(
+        val manager = context.packageManager
+        val permissions = manager.getPackageInfo(
             context.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty().toSet()
-        assertFalse("android.permission.INTERNET" in permissions)
-        assertFalse("android.permission.RECORD_AUDIO" in permissions)
-        assertFalse("android.permission.MANAGE_EXTERNAL_STORAGE" in permissions)
+        setOf("android.permission.INTERNET", "android.permission.RECORD_AUDIO",
+            "android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+            "android.permission.POST_NOTIFICATIONS").forEach { permission ->
+            assertTrue("Audio capture requires $permission", permission in permissions)
+        }
+        setOf("android.permission.MANAGE_EXTERNAL_STORAGE", "android.permission.READ_EXTERNAL_STORAGE",
+            "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.READ_MEDIA_AUDIO",
+            "android.permission.READ_MEDIA_VIDEO", "android.permission.FOREGROUND_SERVICE_MICROPHONE")
+            .forEach { permission -> assertFalse("Unexpected permission $permission", permission in permissions) }
+
+        val audioService = manager.getServiceInfo(ComponentName(context, ProjectionAudioService::class.java), 0)
+        assertFalse("Playback capture cannot be started by another app", audioService.exported)
+        assertEquals(ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION, audioService.foregroundServiceType)
     }
 }

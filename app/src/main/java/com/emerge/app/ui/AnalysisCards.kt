@@ -236,7 +236,7 @@ internal fun AnalysisCards(
                     "报告是生成时的存档，里面包含浏览原文引用。PDF 附录最多 100 个观点，完整列表请导出文本。清空应用不会删除已导出的文件。")
             }
             ExpandableNote("这份回顾的数据范围与方法",
-                "${report.period}，统计至 ${reportTime(report.end, report.zone)}。共 ${report.rawRecords} 条原始记录，保留 ${report.usableSnapshots} 条有效记录，合并 ${report.mergedSnapshots} 条重复内容，跳过 ${report.skippedRecords} 条无正文的记录，${report.unknownDurationRecords} 条未统计时长。历史对比使用之前的 ${report.comparisonRecords} 条记录。\n\n${report.method}。只覆盖已授权应用提供的可见文字；未授权的应用、没获取到的正文、视频和音频都不在统计范围内。停留时长不等于阅读、理解或认同。")
+                "${report.period}，统计至 ${reportTime(report.end, report.zone)}。共 ${report.rawRecords} 条原始记录，保留 ${report.usableSnapshots} 条有效记录，合并 ${report.mergedSnapshots} 条重复内容，跳过 ${report.skippedRecords} 条无正文的记录，${report.unknownDurationRecords} 条未统计时长。历史对比使用之前的 ${report.comparisonRecords} 条记录。\n\n${report.method}。覆盖已授权应用提供的可见文字与已保存的音频转写；未授权的页面文字、没获取到的正文、未转写的音频和视频画面不在统计范围内。音频转写未统计观看时长，媒体长度不计入浏览停留。停留时长不等于阅读、理解或认同。")
         }
     }
 
@@ -338,7 +338,8 @@ internal fun AnalysisCards(
                     itemsIndexed(hourRecords) { _, event ->
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             val duration = window.slices(event).filter { it.hour == value }.sumOf { it.durationMillis }
-                            MetadataText(if (window.durationKnown(event)) "本时段预计停留 ${formatDuration(duration)}" else "未统计时长")
+                            MetadataText(if (event.sourceType.startsWith("audio_")) "音频转写 · 未统计观看时长"
+                                else if (window.durationKnown(event)) "本时段预计停留 ${formatDuration(duration)}" else "未统计时长")
                             OriginalRecord(event, report.zone, appNames, "采集原文：")
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
@@ -389,7 +390,7 @@ private fun HourlyBars(report: CognitiveReport, selected: Int?, onSelect: (Int) 
         }
         val pageBackground = MaterialTheme.colorScheme.background
         Box(Modifier.fillMaxWidth()) {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            Row(Modifier.fillMaxWidth().testTag("hourly-hour-options").horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 repeat(24) { hour ->
                     val review = report.hourlyReviews.firstOrNull { it.hour == hour }
@@ -461,6 +462,8 @@ private fun GroupRow(index: Int, group: ClaimGroup, onClick: () -> Unit) {
 private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone: String,
     appNames: Map<String, String>, durationMillis: Long? = item.durationMillis,
     durationLabel: String = "本次回顾范围内的预计停留") {
+    val current = events.firstOrNull { it.id == item.eventId }
+    val fromAudio = current?.sourceType?.startsWith("audio_") == true
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         MetadataText("记录 #${item.eventId} · ${reportTime(item.timestamp, zone)} · ${appNames[item.packageName] ?: item.packageName}")
         QuoteBlock(item.quote)
@@ -469,10 +472,11 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
             Text("讨论对象：${item.subject.ifBlank { "未识别，请查看原文" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
             Text("适用条件：${item.conditions.ifBlank { "未识别到适用条件" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
             MetadataText("出处：${if (item.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表你的看法"}")
-            MetadataText("$durationLabel：${durationMillis?.let(::formatDuration) ?: "未统计"} · 同一条记录里的多个观点共用时长，不能相加")
+            MetadataText(if (fromAudio) "音频转写 · 未统计观看时长，媒体长度不计入浏览停留。"
+                else "$durationLabel：${durationMillis?.let(::formatDuration) ?: "未统计"} · 同一条记录里的多个观点共用时长，不能相加")
         }
         if (item.evidenceDetails.isNotEmpty()) {
-            Text("依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (fromAudio) "依据片段（来自音频转写）" else "依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             item.evidenceDetails.forEach { fragment ->
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("${fragment.type.label}${if (fragment.isNew) " · 新增" else ""}",
@@ -481,10 +485,9 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
                 }
             }
         } else if (item.evidence.isNotEmpty()) {
-            Text("依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (fromAudio) "依据片段（来自音频转写）" else "依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             item.evidence.forEach { QuoteBlock(it) }
         } else MetadataText("没有识别到相关依据片段。")
-        val current = events.firstOrNull { it.id == item.eventId }
         if (current != null) OriginalRecord(current, zone, appNames, "本条采集原文：")
         else {
             Text("本条采集原文：", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
@@ -506,6 +509,7 @@ private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<Strin
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         MetadataText("事件 #${event.id} · ${reportTime(event.timestamp, zone)} · ${appNames[event.packageName] ?: event.packageName}")
+        if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 媒体偏移 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
         SelectionContainer {
             Text(event.visibleText, color = Ink, fontSize = 14.sp, lineHeight = 24.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 3)

@@ -26,8 +26,8 @@ object ReportExporter {
         appendLine("范围内共 ${report.rawRecords} 条原始记录；合并内容相同的连续记录 ${report.mergedSnapshots} 条；跳过桌面和无正文的记录 ${report.skippedRecords} 条；保留有效记录 ${report.usableSnapshots} 条。跨越范围边界的记录按重叠部分计入。")
         appendLine("有效记录共 ${report.coverageSessions} 条；范围内预计停留合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条未统计时长。显示为零只表示还没采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")
-        appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒视为一段浏览结束。每条记录只算一次，按与统计范围、日期和小时的交叠分摊。它不等于实际阅读、理解或看视频的时间；旧版本记录不补算时长。")
-        appendLine("数据来自本机保留的最近 5000 条记录，不包括视频画面、音频、获取不到的页面文字和已删除的历史。显示为零可能是没采集、没权限或页面限制，不代表没有浏览。")
+        appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒视为一段浏览结束。每条记录只算一次，按与统计范围、日期和小时的交叠分摊。它不等于实际阅读、理解或看视频的时间；旧版本记录不补算时长，音频转写未统计观看时长，媒体长度不计入浏览停留。")
+        appendLine("数据来自本机保留的最近 5000 条记录，覆盖可见页面文字与已保存的音频转写；不包括视频画面、未转写的音频、获取不到的页面文字和已删除的历史。显示为零可能是没采集、没权限或页面限制，不代表没有浏览。")
         appendLine("范围之前还保留 ${report.comparisonRecords} 条历史记录${report.comparisonStart?.let { "，最早一条是 ${time(it)}" } ?: ""}；对比只使用这些记录，并按浏览发生的先后顺序进行。“首次出现”只是没有匹配到可比的历史，不代表你从没看过这类内容。")
         appendLine()
         appendLine("## 2. 主题分布与观点")
@@ -58,9 +58,9 @@ object ReportExporter {
         if (report.contentSignals.size > signalLimit) appendLine("PDF 只列出前 $signalLimit 条，完整内容见文本报告。")
         appendLine("上述线索只描述原文的措辞，不推断你的情绪、心理状态、立场或认知状况。即使含有焦虑表达，内容也可能有实质价值，请结合原文和依据核实。")
         appendLine()
-        appendLine("## 4. 来源应用与 24 小时分布")
+        appendLine("## 4. 记录来源与 24 小时分布")
         report.sourceCounts.entries.sortedByDescending { it.value }.forEach { appendLine("${it.key}：${it.value} 条原始记录") }
-        appendLine("应用来源不等于作者、媒体或原始材料出处，不同应用里的内容可能来自同一源头；上述计数包含未清洗的记录。")
+        appendLine("记录来源可以是应用页面或音频转写，不等于作者、媒体或原始材料出处，不同应用和音频里的内容可能来自同一源头；上述计数包含未清洗的记录。")
         appendLine(if (report.period.contains("7")) "以下为 7 天内同一小时的合计。" else "以下为当天 00:00 到 23:00，共 24 个小时段。")
         (0..23).forEach { hour ->
             val review = report.hourlyReviews.firstOrNull { it.hour == hour }
@@ -94,18 +94,18 @@ object ReportExporter {
                 appendLine("适用条件：${observation.conditions.ifBlank { "未识别到" }}；出处：${if (observation.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表作者或你的看法"}")
                 appendLine("与历史对比：${observation.increment.label}；用于对比的早期记录：${observation.previousEventId ?: "无"}")
                 if (observation.evidenceDetails.isNotEmpty()) observation.evidenceDetails.forEach {
-                    appendLine("${it.type.label}${if (it.isNew) "（对比历史为新增）" else ""} · 同一页面原文：${it.text}")
-                } else observation.evidence.forEach { appendLine("同一页面的依据/条件片段：$it") }
+                    appendLine("${it.type.label}${if (it.isNew) "（对比历史为新增）" else ""} · 同一记录原文：${it.text}")
+                } else observation.evidence.forEach { appendLine("同一记录的依据/条件片段：$it") }
                 if (observation.evidence.isEmpty()) appendLine("没有识别到相关依据片段，无法判断信息量是否有变化。")
                 appendLine()
             }
         }
         appendLine("## 7. 方法与局限")
         appendLine("方法：文字过滤 → 词表主题识别 → 判断句提取 → 讨论对象匹配 → 中文字符相似度对比 → 事实/条件/建议/解释片段标注 → 按浏览时间顺序与历史对比。")
-        appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的记录。相似观点的判定阈值为 0.65，依据重复的阈值为 0.85；数字不同会保留为新增片段；讨论对象或时间、地区、人群条件不同的内容单独保留，出处不明的内容不参与新旧对比。每次最多对比最近 120 个同主题观点，这些阈值还没有经过标注数据验证。")
-        appendLine("同一页面出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")
-        appendLine("本版本没有使用多模态模型、语义编码、交叉验证、时序分析、阅读投入估计或可信执行环境等研究方法，规则匹配的结果不能替代它们。")
-        appendLine("应用完全离线运行，没有任何网络上传。PDF 和文本报告包含浏览原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
+        appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。相似观点的判定阈值为 0.65，依据重复的阈值为 0.85；数字不同会保留为新增片段；讨论对象或时间、地区、人群条件不同的内容单独保留，出处不明的内容不参与新旧对比。每次最多对比最近 120 个同主题观点，这些阈值还没有经过标注数据验证。")
+        appendLine("同一记录出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")
+        appendLine("这份回顾使用本地文字规则，没有使用多模态模型、语义编码、交叉验证、时序分析、阅读投入估计或可信执行环境等研究方法，规则匹配的结果不能替代它们。音频由本地语音模型转写后才进入文字分析。")
+        appendLine("这份回顾在本机生成。语音转写在本机完成；只有主动配置并使用云端文字分析时，当前转写与少量相关历史文字才会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
     }
 
     fun writePdf(report: CognitiveReport, output: OutputStream) {

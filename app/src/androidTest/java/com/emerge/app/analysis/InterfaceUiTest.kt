@@ -73,8 +73,9 @@ class InterfaceUiTest {
         compose.onNodeWithText("未知", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("1 条未统计时长", useUnmergedTree = true).assertIsDisplayed()
         compose.onNodeWithText("24 小时信息回顾").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("hourly-hour-options").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("8时，1条记录，未统计时长，点击查看详情")
-            .performScrollTo().performClick()
+            .performScrollTo().assertIsDisplayed().performClick()
         compose.onNode(hasText("08:00—09:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
         compose.onNode(hasText("1 条未统计时长", substring = true) and
             hasAnyAncestor(hasTestTag("hourly-review-details"))).assertExists()
@@ -98,12 +99,18 @@ class InterfaceUiTest {
         compose.onNodeWithText("今日观察").assertIsDisplayed()
         saveScreenshot("emerge-ui-overview-dark-large.png")
         compose.onNodeWithText("24 小时信息回顾").performScrollTo().assertIsDisplayed()
+        // Bring the horizontal list into the vertical viewport before scrolling to its hour.
+        compose.onNodeWithTag("hourly-hour-options").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("8时，1条记录，预计停留1 分 20 秒，点击查看详情")
-            .performScrollTo().performClick()
+            .performScrollTo().assertIsDisplayed().performClick()
+        saveScreenshot("emerge-ui-hourly-heading-dark-large.png")
         compose.onNode(hasText("08:00—09:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
         compose.onNodeWithTag("hourly-review-details")
             .performScrollToNode(hasText("本条采集原文：", substring = true))
-        compose.onNodeWithText("本条采集原文：", substring = true).assertIsDisplayed()
+        // The evidence item is taller than the sheet at large font sizes. Position the exact
+        // original-text heading after composing the item, rather than stopping at its top edge.
+        compose.onNode(hasText("本条采集原文：") and
+            hasAnyAncestor(hasTestTag("hourly-review-details"))).performScrollTo().assertIsDisplayed()
         saveScreenshot("emerge-ui-evidence-dark-large.png")
     }
 

@@ -35,7 +35,8 @@ import java.util.Locale
 
 @Composable
 fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, String>, modifier: Modifier = Modifier,
-    onDelete: (BrowseEvent) -> Unit = {}, onSettings: () -> Unit = {}) {
+    onDelete: (BrowseEvent) -> Unit = {}, onSettings: () -> Unit = {},
+    audioContent: (@Composable () -> Unit)? = null) {
     var query by rememberSaveable { mutableStateOf("") }
     var selectedPackage by rememberSaveable { mutableStateOf<String?>(null) }
     var showAppFilter by rememberSaveable { mutableStateOf(false) }
@@ -80,10 +81,12 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                 MetadataText("${filtered.size} 条${if (hasFilter) "匹配" else "记录"}")
             }
         }
+        audioContent?.let { content -> item(key = "audio-record-entry") { content() } }
         if (filtered.isEmpty()) item {
             WhiteCard {
                 SectionTitle(if (hasFilter) "没有找到相关记录" else "还没有任何记录")
                 Text(if (hasFilter) "换个关键词或应用名再试试。"
+                    else if (audioContent != null) "可以导入音频生成转写，也可以选择要记录的应用，保存浏览时看到的文字。"
                     else "选择要记录的应用并完成授权后，这里会保存你浏览时看到的文字。",
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
                 if (hasFilter) TextButton(onClick = { query = ""; selectedPackage = null }, modifier = Modifier.heightIn(min = 48.dp)) {
@@ -103,6 +106,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
             }
             items(records, key = { "event-${it.id}" }) { event ->
                 var expanded by rememberSaveable(event.id) { mutableStateOf(false) }
+                val fromAudio = event.sourceType.startsWith("audio_")
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(timeFormat.format(Instant.ofEpochMilli(event.timestamp).atZone(zone)), color = Muted,
                         style = MaterialTheme.typography.labelMedium, modifier = Modifier.widthIn(min = 44.dp).padding(top = 3.dp))
@@ -111,13 +115,17 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                             Text(appNames[event.packageName] ?: event.packageName, color = Ink,
                                 style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f),
                                 maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            MetadataText(if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)}"
+                            MetadataText(if (fromAudio) "音频转写"
+                                else if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)}"
                                 else "旧版本", Modifier.padding(start = 8.dp))
                         }
+                        if (fromAudio) MetadataText("媒体偏移 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}",
+                            Modifier.padding(top = 4.dp))
                         if (expanded) {
                             QuoteBlock(event.visibleText)
                             MetadataText("记录 #${event.id} · ${event.packageName}", Modifier.padding(top = 8.dp))
-                            if (event.sampleCount > 0) MetadataText("已检查 ${event.sampleCount} 次 · 停留时长不等于实际阅读时间")
+                            if (fromAudio) MetadataText("媒体偏移用于定位转写，不计入浏览停留时长。")
+                            else if (event.sampleCount > 0) MetadataText("已检查 ${event.sampleCount} 次 · 停留时长不等于实际阅读时间")
                         } else Text(event.visibleText, maxLines = 2, overflow = TextOverflow.Ellipsis,
                             color = Ink, style = MaterialTheme.typography.bodyMedium, lineHeight = 23.sp,
                             modifier = Modifier.padding(top = 4.dp))
@@ -184,7 +192,8 @@ private fun ApplicationFilterRow(label: String, detail: String, selected: Boolea
 @Composable
 fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture: (Boolean) -> Unit,
     onOpenSettings: () -> Unit, onClear: () -> Unit, message: String?, modifier: Modifier = Modifier,
-    diagnostics: CaptureStatus = CaptureStatus(), selectedApps: List<CaptureApp> = emptyList(), onChooseApps: () -> Unit = {}) {
+    diagnostics: CaptureStatus = CaptureStatus(), selectedApps: List<CaptureApp> = emptyList(), onChooseApps: () -> Unit = {},
+    audioContent: (@Composable () -> Unit)? = null) {
     val captureState = when {
         selectedApps.isEmpty() -> "尚未选择要记录的应用"
         !enabled -> "采集已暂停"
@@ -199,6 +208,7 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
             Text("采集与数据", style = MaterialTheme.typography.headlineMedium, color = Ink)
             MetadataText("你决定哪些内容被记录，以及何时停止。", Modifier.padding(top = 6.dp))
         }
+        audioContent?.let { content -> item(key = "audio-settings") { content() } }
         item {
             Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = RoundedCornerShape(12.dp)) {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
@@ -249,7 +259,8 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                     "最近检查：${diagnosticTime(diagnostics.lastCheck)}\n" +
                     "最近保存：${diagnosticTime(diagnostics.lastSaved)}\n" +
                     "最近结果：${diagnostics.result}\n\n" +
-                    "如果已授权但仍未连接，可以试试在系统中关闭再重新开启辅助服务。部分应用不会提供正文；目前也无法识别视频画面和音频内容。")
+                    "如果已授权但仍未连接，可以试试在系统中关闭再重新开启辅助服务。部分应用不会提供正文；" +
+                    if (audioContent != null) "记录声音请从概览页的语音入口开始；视频画面暂不分析。" else "目前也无法识别视频画面和音频内容。")
             }
         }
         item {
@@ -257,14 +268,18 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
             Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SectionTitle("本地存储")
                 Text("$count 条已保存记录", color = Ink, style = MaterialTheme.typography.titleLarge)
-                Text("数据只保存在这台设备上，不会上传。最多保留 5000 条，超出后自动删除最早的记录。目前数据库未做额外加密。",
+                Text((if (audioContent != null) "数据只保存在这台设备上。只有主动配置并使用云端文字分析时，当前转写和少量相关历史文字才会发送到你指定的服务。"
+                    else "数据只保存在这台设备上，不会上传。") +
+                    "最多保留 5000 条，超出后自动删除最早的记录。目前数据库未做额外加密。",
                     color = Muted, style = MaterialTheme.typography.bodyMedium)
                 TextButton(onClick = onClear, enabled = count > 0,
                     modifier = Modifier.heightIn(min = 48.dp).align(Alignment.Start)) {
                     Text("暂停并清空全部记录", color = MaterialTheme.colorScheme.error)
                 }
                 MetadataText("删除后分析结果会同步更新；已导出的文件需要自行删除。")
-                ExpandableNote("浏览目的与报告的保存方式", "浏览目的会一直保留。报告不会长期保存，重启应用后需要重新生成；导出的 PDF 或文本是当时内容的存档。")
+                ExpandableNote("浏览目的与报告的保存方式", if (audioContent != null)
+                    "浏览目的会一直保留。概览页的回顾不会长期保存，重启应用后需要重新生成；音频记录里的回顾随转写保存在本机，修订文字后需要重新分析。导出的 PDF 或文本是当时内容的存档。"
+                    else "浏览目的会一直保留。报告不会长期保存，重启应用后需要重新生成；导出的 PDF 或文本是当时内容的存档。")
             }
         }
         item {
@@ -276,8 +291,9 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 ExpandableNote("查看采集说明与边界", "采集会自动跳过密码框和输入框，也不会记录破茧本身、系统设置和输入法，但无法保证排除正文中的所有个人信息。\n\n" +
                     "停留时长不代表真实阅读、理解或认同。没有记录到的内容就是未知，内容中的情绪表达也不代表你的心理状态。")
                 ExpandableNote("关于${stringResource(R.string.brand_name)}", stringResource(R.string.brand_tagline) +
-                    "\n\n帮你回顾接触到的信息，拓宽判断依据 · 离线文字分析原型。\n\n" +
-                    "回顾接触到的观点，比较依据的变化，再自己决定要不要补充材料。目前仅支持本地文字分析，识别出的观点和依据请务必回到原文核实。")
+                    if (audioContent != null) "\n\n帮你回顾接触到的文字与声音，比较观点和依据的变化，再自己决定要不要补充材料。语音转写在本机完成，文字分析可以用本地规则，也可以连接自行配置的云端服务；识别结果请回到原内容核实。"
+                    else "\n\n帮你回顾接触到的信息，拓宽判断依据 · 离线文字分析原型。\n\n" +
+                        "回顾接触到的观点，比较依据的变化，再自己决定要不要补充材料。目前仅支持本地文字分析，识别出的观点和依据请务必回到原文核实。")
             }
         }
     }

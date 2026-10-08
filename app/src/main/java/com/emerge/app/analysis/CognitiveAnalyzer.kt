@@ -80,6 +80,7 @@ class CognitiveAnalyzer {
             previous = event
             // Do not merge a first in-window snapshot into an unselected historical snapshot.
             if (old != null && window.contains(old) == within && old.sampleCount == 0 && event.sampleCount == 0 &&
+                !old.sourceType.startsWith("audio_") && !event.sourceType.startsWith("audio_") &&
                 old.packageName == event.packageName && event.timestamp - old.timestamp in 0..30_000 &&
                 com.emerge.app.capture.ContentContinuity.same(old.visibleText, event.visibleText)) {
                 if (within) merged++

@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emerge.app.analysis.AnalysisState
 import com.emerge.app.analysis.CognitiveReport
+import com.emerge.app.analysis.ObservationWindow
 import com.emerge.app.data.BrowseEvent
 import java.time.Instant
 import java.time.ZoneId
@@ -35,8 +36,12 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     rawEvents: List<BrowseEvent> = emptyList(), onAnalyze: (String) -> Unit = {},
     onExport: (CognitiveReport, Boolean) -> Unit = { _, _ -> },
     onPurposeChange: (String) -> Unit = {}, selectedAppCount: Int = 0,
-    now: Long = System.currentTimeMillis()) {
+    now: Long = System.currentTimeMillis(), audioContent: (@Composable () -> Unit)? = null) {
     val today = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).toLocalDate()
+    val window = ObservationWindow.forPeriod(period, now, ZoneId.systemDefault())
+    val audioCount = rawEvents.count { it.sourceType.startsWith("audio_") && window.contains(it) }
+    val browsingCount = (stats.total - audioCount).coerceAtLeast(0)
+    val browsingUnknown = (stats.unknownDurationRecords - audioCount).coerceAtLeast(0)
     val date = if (period == StatisticsPeriod.DAY)
         today.format(DateTimeFormatter.ofPattern("M月d日 · EEEE", Locale.CHINA))
     else "${today.minusDays(6).format(DateTimeFormatter.ofPattern("M月d日"))} — ${today.format(DateTimeFormatter.ofPattern("M月d日"))}"
@@ -52,27 +57,32 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             Row(Modifier.fillMaxWidth().clickable(onClick = onSettings).heightIn(min = 48.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.size(6.dp).clip(CircleShape).background(if (active) Accent else Muted))
-                Text("$statusLabel · 已选 $selectedAppCount 个应用", color = Muted,
+                Text("${if (audioContent != null) "文字采集 · " else ""}$statusLabel · 已选 $selectedAppCount 个应用", color = Muted,
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
                 Text("管理范围 ›", color = Accent, style = MaterialTheme.typography.labelMedium)
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth().padding(vertical = 18.dp), verticalAlignment = Alignment.Top) {
-                FactValue(stats.total.toString(), "已保存记录", "来自 ${stats.appCount} 个应用", Modifier.weight(1f))
+                FactValue(stats.total.toString(), "已保存记录", "来自 ${stats.appCount} 个${if (audioCount > 0) "来源" else "应用"}", Modifier.weight(1f))
                 val duration = when {
-                    stats.total == 0 -> "—"
-                    stats.unknownDurationRecords == stats.total -> "未知"
+                    browsingCount == 0 -> "—"
+                    browsingUnknown == browsingCount -> "未知"
                     else -> compactDuration(stats.observedDurationMillis)
                 }
-                FactValue(duration, "预计停留时长", if (stats.unknownDurationRecords > 0)
-                    "${stats.unknownDurationRecords} 条未统计时长" else "根据采集记录估算", Modifier.weight(1f))
+                FactValue(duration, "预计停留时长", when {
+                    audioCount > 0 && browsingUnknown > 0 -> "$browsingUnknown 条浏览未统计时长 · 音频不计"
+                    audioCount > 0 -> "音频转写不计入停留"
+                    browsingUnknown > 0 -> "$browsingUnknown 条未统计时长"
+                    else -> "根据采集记录估算"
+                }, Modifier.weight(1f))
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         if (period == StatisticsPeriod.DAY && stats.total > 0) item {
-            MiniHourlyTrend(stats.trend)
+            MiniHourlyTrend(stats.trend, if (audioCount > 0) "今日记录分布" else "今日浏览分布")
         }
+        audioContent?.let { content -> item(key = "audio-entry") { content() } }
         if (rawEvents.isEmpty()) item {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("从一小段浏览开始", style = MaterialTheme.typography.titleLarge)
@@ -80,7 +90,8 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                 GuideStep(2, "开启系统授权", "在系统设置中启用「破茧浏览采集」")
                 GuideStep(3, "打开采集开关", "正常浏览，回到这里看回顾")
                 Button(onClick = onSettings, shape = RoundedCornerShape(8.dp)) { Text("去设置") }
-                Text("所有内容只保存在这台设备上，你可以随时暂停或删除。", color = Muted,
+                Text(if (audioContent != null) "内容只保存在这台设备上（云端分析除外），你可以随时暂停或删除。"
+                    else "所有内容只保存在这台设备上，你可以随时暂停或删除。", color = Muted,
                     style = MaterialTheme.typography.bodySmall)
             }
         } else item {
@@ -89,7 +100,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         if (stats.total > 0) item {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("来源应用", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                    Text(if (audioCount > 0) "记录来源" else "来源应用", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
                     TextButton(onClick = onRecords) { Text("全部记录 ›") }
                 }
                 val shares = if (stats.apps.size <= 6) stats.apps else stats.apps.take(5) +
@@ -108,7 +119,8 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                             trackColor = MaterialTheme.colorScheme.surfaceVariant)
                     }
                 }
-                Text("共 ${stats.total} 条记录。注意：应用数量不等于信息来源数量。", color = Muted,
+                Text(if (audioCount > 0) "共 ${stats.total} 条记录，含 $audioCount 条音频转写。来源数量不等于独立信息源数量。"
+                    else "共 ${stats.total} 条记录。注意：应用数量不等于信息来源数量。", color = Muted,
                     style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -133,11 +145,11 @@ private fun GuideStep(number: Int, title: String, detail: String) {
 
 /** Compact hour-of-day bars shown directly on the overview, no analysis required. */
 @Composable
-private fun MiniHourlyTrend(trend: List<TrendBucket>) {
+private fun MiniHourlyTrend(trend: List<TrendBucket>, title: String = "今日浏览分布") {
     val maximum = (trend.maxOfOrNull { it.count } ?: 0).coerceAtLeast(1)
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("今日浏览分布", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+            Text(title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             MetadataText("按小时统计")
         }
         Row(Modifier.fillMaxWidth().height(28.dp), horizontalArrangement = Arrangement.spacedBy(2.dp),

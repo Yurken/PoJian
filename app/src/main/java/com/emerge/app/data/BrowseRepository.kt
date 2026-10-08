@@ -7,12 +7,19 @@ import kotlinx.coroutines.sync.withLock
 
 class BrowseRepository(private val database: BrowseDatabase) {
     private val dao = database.browseEventDao()
+    private val audio = database.audioDao()
     private val captureMutex = Mutex()
     private val deletionGeneration = AtomicLong()
     val recentEvents = dao.observeRecent()
     val allEvents = dao.observeAll()
     val count = dao.observeCount()
-    suspend fun record(event: BrowseEvent) = database.withTransaction { val id = dao.insert(event); dao.trim(); id }
+    suspend fun record(event: BrowseEvent) = database.withTransaction {
+        val id = dao.insert(event)
+        if (audio.trimsAudio()) audio.invalidateAllAnalyses()
+        audio.invalidateTrimmedSessions()
+        dao.trim()
+        id
+    }
     suspend fun updateSession(event: BrowseEvent): Long? = database.withTransaction {
         event.id.takeIf { dao.update(event) > 0 }
     }
@@ -35,6 +42,8 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 event.id.takeIf { dao.update(event) > 0 }
             } else {
                 val inserted = dao.insert(event)
+                if (audio.trimsAudio()) audio.invalidateAllAnalyses()
+                audio.invalidateTrimmedSessions()
                 dao.trim()
                 if (current()) inserted else {
                     dao.deleteEvent(inserted)
@@ -51,16 +60,27 @@ class BrowseRepository(private val database: BrowseDatabase) {
 
     suspend fun deleteEvent(id: Long) {
         deletionGeneration.incrementAndGet()
-        captureMutex.withLock { dao.deleteEvent(id) }
+        captureMutex.withLock { database.withTransaction {
+            audio.invalidateAllAnalyses()
+            audio.invalidateForEvent(id)
+            dao.deleteEvent(id)
+        } }
     }
 
     suspend fun deletePackage(packageName: String) {
         deletionGeneration.incrementAndGet()
-        captureMutex.withLock { dao.deletePackage(packageName) }
+        captureMutex.withLock { database.withTransaction {
+            audio.invalidateAllAnalyses()
+            audio.deletePackage(packageName)
+            dao.deletePackage(packageName)
+        } }
     }
 
     suspend fun clear() {
         deletionGeneration.incrementAndGet()
-        captureMutex.withLock { dao.clear() }
+        captureMutex.withLock { database.withTransaction {
+            audio.clear()
+            dao.clear()
+        } }
     }
 }

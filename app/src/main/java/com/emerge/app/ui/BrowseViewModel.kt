@@ -63,7 +63,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         viewModelScope.launch {
-            combine(allEvents.map { it.map(BrowseEvent::packageName).toSet() }.distinctUntilChanged(), allowedPackages) { recorded, allowed -> recorded + allowed }
+            combine(allEvents.map { rows -> rows.filter { it.sourceType != "audio_import" }.map(BrowseEvent::packageName).toSet() }.distinctUntilChanged(), allowedPackages) { recorded, allowed -> recorded + allowed }
                 .collectLatest { known ->
                     appsLoadingState.value = true
                     try {
@@ -254,6 +254,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setAllowedPackages(packages: Set<String>) {
         if (packages == allowedPackages.value) return
+        app.audioCoordinator.stopAll()
         setCapture(false)
         invalidate("采集范围已变更，等待分析")
         app.captureSettings.setAllowedPackages(packages)
@@ -261,12 +262,17 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         scheduleAnalysis()
     }
 
-    fun deleteEvent(id: Long) = mutateHistory("记录已删除，报告将按剩余记录更新", { records -> records.none { it.id == id } }) { app.repository.deleteEvent(id) }
+    fun deleteEvent(id: Long) {
+        allEvents.value.firstOrNull { it.id == id }?.audioSessionId?.let(app.audioCoordinator::stopSession)
+        mutateHistory("记录已删除，报告将按剩余记录更新", { records -> records.none { it.id == id } }) { app.repository.deleteEvent(id) }
+    }
     fun deletePackage(packageName: String) {
+        app.audioCoordinator.stopAll()
         setCapture(false)
         mutateHistory("该应用的记录已删除，采集已暂停", { records -> records.none { it.packageName == packageName } }) { app.repository.deletePackage(packageName) }
     }
     fun clearHistory() {
+        app.audioCoordinator.stopAll()
         setCapture(false)
         mutateHistory("记录已清空，采集已暂停", { it.isEmpty() }) { app.repository.clear() }
     }
