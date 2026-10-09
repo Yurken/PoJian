@@ -14,7 +14,7 @@ object ReportExporter {
         val zone = ZoneId.of(report.zone)
         fun time(value: Long) = Instant.ofEpochMilli(value).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         fun duration(value: Long) = String.format(java.util.Locale.CHINA, "%.1f 秒", value / 1000.0)
-        appendLine("# 破茧 Emerge · 信息环境回顾报告")
+        appendLine("# 破茧 · 信息环境回顾报告")
         appendLine("看见信息边界，拓宽判断依据。")
         appendLine("生成时间：${time(report.generatedAt)}（${report.zone}）")
         appendLine("统计范围：${time(report.start)} 至 ${time(report.end)}（${report.period}）")
@@ -125,7 +125,7 @@ object ReportExporter {
             page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, number).create())
             paint.color = Color.rgb(20, 88, 78)
             paint.textSize = 10f
-            page!!.canvas.drawText("破茧 Emerge | 信息环境回顾", 44f, 30f, paint)
+            page!!.canvas.drawText("破茧 | 信息环境回顾", 44f, 30f, paint)
             page!!.canvas.drawText("$number", 540f, 817f, paint)
             y = 60f
         }

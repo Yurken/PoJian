@@ -111,7 +111,7 @@ internal class SpeechModelStore(context: Context) {
             http.connectTimeout = 20_000
             http.readTimeout = 20_000
             http.instanceFollowRedirects = false
-            http.setRequestProperty("User-Agent", "Emerge-Android/0.4")
+            http.setRequestProperty("User-Agent", "Pojian-Android/0.4")
             val code = http.responseCode
             if (code in listOf(301, 302, 303, 307, 308)) {
                 val next = http.getHeaderField("Location") ?: error("模型下载重定向无效")

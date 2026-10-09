@@ -54,7 +54,7 @@ class AnalysisUiTest {
         compose.onNodeWithTag("hourly-review-details")
             .performScrollToNode(hasText("用于对比的早期记录 #1"))
         compose.onNodeWithText("用于对比的早期记录 #1").assertIsDisplayed()
-        saveScreenshot("emerge-hourly-qa.png")
+        saveScreenshot("pojian-hourly-qa.png")
     }
 
     @Test fun midnightSessionRemainsTraceableInItsCoveredHour() {
