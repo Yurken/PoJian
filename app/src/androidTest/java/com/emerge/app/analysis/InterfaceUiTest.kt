@@ -91,19 +91,19 @@ class InterfaceUiTest {
         val report = CognitiveAnalyzer().analyze(records, StatisticsPeriod.DAY, now)
         renderOverview(records, report, now, dark = false)
         compose.onNodeWithText("今日观察").assertIsDisplayed()
-        saveScreenshot("emerge-ui-overview-light.png")
+        saveScreenshot("pojian-ui-overview-light.png")
         compose.onNodeWithText("24 小时信息回顾").performScrollTo()
-        saveScreenshot("emerge-ui-hourly-light.png")
+        saveScreenshot("pojian-ui-hourly-light.png")
 
         renderOverview(records, report, now, dark = true, fontScale = 1.3f)
         compose.onNodeWithText("今日观察").assertIsDisplayed()
-        saveScreenshot("emerge-ui-overview-dark-large.png")
+        saveScreenshot("pojian-ui-overview-dark-large.png")
         compose.onNodeWithText("24 小时信息回顾").performScrollTo().assertIsDisplayed()
         // Bring the horizontal list into the vertical viewport before scrolling to its hour.
         compose.onNodeWithTag("hourly-hour-options").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("8时，1条记录，预计停留1 分 20 秒，点击查看详情")
             .performScrollTo().assertIsDisplayed().performClick()
-        saveScreenshot("emerge-ui-hourly-heading-dark-large.png")
+        saveScreenshot("pojian-ui-hourly-heading-dark-large.png")
         compose.onNode(hasText("08:00—09:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
         compose.onNodeWithTag("hourly-review-details")
             .performScrollToNode(hasText("本条采集原文：", substring = true))
@@ -111,7 +111,7 @@ class InterfaceUiTest {
         // original-text heading after composing the item, rather than stopping at its top edge.
         compose.onNode(hasText("本条采集原文：") and
             hasAnyAncestor(hasTestTag("hourly-review-details"))).performScrollTo().assertIsDisplayed()
-        saveScreenshot("emerge-ui-evidence-dark-large.png")
+        saveScreenshot("pojian-ui-evidence-dark-large.png")
     }
 
     private fun renderOverview(records: List<BrowseEvent>, report: CognitiveReport, now: Long,

@@ -91,7 +91,9 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     var showCaptureTools by rememberSaveable { mutableStateOf(false) }
     var showAudioRecords by rememberSaveable { mutableStateOf(false) }
     var audioDetailId by rememberSaveable { mutableStateOf<String?>(null) }
-    var showCloud by rememberSaveable { mutableStateOf(false) }
+    // 网关与模型配置统一在服务端管理台维护，App 不再提供设置入口（保留声明以便恢复）。
+    // var showCloud by rememberSaveable { mutableStateOf(false) }
+    val showCloud = false
     var deleteEvent by remember { mutableStateOf<BrowseEvent?>(null) }
     var deletePackage by remember { mutableStateOf<CaptureApp?>(null) }
     LaunchedEffect(discoveryRequest) {
@@ -179,7 +181,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     onPurposeChange = model::updatePurpose, selectedAppCount = allowed.size, now = now,
                     onExport = { report, pdf -> if (model.prepareExport(report)) {
                         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
-                        if (pdf) pdfSaver.launch("破茧-Emerge-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-Emerge-信息环境回顾-$stamp.txt")
+                        if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
                     } },
                     // Keep the optional slot's old name for source compatibility; it no longer hosts recording controls.
                     audioContent = { MonitorOverviewCard(monitor, monitorConfig, { tab = 1 }, { tab = 2 }) })
@@ -192,7 +194,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     { confirmClear = true }, message, contentModifier, diagnostics, selectedApps,
                     onChooseApps = { showApps = true }, audioContent = {
                         MonitorSettingsSection(monitorConfig, app.monitor::saveConfig,
-                            app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { showCloud = true }, { showCaptureTools = true })
+                            app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { /* 网关配置见服务端管理台 */ }, { showCaptureTools = true })
                     })
             }
         }
@@ -202,7 +204,8 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
             onDelete = { app.monitor.invalidate(); audioModel.deleteSession(id); audioDetailId = null },
             onAnalyze = { audioModel.analyze(id) }, message = audioAlert)
     } }
-    if (showCloud) MonitorGatewayDialog(audioConfig, onDismiss = { showCloud = false }, onSave = audioModel::saveConfig)
+    // 网关配置已移至服务端管理台，App 使用内置服务端地址与令牌，不再弹出设置对话框。
+    // if (showCloud) MonitorGatewayDialog(audioConfig, onDismiss = { showCloud = false }, onSave = audioModel::saveConfig)
     if (showApps) AppPickerDialog(availableApps, allowed, appsLoading,
         remember(all) { all.groupingBy { it.packageName }.eachCount() }, onDismiss = { showApps = false },
         onApply = { model.setAllowedPackages(it); showApps = false }, onDeletePackage = { deletePackage = it })

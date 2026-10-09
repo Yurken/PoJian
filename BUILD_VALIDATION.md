@@ -1,4 +1,4 @@
-# 破茧 Emerge 构建与验证
+# 破茧 构建与验证
 
 验证日期：2026-10-08（Asia/Shanghai）。保留 v0.3.0 / v0.3.1 / v0.4.0 基线记录；最新 v0.4.1 功能极简 2.0 验证见末节。
 
@@ -15,7 +15,7 @@
 
 macOS arm64，Android Studio bundled JDK 21.0.10，Gradle 8.9，AGP 8.5.2，Kotlin 2.0.21；字节码目标 17。minSdk 29，compileSdk / targetSdk 34。测试依赖使用 AndroidX Test runner 1.7.0、JUnit extension 1.3.0、Espresso 3.7.0，以兼容新系统输入服务。
 
-安装包：`app/build/outputs/apk/debug/Emerge-0.3.0-debug.apk`（调试签名）。
+安装包：`app/build/outputs/apk/debug/破茧-0.3.0-debug.apk`（调试签名）。
 
 SHA256：`140caa28ee3d2fd9345b8faa34fc63c4e44335ae9d93397d8c08498f1b80c940`。
 
@@ -44,8 +44,8 @@ Room v2 JSON schema 与更名前完全一致，identity hash 保持 `777cfc8fd18
 - 单元测试：`app/build/reports/tests/testDebugUnitTest/index.html`
 - lint：`app/build/reports/lint-results-debug.html`
 - 设备测试：`app/build/reports/instrumentation-emulator.txt`
-- 界面截图：`app/build/reports/emerge-home.png`、`emerge-hourly.png`
-- PDF 首页面：`app/build/reports/emerge-report-page-1.png`
+- 界面截图：`app/build/reports/pojian-home.png`、`pojian-hourly.png`
+- PDF 首页面：`app/build/reports/pojian-report-page-1.png`
 
 ## 实际边界
 
@@ -55,14 +55,14 @@ Room v2 JSON schema 与更名前完全一致，identity hash 保持 `777cfc8fd18
 
 ## Logo 接入验证（2026-10-08）
 
-将 `docs/brand/emerge-logo-v1.png` 接入启动图标，提供五种屏幕密度的透明前景、独立背景以及 Android 13 单色主题图标。旧启动别名继续继承应用图标。
+将 `docs/brand/pojian-logo-v1.png` 接入启动图标，提供五种屏幕密度的透明前景、独立背景以及 Android 13 单色主题图标。旧启动别名继续继承应用图标。
 
 - `assembleDebug`、`lintDebug` 成功；lint 为 0 errors、10 warnings，没有新增图标警告。
 - 已检查圆形、圆角方形、单色及 48px 本地预览，右上金色翼尖与茧形轮廓完整。
 - 已检查实际 APK 中的 adaptive icon，背景、前景和 monochrome 资源均已打包。
 - 本次资源更新的验证范围为构建、lint、APK 资源及本地裁切预览。
 
-安装包：`app/build/outputs/apk/debug/Emerge-0.3.0-logo-debug.apk`。
+安装包：`app/build/outputs/apk/debug/破茧-0.3.0-logo-debug.apk`。
 
 SHA256：`4df31c89a4f521b291d64ef3fcd9cc34daa2cac1ca750eb29c95e255a863cf5d`。
 
@@ -81,17 +81,17 @@ SHA256：`4df31c89a4f521b291d64ef3fcd9cc34daa2cac1ca750eb29c95e255a863cf5d`。
 - `git diff --check` 通过。
 - 仅在本次创建的独立临时设备运行测试，未操作既有模拟器或真实手机；测试数据仅存在于测试代码中。
 
-安装包：`Emerge-0.3.1-debug.apk`（versionCode 6，调试签名）。另存于 `app/build/outputs/apk/debug/Emerge-0.3.1-debug.apk`。
+安装包：`破茧-0.3.1-debug.apk`（versionCode 6，调试签名）。另存于 `app/build/outputs/apk/debug/破茧-0.3.1-debug.apk`。
 
 SHA256：`a9e84ebf7bdbd35ca385042161770e686884fa02662db6a50b9d687c225a0814`。
 
 验证产物：
 
-- 全部设备测试：`app/build/reports/instrumentation-emerge-0.3.1.txt`
-- 浅色概览：`app/build/reports/emerge-ui-overview-light.png`
-- 深色与 130% 字体概览：`app/build/reports/emerge-ui-overview-dark-large.png`
-- 深色原文核查：`app/build/reports/emerge-ui-evidence-dark-large.png`
-- 短屏 200% 字体与键盘：`app/build/reports/emerge-native-picker-keyboard-final-200.png`
+- 全部设备测试：`app/build/reports/instrumentation-pojian-0.3.1.txt`
+- 浅色概览：`app/build/reports/pojian-ui-overview-light.png`
+- 深色与 130% 字体概览：`app/build/reports/pojian-ui-overview-dark-large.png`
+- 深色原文核查：`app/build/reports/pojian-ui-evidence-dark-large.png`
+- 短屏 200% 字体与键盘：`app/build/reports/pojian-native-picker-keyboard-final-200.png`
 
 既有离线规则、采集范围、保留上限、删除与导出一致性及升级兼容机制保持有效；本轮工程验证不代表观点提取准确率或信息茧房干预效果。
 
@@ -124,14 +124,14 @@ SHA256：`a9e84ebf7bdbd35ca385042161770e686884fa02662db6a50b9d687c225a0814`。
 
 ### 产物
 
-安装包：`Emerge-0.4.0-arm64-debug.apk`，versionCode 7，调试签名，仅 arm64-v8a。58,594,458 字节（约 55.9 MiB）；语音模型另行下载。
+安装包：`破茧-0.4.0-arm64-debug.apk`，versionCode 7，调试签名，仅 arm64-v8a。58,594,458 字节（约 55.9 MiB）；语音模型另行下载。
 
 SHA-256：`9984531554ed208b5077ac3172b0f0b59e2b30e00bf6f4dae5e665f6400ecb23`。
 
 - JVM 报告：`app/build/reports/tests/testDebugUnitTest/index.html`
-- 全量设备记录：`app/build/reports/emerge-audio-instrumentation.txt`
-- 真实 SAF 导入界面：`app/build/reports/emerge-audio-detail-light.png`、`emerge-audio-detail-dark-large.png`
-- 服务测试：`app/build/reports/emerge-audio-server-tests.txt`
+- 全量设备记录：`app/build/reports/pojian-audio-instrumentation.txt`
+- 真实 SAF 导入界面：`app/build/reports/pojian-audio-detail-light.png`、`pojian-audio-detail-dark-large.png`
+- 服务测试：`app/build/reports/pojian-audio-server-tests.txt`
 - 音频模型与复现说明：`docs/ASR-VALIDATION.md`
 - 上游来源：`docs/THIRD_PARTY_AUDIO.md`
 
@@ -152,8 +152,8 @@ SHA-256：`9984531554ed208b5077ac3172b0f0b59e2b30e00bf6f4dae5e665f6400ecb23`。
 - 独立 API 37 / arm64 / 16KB 页模拟器先以 411dp、最终以 360dp 宽运行全量设备回归，均为 **47 项通过、0 失败、3 项跳过**；跳过项需语音模型与公开 WAV/AAC 夹具，本轮干净模拟器未安装。界面回归覆盖四页导航、跨午夜时长分摊、未知时长、模型门控、录制操作、原文核查、筛选/删除、迁移、持久化及深色 130% 字体。没有操作既有 `emulator-5554` 或真机；真实识别的既有验证见 v0.4.0 节。
 - lint 0 errors、11 项既有/构建 ABI warnings；`git diff --check` 通过。
 
-安装包：`Emerge-0.4.1-arm64-debug.apk`，versionCode 8，调试签名，稳定 applicationId `com.zhiheng.app`，59,322,325 字节（约 56.6 MiB）。语音模型仍由用户另行下载。
+安装包：`破茧-0.4.1-arm64-debug.apk`，versionCode 8，调试签名，稳定 applicationId `com.zhiheng.app`，59,322,325 字节（约 56.6 MiB）。语音模型仍由用户另行下载。
 
 SHA-256：`6758c94e0c7e8b5722d99c7da8963df226f36802def392042b16aaf41e6cef1d`。
 
-设备记录：`app/build/reports/emerge-minimal-instrumentation.txt`。四页截图：`app/build/reports/emerge-minimal-analysis.png`、`emerge-minimal-footprints.png`、`emerge-minimal-recording.png`、`emerge-minimal-settings.png`；活动录制测试截图：`emerge-minimal-active-recording.png`。热图及深色大字截图使用测试夹具，未向生产代码或用户数据库写入示例数据。
+设备记录：`app/build/reports/pojian-minimal-instrumentation.txt`。四页截图：`app/build/reports/pojian-minimal-analysis.png`、`pojian-minimal-footprints.png`、`pojian-minimal-recording.png`、`pojian-minimal-settings.png`；活动录制测试截图：`pojian-minimal-active-recording.png`。热图及深色大字截图使用测试夹具，未向生产代码或用户数据库写入示例数据。

@@ -214,7 +214,7 @@ class CognitiveAnalyzerTest {
         assertEquals(2L, report.contentSignals.single().eventId)
         assertTrue(report.contentSignals.single().quote.contains("焦虑"))
         val text = ReportExporter.text(report)
-        assertTrue(text.contains("破茧 Emerge"))
+        assertTrue(text.contains("破茧 · 信息环境回顾报告"))
         assertTrue(text.contains("00:00–01:00"))
         assertTrue(text.contains("23:00–00:00"))
         assertTrue(text.contains("不推断你的情绪"))

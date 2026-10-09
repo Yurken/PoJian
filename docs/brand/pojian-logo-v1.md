@@ -1,6 +1,6 @@
-# 破茧 Emerge Logo · v1
+# 破茧 Logo · v1
 
-![破茧 Emerge Logo](emerge-logo-v1.png)
+![破茧 Logo](pojian-logo-v1.png)
 
 层叠的弧带代表反复包裹的信息，向外打开的翼形代表视野展开，暖金色代表突破边界后遇见的新信息。
 
@@ -12,7 +12,7 @@
 
 ```text
 Use case: logo-brand.
-Asset type: a finished, distinctive Android app icon for the Chinese app 破茧, English brand Emerge, an app about breaking out of information cocoons and discovering broader perspectives.
+Asset type: a finished, distinctive Android app icon for the Chinese app 破茧, an app about breaking out of information cocoons and discovering broader perspectives.
 Primary request: Visually express “突破信息茧房” — breaking through a closed information cocoon.
 Create ONE polished icon, not a presentation sheet, with no lettering.
 Design: a strong, compact, beautifully balanced abstract cocoon formed from three broad, nested, smoothly curving ribbons, suggesting recurring streams of information enclosing a person. The enclosure deliberately opens at the upper right; its innermost ribbon transforms seamlessly into a bold, uplifting wing extending outward through that opening. The silhouette should evoke both a cocoon opening and the first unfolding wing of a butterfly, without illustrating a literal insect. Make the transition from enclosed loops to the outward wing the unmistakable central idea. Use clean negative space, confident curves, optical balance, a memorable silhouette and very few parts. The opening has one restrained warm amber accent, as a glimpse of new light and perspective.

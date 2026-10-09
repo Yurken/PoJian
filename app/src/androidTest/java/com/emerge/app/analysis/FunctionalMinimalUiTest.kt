@@ -34,7 +34,7 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("overview-list").assertIsDisplayed()
         tab("录制").assertDoesNotExist()
         compose.onNodeWithTag("audio-entry").assertDoesNotExist()
-        saveScreenshot("emerge-monitor-overview.png")
+        saveScreenshot("pojian-monitor-overview.png")
         tab("发现").performClick().assertIsSelected()
         compose.onNodeWithTag("monitor-discovery-list").assertIsDisplayed()
         compose.onNodeWithText("观点观察").assertIsDisplayed()
@@ -83,7 +83,7 @@ class FunctionalMinimalUiTest {
             onCancelTask = { stopCalls++ }, onOpenRecords = {},
             onPauseResume = { pauseCalls++; paused.value = !paused.value }, isPaused = paused.value) }
         compose.onNodeWithText("00:24").assertIsDisplayed()
-        saveScreenshot("emerge-minimal-active-recording.png")
+        saveScreenshot("pojian-minimal-active-recording.png")
         compose.onNodeWithTag("audio-pause-resume").assertIsEnabled().performClick()
         compose.onNodeWithTag("audio-pause-resume").assertTextContains("继续记录")
         compose.runOnIdle { assertEquals(1, pauseCalls); assertEquals(true, paused.value); assertEquals(0, startCalls); assertEquals(0, downloadCalls) }

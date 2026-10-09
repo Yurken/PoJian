@@ -1,0 +1,33 @@
+[Unit]
+Description=Pojian semantic and visual backend gateway
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=pojian
+Group=pojian
+WorkingDirectory=/opt/pojian-backend/current
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=EMERGE_HOST=127.0.0.1
+Environment=EMERGE_PORT=28763
+Environment=EMERGE_BUDGET_DB=/var/lib/pojian-backend/monitor-budget.sqlite3
+EnvironmentFile=/etc/pojian/backend.env
+ExecStart=/usr/bin/python3 -B /opt/pojian-backend/current/server/monitor_server.py
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=20
+StateDirectory=pojian-backend
+StateDirectoryMode=0700
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

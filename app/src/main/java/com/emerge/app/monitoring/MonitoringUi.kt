@@ -121,7 +121,8 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         MonitorSlider("自动画面采样间隔", config.frameIntervalSeconds, 15..120, "秒") { onChange(config.copy(frameIntervalSeconds = it)) }
         MonitorSlider("每日画面请求上限", config.dailyFrames, 1..100, "次") { onChange(config.copy(dailyFrames = it)) }
         Text("今日共享云端请求 $requestCount 次，其中画面请求 $frameCount 次。单次网关请求可能包含多次模型/检索调用，不是固定费用。", style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = onCloud) { Text("配置语义、视觉与取证网关") }
+        // 网关与模型配置统一在服务端管理台维护，App 不再提供设置入口。
+        // TextButton(onClick = onCloud) { Text("配置语义、视觉与取证网关") }
         TextButton(onClick = onCaptureTools) { Text("采集工具：播放音频、模型与材料导入") }
     }
 }
