@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.emerge.app.BuildConfig
 import java.security.KeyStore
 import java.time.LocalDate
 import javax.crypto.Cipher
@@ -13,16 +14,20 @@ import javax.crypto.spec.GCMParameterSpec
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-data class TextServiceConfig(val enabled: Boolean = false, val endpoint: String = "", val token: String = "",
-    val dailyLimit: Int = 20)
+// 网关与模型统一走服务端管理台；App 内置生产网关地址，令牌在构建时注入（local.properties 的 pojian.serviceToken）。
+data class TextServiceConfig(val enabled: Boolean = false, val endpoint: String = DEFAULT_ENDPOINT, val token: String = "",
+    val dailyLimit: Int = 20) {
+    companion object { const val DEFAULT_ENDPOINT = "https://xiaoyan.net.cn/pojian" }
+}
 
 class AudioAnalysisSettings(context: Context) {
     private val preferences = context.getSharedPreferences("audio_analysis", Context.MODE_PRIVATE)
     private val state = MutableStateFlow(read())
     val config = state.asStateFlow()
     private fun read() = TextServiceConfig(preferences.getBoolean("enabled", false),
-        preferences.getString("endpoint", "").orEmpty(),
-        preferences.getString("token", null)?.let { runCatching { decrypt(it) }.getOrDefault("") }.orEmpty(),
+        preferences.getString("endpoint", null).orEmpty().ifEmpty { TextServiceConfig.DEFAULT_ENDPOINT },
+        preferences.getString("token", null)?.let { runCatching { decrypt(it) }.getOrDefault("") }.orEmpty()
+            .ifEmpty { BuildConfig.POJIAN_SERVICE_TOKEN },
         preferences.getInt("limit", 20).coerceIn(1, 100))
 
     fun save(value: TextServiceConfig, allowLocalHttp: Boolean) {
