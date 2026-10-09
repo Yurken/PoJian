@@ -42,10 +42,13 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val window = ObservationWindow.forPeriod(period, now, zone)
     val audioCount = rawEvents.count { it.sourceType.startsWith("audio_") && window.contains(it) }
-    val browsingCount = (stats.total - audioCount).coerceAtLeast(0)
-    val browsingUnknown = (stats.unknownDurationRecords - audioCount).coerceAtLeast(0)
-    val date = if (period == StatisticsPeriod.DAY) today.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
-        else "${today.minusDays(6).format(DateTimeFormatter.ofPattern("M月d日"))} — ${today.format(DateTimeFormatter.ofPattern("M月d日"))}"
+    val browsingCount = stats.visitCount
+    val browsingUnknown = stats.unknownDurationRecords
+    val date = when (period) {
+        StatisticsPeriod.DAY -> today.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
+        StatisticsPeriod.HOURS24 -> "截至 " + Instant.ofEpochMilli(now).atZone(zone).format(DateTimeFormatter.ofPattern("M/d HH:mm"))
+        StatisticsPeriod.WEEK -> "${today.minusDays(6).format(DateTimeFormatter.ofPattern("M月d日"))} — ${today.format(DateTimeFormatter.ofPattern("M月d日"))}"
+    }
     var selectedHour by rememberSaveable(period) { mutableStateOf<Int?>(null) }
     var detailHour by rememberSaveable(period) { mutableStateOf<Int?>(null) }
     var showSources by rememberSaveable { mutableStateOf(false) }
@@ -57,7 +60,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         item(key = "overview-header") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (period == StatisticsPeriod.DAY) "今日观察" else "七日观察",
+                    Text(when(period) { StatisticsPeriod.DAY -> "今日观察"; StatisticsPeriod.HOURS24 -> "24 小时观察"; StatisticsPeriod.WEEK -> "七日观察" },
                         style = MaterialTheme.typography.titleLarge, color = Ink, modifier = Modifier.weight(1f))
                     MetadataText(date)
                 }
@@ -71,7 +74,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                     Text("管理 ›", color = Accent, style = MaterialTheme.typography.labelMedium)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    CompactFact("${stats.total} 条", "已保存记录", "${stats.appCount} 个来源", Modifier.weight(1f))
+                    CompactFact("${stats.total} 个", "作品接触（估计）", "${stats.visitCount} 次观看 · ${stats.appCount} 个应用", Modifier.weight(1f))
                     val duration = when {
                         browsingCount == 0 -> "—"
                         browsingUnknown == browsingCount -> "未知"
@@ -83,20 +86,22 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                         else -> "根据采集记录估算"
                     }, Modifier.weight(1f))
                 }
+                MetadataText("同作品再次打开只增加观看次数；${stats.unidentifiedWorks} 个作品身份未确认。音频和画面文字不单独计数。")
             }
         }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
         if (!hasReport && stats.total > 0) item(key = "record-distribution") {
             WhiteCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (period == StatisticsPeriod.DAY) "24 小时接触分布" else "最近 7 天接触分布",
+                    Text(if (period == StatisticsPeriod.DAY) "今日小时分布" else "${period.label}接触分布",
                         style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                    MetadataText("按记录数")
+                    MetadataText("按作品估计数")
                 }
                 if (period == StatisticsPeriod.DAY) {
-                    HourlyRecordHeatmap(stats.trend.map { it.count }, hour, { selectedHour = it })
+                    HourlyRecordHeatmapContent(stats.trend.map { it.count }, hour, { selectedHour = it },
+                        countLabel = "数字为作品估计数") { h, count -> "${h}时，${count}个作品（估计），点击选择时段" }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        MetadataText("${hour.toString().padStart(2, '0')}:00 · ${stats.trend.getOrNull(hour)?.count ?: 0} 条",
+                        MetadataText("${hour.toString().padStart(2, '0')}:00 · ${stats.trend.getOrNull(hour)?.count ?: 0} 个作品",
                             Modifier.weight(1f))
                         TextButton(onClick = { detailHour = hour }, modifier = Modifier.testTag("overview-open-hour")) {
                             Text("回看原文 ›")
@@ -107,15 +112,15 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                     stats.trend.forEach { bucket ->
                         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            MetadataText(bucket.label, Modifier.width(44.dp))
+                            MetadataText(bucket.label, Modifier.width(if (period == StatisticsPeriod.HOURS24) 90.dp else 44.dp))
                             LinearProgressIndicator(progress = { bucket.count.toFloat() / maximum },
                                 modifier = Modifier.weight(1f).height(6.dp), color = Accent,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant)
-                            MetadataText("${bucket.count} 条")
+                            MetadataText("${bucket.count} 个")
                         }
                     }
                 }
-                ExpandableNote("记录分布说明", "颜色深浅只表示这个时段保留的记录数量，不能代表阅读投入。跨时段的记录会在每个覆盖时段出现，各时段数量不能相加作为总条数。空白不代表没有浏览。")
+                ExpandableNote("作品统计说明", "标题和作者相同的作品按同一身份归并；无法确认身份时按一次连续观看估计。各时段内作品去重，跨时段会再次出现，数量不能直接相加。时长按时间窗口切分；过去24小时首尾小时只包含窗口内部分。空白不代表没有浏览。")
             }
         }
         if (rawEvents.isEmpty()) item(key = "start-guide") {
@@ -131,26 +136,26 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         if (stats.total > 0) item(key = "source-distribution") {
             WhiteCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("记录来源", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text("各平台作品与时长", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = { showSources = !showSources }) { Text(if (showSources) "收起 −" else "${stats.appCount} 个来源 ＋") }
                 }
-                if (showSources) {
-                    val shares = if (stats.apps.size <= 6) stats.apps else stats.apps.take(5) +
-                        AppShare("__other__", stats.apps.drop(5).sumOf { it.count })
+                run {
+                    val shares = if (showSources) stats.apps else stats.apps.take(5)
                     shares.forEach { share ->
                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(if (share.packageName == "__other__") "其他应用" else appNames[share.packageName] ?: share.packageName,
                                     modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                MetadataText("${share.count} 条 · ${String.format(Locale.CHINA, "%.0f%%", share.count * 100.0 / stats.total)}")
+                                MetadataText("${share.count} 个作品")
                             }
+                            MetadataText("${share.visitCount} 次观看 · 停留约 ${formatDuration(share.durationMillis)} · ${share.unidentifiedWorks} 个身份未确认")
                             LinearProgressIndicator(progress = { share.count.toFloat() / stats.total },
                                 modifier = Modifier.fillMaxWidth().height(5.dp), color = Accent,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant)
                         }
                     }
-                    MetadataText(if (audioCount > 0) "含 $audioCount 条音频转写，不计入停留。来源数量不等于独立信息源数量。"
+                    MetadataText(if (audioCount > 0) "$audioCount 条音频转写不计入作品数和停留。应用数量不等于独立信息源数量。"
                         else "应用数量不等于独立信息源数量。")
                 }
                 TextButton(onClick = onRecords, modifier = Modifier.align(Alignment.End)) { Text("管理本地记录 ›") }

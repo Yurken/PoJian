@@ -18,6 +18,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
         if (audio.trimsAudio()) audio.invalidateAllAnalyses()
         audio.invalidateTrimmedSessions()
         dao.trim()
+        dao.trimWorks()
         id
     }
     suspend fun updateSession(event: BrowseEvent): Long? = database.withTransaction {
@@ -31,13 +32,15 @@ class BrowseRepository(private val database: BrowseDatabase) {
         event: BrowseEvent,
         continuing: Boolean,
         generation: Long,
+        work: ObservedWork? = null,
+        sampleText: String? = null,
         permitted: () -> Boolean
     ): Long? = captureMutex.withLock {
         fun current() = deletionGeneration.get() == generation && permitted()
         if (!current()) return@withLock null
         val id = database.withTransaction {
             if (!current()) return@withTransaction null
-            if (continuing) {
+            val savedId = if (continuing) {
                 // Updates are deliberately never upserts: a deleted session stays deleted.
                 event.id.takeIf { dao.update(event) > 0 }
             } else {
@@ -50,6 +53,17 @@ class BrowseRepository(private val database: BrowseDatabase) {
                     null
                 }
             }
+            if (savedId != null) {
+                work?.let { dao.insertWork(it) }
+                if (sampleText != null && dao.lastSampleText(savedId) != sampleText) {
+                    dao.insertSample(BrowseSample(visitId = savedId,
+                        capturedAt = event.endTimestamp, eventType = event.eventType, visibleText = sampleText))
+                    dao.trimSamples(savedId)
+                    dao.trimAllSamples()
+                }
+            }
+            dao.trimWorks()
+            savedId
         }
         // Settings/deletion may change while Room resumes the transaction result.
         if (id != null && !current()) {
@@ -64,6 +78,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
             audio.invalidateAllAnalyses()
             audio.invalidateForEvent(id)
             dao.deleteEvent(id)
+            dao.trimWorks()
         } }
     }
 
@@ -73,6 +88,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
             audio.invalidateAllAnalyses()
             audio.deletePackage(packageName)
             dao.deletePackage(packageName)
+            dao.trimWorks()
         } }
     }
 
@@ -81,6 +97,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
         captureMutex.withLock { database.withTransaction {
             audio.clear()
             dao.clear()
+            dao.trimWorks()
         } }
     }
 }

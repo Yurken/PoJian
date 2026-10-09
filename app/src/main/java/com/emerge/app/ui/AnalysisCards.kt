@@ -91,7 +91,7 @@ internal fun AnalysisCards(
         } else {
             WhiteCard {
                 SectionTitle("24 小时信息回顾",
-                    if (period == StatisticsPeriod.WEEK) "最近 7 天按小时合计" else "今天 00:00—24:00")
+                    if (period == StatisticsPeriod.WEEK) "最近 7 天按小时合计" else if (period == StatisticsPeriod.HOURS24) "过去24小时按钟点合计" else "今天 00:00—24:00")
                 HourlyRecordHeatmapContent(
                     counts = List(24) { hour -> report.hourlyReviews.firstOrNull { it.hour == hour }?.recordCount ?: 0 },
                     selectedHour = selectedHour,
@@ -303,7 +303,7 @@ internal fun AnalysisCards(
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             SheetHeading(hourRange(value),
-                                if (period == StatisticsPeriod.WEEK) "最近 7 天同一小时合计" else "今天该时段") {
+                                if (period == StatisticsPeriod.WEEK) "最近 7 天同一小时合计" else if (period == StatisticsPeriod.HOURS24) "过去24小时该钟点合计" else "今天该时段") {
                                 detailHour = null
                             }
                             Text("${review?.recordCount ?: 0} 条有效记录 · ${hourDuration(review)}",

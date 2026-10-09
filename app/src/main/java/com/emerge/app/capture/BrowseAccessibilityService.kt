@@ -126,7 +126,8 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 return
             }
             // Check the active package before traversing any visible text or descriptions.
-            val text = extractText(root)
+            val identityNodes = mutableListOf<IdentityNode>()
+            val text = extractText(root, identityNodes)
             app.captureDiagnostics.update { it.copy(lastCheck = now, lastPackage = activePackage) }
             if (text.isBlank()) {
                 sessions.reset()
@@ -135,8 +136,10 @@ open class BrowseAccessibilityService : AccessibilityService() {
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) { sessions.reset(); return }
             val elapsed = android.os.SystemClock.elapsedRealtime()
-            val sample = sessions.sample(activePackage, text, now, elapsed, type)
-            val id = app.repository.saveCapture(sample.event, sample.continuing, generation) {
+            val sample = sessions.sample(activePackage, text, now, elapsed, type,
+                WorkIdentityExtractor.extract(activePackage, text, identityNodes))
+            val id = app.repository.saveCapture(sample.event, sample.continuing, generation,
+                work = sample.work, sampleText = sample.rawText) {
                 app.captureSettings.isPermissionCurrent(activePackage, permission) && sessions.isCurrent(sample)
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) {
@@ -164,7 +167,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
         name.startsWith("com.android.inputmethod") || name.contains("keyboard", ignoreCase = true)
 
     @Suppress("DEPRECATION")
-    private fun extractText(root: AccessibilityNodeInfo): String {
+    private fun extractText(root: AccessibilityNodeInfo, identityNodes: MutableList<IdentityNode>): String {
         val lines = linkedSetOf<String>()
         var nodes = 0
         var length = 0
@@ -175,6 +178,9 @@ open class BrowseAccessibilityService : AccessibilityService() {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             if (node.isVisibleToUser && Rect.intersects(bounds, screen)) {
+                node.text?.toString()?.trim()?.take(500)?.takeIf { it.isNotBlank() }?.let {
+                    identityNodes += IdentityNode(node.viewIdResourceName.orEmpty(), it)
+                }
                 listOf(node.text, node.contentDescription).forEach { raw ->
                     val line = raw?.toString()?.trim()?.take(2000)
                     if (!line.isNullOrBlank() && lines.add(line)) length += line.length

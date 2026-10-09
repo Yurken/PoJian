@@ -21,13 +21,15 @@ class SessionMigrationTest {
                 db.version = 1
             }
             val room = Room.databaseBuilder(context, BrowseDatabase::class.java, name)
-                .addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3).build()
+                .addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4).build()
                 try {
                     room.openHelper.writableDatabase.query("SELECT * FROM browse_events WHERE id=7").use { row ->
                         assertTrue(row.moveToFirst())
                         assertEquals("legacy preserved", row.getString(row.getColumnIndexOrThrow("visibleText")))
                         assertEquals(0, row.getInt(row.getColumnIndexOrThrow("sampleCount")))
                         assertEquals(0L, row.getLong(row.getColumnIndexOrThrow("durationMillis")))
+                        assertTrue(row.isNull(row.getColumnIndexOrThrow("workKey")))
+                        assertEquals("unknown", row.getString(row.getColumnIndexOrThrow("identityMethod")))
                     }
                 } finally { room.close() }
         } finally { context.deleteDatabase(name) }

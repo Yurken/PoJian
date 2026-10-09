@@ -42,7 +42,8 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val hourlyReviews: List<HourlyReview> = emptyList(), val coverageSessions: Int = 0,
     val observedDurationMillis: Long = 0, val unknownDurationRecords: Int = 0,
     val topicExposure: List<TopicExposure> = emptyList(), val contentSignals: List<ContentSignal> = emptyList(),
-    val comparisonStart: Long? = null, val comparisonRecords: Int = 0)
+    val comparisonStart: Long? = null, val comparisonRecords: Int = 0,
+    val workStatistics: com.emerge.app.ui.BrowseStatistics? = null)
 
 class CognitiveAnalyzer {
     private companion object {
@@ -234,7 +235,8 @@ class CognitiveAnalyzer {
             purpose, hours.toList(), zone.id, hourlyReviews = reviews, coverageSessions = usableEvents.size,
             observedDurationMillis = usableEvents.sumOf { window.durationMillis(it) ?: 0 },
             unknownDurationRecords = usableEvents.count { !window.durationKnown(it) }, topicExposure = exposures,
-            contentSignals = signals, comparisonStart = prior.firstOrNull()?.timestamp, comparisonRecords = prior.size)
+            contentSignals = signals, comparisonStart = prior.firstOrNull()?.timestamp, comparisonRecords = prior.size,
+            workStatistics = com.emerge.app.ui.calculateStatistics(events, period, now, zone))
     }
 
     private fun clean(event: BrowseEvent): List<String> {

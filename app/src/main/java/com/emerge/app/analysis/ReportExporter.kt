@@ -18,16 +18,21 @@ object ReportExporter {
         appendLine("看见信息边界，拓宽判断依据。")
         appendLine("生成时间：${time(report.generatedAt)}（${report.zone}）")
         appendLine("统计范围：${time(report.start)} 至 ${time(report.end)}（${report.period}）")
-        appendLine("“今天”从当天 00:00 开始，“最近 7 天”从六天前 00:00 开始；今天还没到的时段显示为零。")
+        appendLine("“今天”从当天 00:00 开始，“过去24小时”为生成时刻向前24小时，“最近 7 天”从六天前 00:00 开始。")
         appendLine("分析方法：${report.method}")
         appendLine("浏览目的：${report.purpose}")
         appendLine()
         appendLine("## 1. 覆盖范围与数据质量")
+        report.workStatistics?.let { stats ->
+            appendLine("作品接触（估计）：${stats.total} 个；观看 ${stats.visitCount} 次；预计停留 ${duration(stats.observedDurationMillis)}。${stats.unidentifiedWorks} 个作品身份未确认。")
+            stats.apps.forEach { app -> appendLine("平台 ${app.packageName}：${app.count} 个作品，${app.visitCount} 次观看，停留 ${duration(app.durationMillis)}；${app.unidentifiedWorks} 个身份未确认，${app.unknownDurationRecords} 次时长未知。") }
+            appendLine("作品身份按平台提供的标识或作者与标题估计，无法确认时按连续观看计数。再次打开已识别作品增加观看次数，音频片段和视觉文字不单独计为作品。下文的分析记录数和观点数不是作品数。")
+        }
         appendLine("范围内共 ${report.rawRecords} 条原始记录；合并内容相同的连续记录 ${report.mergedSnapshots} 条；跳过桌面和无正文的记录 ${report.skippedRecords} 条；保留有效记录 ${report.usableSnapshots} 条。跨越范围边界的记录按重叠部分计入。")
         appendLine("有效记录共 ${report.coverageSessions} 条；范围内预计停留合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条未统计时长。显示为零只表示还没采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")
         appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒视为一段浏览结束。每条记录只算一次，按与统计范围、日期和小时的交叠分摊。它不等于实际阅读、理解或看视频的时间；旧版本记录不补算时长，音频转写未统计观看时长，媒体长度不计入浏览停留。")
-        appendLine("数据来自本机保留的最近 5000 条记录，覆盖可见页面文字与已保存的音频转写；不包括视频画面、未转写的音频、获取不到的页面文字和已删除的历史。显示为零可能是没采集、没权限或页面限制，不代表没有浏览。")
+        appendLine("数据来自本机保留的最近 5000 条记录，覆盖可见页面文字、已保存的音频转写及视觉模型提取文字；不包括完整视频画面、未转写的音频、获取不到的页面文字和已删除的历史。视觉提取文字可能有误。显示为零可能是没采集、没权限或页面限制，不代表没有浏览。")
         appendLine("范围之前还保留 ${report.comparisonRecords} 条历史记录${report.comparisonStart?.let { "，最早一条是 ${time(it)}" } ?: ""}；对比只使用这些记录，并按浏览发生的先后顺序进行。“首次出现”只是没有匹配到可比的历史，不代表你从没看过这类内容。")
         appendLine()
         appendLine("## 2. 主题分布与观点")
@@ -105,7 +110,7 @@ object ReportExporter {
         appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。相似观点的判定阈值为 0.65，依据重复的阈值为 0.85；数字不同会保留为新增片段；讨论对象或时间、地区、人群条件不同的内容单独保留，出处不明的内容不参与新旧对比。每次最多对比最近 120 个同主题观点，这些阈值还没有经过标注数据验证。")
         appendLine("同一记录出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")
         appendLine("这份回顾使用本地文字规则，没有使用多模态模型、语义编码、交叉验证、时序分析、阅读投入估计或可信执行环境等研究方法，规则匹配的结果不能替代它们。音频由本地语音模型转写后才进入文字分析。")
-        appendLine("这份回顾在本机生成。语音转写在本机完成；只有主动配置并使用云端文字分析时，当前转写与少量相关历史文字才会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
+        appendLine("这份回顾在本机生成。语音转写在本机完成；配置云端并启用相应分析、实时核查或关键画面开关后，必要文字或采样画面会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
     }
 
     fun writePdf(report: CognitiveReport, output: OutputStream) {

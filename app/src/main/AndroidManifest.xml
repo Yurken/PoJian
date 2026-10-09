@@ -12,8 +12,8 @@
         </intent>
     </queries>
     <application android:name=".EmergeApplication" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher" android:label="@string/app_name" android:supportsRtl="true" android:theme="@style/Theme.Emerge">
-        <service android:name=".audio.ProjectionAudioService" android:exported="false" android:foregroundServiceType="mediaProjection" />
-        <activity android:name=".MainActivity" android:exported="true" />
+        <service android:name="com.emerge.app.audio.ProjectionAudioService" android:exported="false" android:foregroundServiceType="mediaProjection" />
+        <activity android:name="com.emerge.app.MainActivity" android:exported="true" />
         <!-- Preserve installed launcher shortcuts while moving source code to Emerge. -->
         <activity-alias android:name="com.zhiheng.app.MainActivity" android:targetActivity=".MainActivity" android:exported="true" android:label="@string/app_name">
             <intent-filter>

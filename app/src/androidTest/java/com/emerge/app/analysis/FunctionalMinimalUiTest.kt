@@ -63,7 +63,7 @@ class FunctionalMinimalUiTest {
             onRecords = {}, onSettings = {}, analysis = AnalysisState(), rawEvents = records,
             onAnalyze = { analysisCalls++ }, now = now) }
         compose.onNodeWithTag("hour-0").performScrollTo().assertIsDisplayed()
-            .assertContentDescriptionEquals("0时，1条保存记录，点击选择时段").performClick()
+            .assertContentDescriptionEquals("0时，1个作品（估计），点击选择时段").performClick()
         compose.onNodeWithTag("overview-open-hour").performScrollTo().performClick()
         compose.onNodeWithTag("overview-hour-records").assertIsDisplayed()
         compose.onNode(hasText("00:00—01:00") and hasAnyAncestor(hasTestTag("overview-hour-records"))).assertIsDisplayed()

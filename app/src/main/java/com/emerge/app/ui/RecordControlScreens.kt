@@ -38,6 +38,9 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
     var query by rememberSaveable { mutableStateOf("") }
     var selectedPackage by rememberSaveable { mutableStateOf<String?>(null) }
     var showAppFilter by rememberSaveable { mutableStateOf(false) }
+    var expandedPackages by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val sequence = remember(events) { events.sortedWith(compareBy<BrowseEvent> { it.timestamp }.thenBy { it.id })
+        .mapIndexed { index, event -> event.id to index + 1 }.toMap() }
     val packageCounts = remember(events) { events.groupingBy { it.packageName }.eachCount() }
     val packages = remember(packageCounts, appNames) {
         packageCounts.keys.sortedBy { appNames[it] ?: it }
@@ -53,10 +56,9 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
     }
     val zone = ZoneId.systemDefault()
     val grouped = remember(filtered, zone) {
-        filtered.groupBy { Instant.ofEpochMilli(it.timestamp).atZone(zone).toLocalDate() }
+        filtered.groupBy { it.packageName }
     }
-    val dateFormat = remember { DateTimeFormatter.ofPattern("yyyy年M月d日 · EEEE", Locale.CHINA) }
-    val timeFormat = remember { DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA) }
+    val timeFormat = remember { DateTimeFormatter.ofPattern("MM/dd HH:mm:ss", Locale.CHINA) }
     val hasFilter = query.isNotBlank() || selectedPackage != null
     LazyColumn(modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp)) {
@@ -93,21 +95,26 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                 }
             }
         }
-        grouped.forEach { (date, records) ->
-            item(key = "date-$date") {
+        grouped.forEach { (packageName, records) ->
+            item(key = "app-$packageName") {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(dateFormat.format(date), color = Ink, style = MaterialTheme.typography.titleSmall,
+                    Text(appNames[packageName] ?: packageName, color = Ink, style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f))
                     MetadataText("${records.size} 条")
+                    TextButton(onClick = {
+                        expandedPackages = if (packageName in expandedPackages) expandedPackages - packageName else expandedPackages + packageName
+                    }, modifier = Modifier.testTag("record-group-$packageName")) {
+                        Text(if (packageName in expandedPackages) "收起 −" else "展开 ＋")
+                    }
                 }
             }
-            items(records, key = { "event-${it.id}" }) { event ->
+            if (packageName in expandedPackages || hasFilter) items(records, key = { "event-${it.id}" }) { event ->
                 var expanded by rememberSaveable(event.id) { mutableStateOf(false) }
                 val fromAudio = event.sourceType.startsWith("audio_")
                 WhiteCard(Modifier.padding(bottom = 12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(appNames[event.packageName] ?: event.packageName, color = Ink,
+                        Text("#${sequence[event.id]} · ${appNames[event.packageName] ?: event.packageName}", color = Ink,
                             style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f),
                             maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(timeFormat.format(Instant.ofEpochMilli(event.timestamp).atZone(zone)),
@@ -118,7 +125,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                             MetadataText("音频转写")
                             MetadataText("媒体偏移 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
                         }
-                    } else MetadataText(if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)}"
+                    } else MetadataText(if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品身份待确认"}"
                         else "未统计时长")
                     if (expanded) {
                         QuoteBlock(event.visibleText)

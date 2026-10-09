@@ -127,7 +127,7 @@ class AudioPersistenceTest {
                 db.version = 2
             }
             val migrated = Room.databaseBuilder(context, BrowseDatabase::class.java, name)
-                .addMigrations(BrowseDatabase.MIGRATION_2_3).build()
+                .addMigrations(BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4).build()
             try {
                 val old = BrowseRepository(migrated).allEvents.first().single()
                 assertEquals(7L, old.id)

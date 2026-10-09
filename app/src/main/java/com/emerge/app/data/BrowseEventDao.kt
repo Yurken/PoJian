@@ -5,6 +5,16 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BrowseEventDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertWork(work: ObservedWork)
+    @Insert suspend fun insertSample(sample: BrowseSample)
+    @Query("SELECT visibleText FROM browse_samples WHERE visitId = :visitId ORDER BY id DESC LIMIT 1")
+    suspend fun lastSampleText(visitId: Long): String?
+    @Query("DELETE FROM browse_samples WHERE visitId = :visitId AND id NOT IN (SELECT id FROM browse_samples WHERE visitId = :visitId ORDER BY id DESC LIMIT 120)")
+    suspend fun trimSamples(visitId: Long)
+    @Query("DELETE FROM browse_samples WHERE id NOT IN (SELECT id FROM browse_samples ORDER BY capturedAt DESC, id DESC LIMIT 5000)")
+    suspend fun trimAllSamples()
+    @Query("DELETE FROM observed_works WHERE workKey NOT IN (SELECT workKey FROM browse_events WHERE workKey IS NOT NULL)")
+    suspend fun trimWorks()
     @Query("SELECT * FROM browse_events ORDER BY timestamp DESC, id DESC")
     fun observeAll(): Flow<List<BrowseEvent>>
     @Query("SELECT * FROM browse_events ORDER BY timestamp DESC, id DESC LIMIT 200")

@@ -3,9 +3,19 @@ package com.emerge.app.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class], version = 3, exportSchema = true)
+@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class], version = 4, exportSchema = true)
 abstract class BrowseDatabase : RoomDatabase() {
     companion object {
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE browse_events ADD COLUMN workKey TEXT DEFAULT NULL")
+                db.execSQL("ALTER TABLE browse_events ADD COLUMN identityMethod TEXT NOT NULL DEFAULT 'unknown'")
+                db.execSQL("CREATE TABLE IF NOT EXISTS observed_works (workKey TEXT NOT NULL PRIMARY KEY, packageName TEXT NOT NULL, title TEXT NOT NULL, author TEXT NOT NULL, identityMethod TEXT NOT NULL, firstSeenAt INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS browse_samples (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, visitId INTEGER NOT NULL, capturedAt INTEGER NOT NULL, eventType INTEGER NOT NULL, visibleText TEXT NOT NULL, FOREIGN KEY(visitId) REFERENCES browse_events(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_browse_samples_visitId ON browse_samples(visitId)")
+                // Keep legacy identity unknown rather than inventing post IDs or duration.
+            }
+        }
         val MIGRATION_1_2 = object : androidx.room.migration.Migration(1, 2) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE browse_events ADD COLUMN endTimestamp INTEGER NOT NULL DEFAULT 0")

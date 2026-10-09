@@ -14,6 +14,7 @@ class ObservationWindow(val start: Long, val end: Long, val zone: ZoneId) {
     companion object {
         fun forPeriod(period: StatisticsPeriod, now: Long, zone: ZoneId): ObservationWindow {
             val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+            if (period == StatisticsPeriod.HOURS24) return ObservationWindow(now - 86_400_000L, now, zone)
             val firstDay = if (period == StatisticsPeriod.DAY) today else today.minusDays(6)
             return ObservationWindow(firstDay.atStartOfDay(zone).toInstant().toEpochMilli(), now, zone)
         }

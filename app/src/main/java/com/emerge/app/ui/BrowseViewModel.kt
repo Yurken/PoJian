@@ -45,6 +45,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     private var period = StatisticsPeriod.DAY
     private var reportDay = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate()
     private var reportZone = ZoneId.systemDefault().id
+    private var reportMinute = 0L
     private var generation = 0L
     private var analysisJob: Job? = null
     private var pendingAnalysis = false
@@ -106,7 +107,9 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     fun refreshReportWindow(now: Long) {
         val zone = ZoneId.systemDefault()
         val day = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-        if (day != reportDay || zone.id != reportZone) {
+        val minute = now / 60_000
+        if (day != reportDay || zone.id != reportZone || (period == StatisticsPeriod.HOURS24 && minute != reportMinute)) {
+            reportMinute = minute
             reportDay = day
             reportZone = zone.id
             invalidate("日期已切换，正在重新整理")

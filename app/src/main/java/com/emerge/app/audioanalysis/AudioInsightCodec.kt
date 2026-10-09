@@ -11,6 +11,7 @@ object AudioInsightCodec {
             put("claim", claim.claim); put("evidence", claim.evidence); put("segmentId", claim.segmentId)
             put("relation", claim.relation); put("novelty", claim.novelty)
             put("historySegmentId", claim.historySegmentId); put("historyQuote", claim.historyQuote)
+            put("comparedSegmentId", claim.comparedSegmentId); put("comparedQuote", claim.comparedQuote)
         }) } })
     }.toString()
 
@@ -22,7 +23,9 @@ object AudioInsightCodec {
             AudioClaimInsight(row.getString("claim"), row.getString("evidence"), row.getLong("segmentId"),
                 row.getString("relation"), row.getString("novelty"),
                 if (row.isNull("historySegmentId")) null else row.getLong("historySegmentId"),
-                if (row.isNull("historyQuote")) null else row.getString("historyQuote"))
+                if (row.isNull("historyQuote")) null else row.getString("historyQuote"),
+                if (row.isNull("comparedSegmentId")) null else row.getLong("comparedSegmentId"),
+                if (row.isNull("comparedQuote")) null else row.getString("comparedQuote"))
         }, json.getLong("generatedAt"), if (json.isNull("usage")) null else json.getString("usage"))
     }.getOrNull() }
 }

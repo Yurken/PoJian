@@ -135,6 +135,12 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         if (state.currentPackage.isBlank() || !app.captureSettings.enabled.value || !monitor.config.value.visual || shotPending) return
         if (!manual && System.currentTimeMillis() - state.contextSince < 800) return
         if (Build.VERSION.SDK_INT < 30) { monitor.notice("Android 10 当前仅支持文字与播放音频；关键画面需要 Android 11+"); return }
+        screenshotSupported(manual)
+    }
+
+    @androidx.annotation.RequiresApi(30)
+    private fun screenshotSupported(manual: Boolean) {
+        val state = monitor.state.value
         if (!app.audioCoordinator.settings.config.value.enabled) { monitor.notice("请先配置并启用支持视觉模型的云端网关"); return }
         val permission = app.captureSettings.permissionToken(state.currentPackage) ?: return
         val capturedWindow = windowId
@@ -168,7 +174,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                             !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
                         val jpeg = withContext(Dispatchers.Default) {
                             val area = if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else
-                                Rect(capturedBounds).apply { intersect(0, 0, bitmap.width, bitmap.height) }
+                                Rect(capturedBounds).apply { require(intersect(0, 0, bitmap.width, bitmap.height)) }
                             require(area.width() > 0 && area.height() > 0)
                             val crop = Bitmap.createBitmap(bitmap, area.left, area.top, area.width(), area.height())
                             val scale = minOf(1f, 960f / maxOf(crop.width, crop.height))

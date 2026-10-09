@@ -51,7 +51,7 @@ class ProjectionAudioService : Service() {
                 if (id == null || packageName == null || sessionId != null) { stopSelf(startId); return START_NOT_STICKY }
                 sessionId = id
                 try {
-                    startForeground(NOTIFICATION, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+                    startProjectionForeground()
                     val data = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java) else {
                         @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
                     } ?: error("缺少系统的声音记录授权，请重新开始")
@@ -69,6 +69,20 @@ class ProjectionAudioService : Service() {
             else -> stopSelf(startId)
         }
         return START_NOT_STICKY
+    }
+
+    // AGP 8.5.2 reports ForegroundServiceType despite the declaration in the merged
+    // manifest. Keep the exception local, verify the installed declaration at runtime,
+    // and cover it with BrandCompatibilityTest.audioUsesExplicitCapturePermissions....
+    @android.annotation.SuppressLint("ForegroundServiceType")
+    private fun startProjectionForeground() {
+        val declared = packageManager.getServiceInfo(
+            android.content.ComponentName(this, ProjectionAudioService::class.java), 0).foregroundServiceType
+        check(declared and ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION != 0) {
+            "声音采集服务缺少 mediaProjection 类型声明"
+        }
+        androidx.core.app.ServiceCompat.startForeground(this, NOTIFICATION, notification(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
     }
 
     private fun updateNotification() {

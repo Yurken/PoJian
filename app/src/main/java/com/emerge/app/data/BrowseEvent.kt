@@ -20,5 +20,7 @@ data class BrowseEvent(
     @ColumnInfo(defaultValue = "'accessibility'") val sourceType: String = "accessibility",
     @ColumnInfo(defaultValue = "NULL") val audioSessionId: String? = null,
     @ColumnInfo(defaultValue = "0") val mediaStartMillis: Long = 0,
-    @ColumnInfo(defaultValue = "0") val mediaEndMillis: Long = 0
+    @ColumnInfo(defaultValue = "0") val mediaEndMillis: Long = 0,
+    @ColumnInfo(defaultValue = "NULL") val workKey: String? = null,
+    @ColumnInfo(defaultValue = "'unknown'") val identityMethod: String = "unknown"
 )

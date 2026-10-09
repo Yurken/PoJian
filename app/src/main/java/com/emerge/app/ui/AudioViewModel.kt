@@ -39,12 +39,12 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                 }, session.errorMessage, report?.method, report?.summary,
                 report?.claims.orEmpty().map { claim ->
                     val source = transcriptById[claim.segmentId]
-                    val previous = claim.historySegmentId?.let(transcriptById::get)
+                    val previous = (claim.historySegmentId ?: claim.comparedSegmentId)?.let(transcriptById::get)
                     val previousSession = previous?.sessionId?.let(sessionById::get)
                     AudioClaimUi(claim.claim, claim.evidence, claim.relation, claim.novelty,
-                        claim.historyQuote?.let { quote ->
+                        (claim.historyQuote ?: claim.comparedQuote)?.let { quote ->
                             val time = previous?.offsetStartMillis?.div(1000)?.let { "%02d:%02d".format(it / 60, it % 60) }.orEmpty()
-                            "历史原文 · ${previousSession?.title ?: "先前片段"} $time\n$quote"
+                            "${if (claim.historyQuote != null) "重复依据原文" else "对照的历史材料（并非重复匹配）"} · ${previousSession?.title ?: "先前片段"} $time\n$quote"
                         }, source?.offsetStartMillis, source?.offsetEndMillis)
                 }, session.id in analyzing)
         }

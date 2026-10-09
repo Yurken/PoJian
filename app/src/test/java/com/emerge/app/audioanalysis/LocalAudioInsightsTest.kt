@@ -62,7 +62,10 @@ class LocalAudioInsightsTest {
 
         val claim = report.claims.single()
         assertEquals(Increment.NEW.label, claim.novelty)
-        assertEquals(previous.id, claim.historySegmentId)
+        assertNull(claim.historySegmentId)
+        assertNull(claim.historyQuote)
+        assertEquals(previous.id, claim.comparedSegmentId)
+        assertTrue(previous.text.contains(claim.comparedQuote!!))
         assertTrue(current.text.contains(claim.evidence))
         assertTrue(claim.evidence.contains("40%"))
         assertFalse(claim.evidence.contains("20%"))

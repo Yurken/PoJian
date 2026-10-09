@@ -41,7 +41,7 @@ class BrowseStatisticsTest {
         val stats = calculateStatistics(events, StatisticsPeriod.DAY, now, zone)
         assertEquals(250, stats.total)
         assertEquals(2, stats.appCount)
-        assertEquals(AppShare("browser", 210, unknownDurationRecords = 210), stats.apps.first())
+        assertEquals(AppShare("browser", 210, unknownDurationRecords = 210, unidentifiedWorks = 210), stats.apps.first())
         assertEquals(250, stats.apps.sumOf { it.count })
         assertEquals(250, stats.unknownDurationRecords)
         assertEquals(750L, stats.textCharacters)
@@ -81,5 +81,47 @@ class BrowseStatisticsTest {
         assertEquals(1, stats.unknownDurationRecords)
         assertEquals(1000L, stats.observedDurationMillis)
         assertEquals(1000L, stats.trend.sumOf { it.durationMillis })
+    }
+
+    @Test fun revisitsCountOneWorkButSumBothMeasuredVisits() {
+        val first = event(now - 20_000).copy(id = 1, workKey = "same", identityMethod = "author_title",
+            sampleCount = 2, endTimestamp = now - 18_000, durationMillis = 2000)
+        val second = first.copy(id = 2, timestamp = now - 5000, endTimestamp = now, durationMillis = 5000)
+        val stats = calculateStatistics(listOf(first, second), StatisticsPeriod.DAY, now, zone)
+        assertEquals(1, stats.total)
+        assertEquals(2, stats.visitCount)
+        assertEquals(7000L, stats.observedDurationMillis)
+        assertEquals(1, stats.apps.single().count)
+        assertEquals(2, stats.apps.single().visitCount)
+        assertEquals(0, stats.unidentifiedWorks)
+    }
+
+    @Test fun transcriptsAndVisualTranscriptionsCannotManufactureWatchedWorks() {
+        val text = event(now).copy(id = 1, workKey = "one")
+        val stats = calculateStatistics(listOf(text, text.copy(id = 2, sourceType = "audio_playback"),
+            text.copy(id = 3, sourceType = "visual_model")), StatisticsPeriod.DAY, now, zone)
+        assertEquals(1, stats.total)
+        assertEquals(1, stats.visitCount)
+    }
+
+    @Test fun rolling24HoursCrossesMidnightAndClipsTheFirstVisit() {
+        val start = now - 86_400_000L
+        val crossing = event(start - 1000).copy(id = 1, sampleCount = 3,
+            endTimestamp = start + 1000, durationMillis = 2000)
+        val stats = calculateStatistics(listOf(crossing, event(start - 1).copy(id = 2),
+            event(now).copy(id = 3), event(now + 1).copy(id = 4)), StatisticsPeriod.HOURS24, now, zone)
+        assertEquals(2, stats.total)
+        assertEquals(1000L, stats.observedDurationMillis)
+        assertEquals(1000L, stats.apps.sumOf { it.durationMillis })
+        assertEquals(1000L, stats.trend.sumOf { it.durationMillis })
+        assertEquals("10/6 20:00", stats.trend.first().label)
+        assertEquals("10/7 20:00", stats.trend.last().label)
+    }
+
+    @Test fun sameKeyOnDifferentAppsIsNotOneWork() {
+        val stats = calculateStatistics(listOf(event(now, "a").copy(workKey = "same"),
+            event(now, "b").copy(workKey = "same")), StatisticsPeriod.DAY, now, zone)
+        assertEquals(2, stats.total)
+        assertEquals(2, stats.apps.sumOf { it.count })
     }
 }

@@ -11,7 +11,7 @@ data class TranscriptEvidence(val id: Long, val sessionId: String, val text: Str
     val timestamp: Long, val startMillis: Long, val endMillis: Long)
 data class AudioClaimInsight(val claim: String, val evidence: String, val segmentId: Long,
     val relation: String, val novelty: String, val historySegmentId: Long? = null,
-    val historyQuote: String? = null)
+    val historyQuote: String? = null, val comparedSegmentId: Long? = null, val comparedQuote: String? = null)
 data class AudioInsightReport(val summary: String, val method: String, val claims: List<AudioClaimInsight>,
     val generatedAt: Long = System.currentTimeMillis(), val usage: String? = null)
 
@@ -39,9 +39,20 @@ object LocalAudioInsights {
             val historicalMatch = fragment?.historyMatches?.firstOrNull { match ->
                 lookup[match.eventId]?.let { it.timestamp < segment.timestamp && it.text.contains(match.quote) } == true
             }
+            // New evidence has no identical historical match. Show the actual earlier evidence
+            // being compared, without claiming that the new fragment was already present.
+            val comparison = historicalMatch ?: claim.previousEventId?.let { id ->
+                lookup[id]?.takeIf { it.timestamp < segment.timestamp }?.let { prior ->
+                    report.claims.firstOrNull { it.eventId == id }?.evidenceDetails
+                        ?.firstOrNull { prior.text.contains(it.text) }
+                        ?.let { com.emerge.app.analysis.EvidenceHistoryMatch(id, it.text) }
+                        ?: com.emerge.app.analysis.EvidenceHistoryMatch(id, prior.text)
+                }
+            }
             AudioClaimInsight(claim.quote, evidence, claim.eventId,
                 if (claim.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表你的看法",
-                claim.increment.label, historicalMatch?.eventId, historicalMatch?.quote)
+                claim.increment.label, historicalMatch?.eventId, historicalMatch?.quote,
+                comparison?.eventId, comparison?.quote)
         }
         val summary = if (claims.isEmpty()) "没有识别到明确的观点。可以核对转写内容，或开启云端文字服务做进一步分析。"
             else "识别出 ${claims.size} 个观点，其中 ${claims.count { it.novelty == Increment.NEW.label }} 个依据有新增，${claims.count { it.novelty == Increment.REPEATED.label }} 个依据重复。"
