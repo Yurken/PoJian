@@ -2,8 +2,15 @@ package com.emerge.app.capture
 
 import java.security.MessageDigest
 
+enum class WorkPage { GENERIC, VIDEO, CAPTION, COMMENTS, NON_CONTENT }
+
 data class WorkHint(val title: String = "", val author: String = "", val nativeId: String = "",
-    val galleryIndex: Int = 0, val galleryTotal: Int = 0) {
+    val galleryIndex: Int = 0, val galleryTotal: Int = 0,
+    val page: WorkPage = WorkPage.GENERIC, val truncated: Boolean = false) {
+    fun matchesCaption(old: WorkHint): Boolean =
+        page in setOf(WorkPage.VIDEO, WorkPage.CAPTION) && old.page in setOf(WorkPage.VIDEO, WorkPage.CAPTION) &&
+        author.isNotBlank() && author == old.author && title.length >= 16 && old.title.length >= 16 &&
+        (title == old.title || (truncated && old.title.startsWith(title)) || (old.truncated && title.startsWith(old.title)))
     fun key(packageName: String): String? {
         val material = when {
             nativeId.isNotBlank() -> "id:$nativeId"
@@ -22,7 +29,7 @@ data class WorkHint(val title: String = "", val author: String = "", val nativeI
         galleryIndex <= galleryTotal && (title.isBlank() || old.title.isBlank() || title == old.title)
 }
 
-data class IdentityNode(val resourceId: String, val text: String)
+data class IdentityNode(val resourceId: String, val text: String, val description: String = "")
 
 object WorkIdentityExtractor {
     private val feedCard = Regex("(?m)^(?:笔记|视频)\\s+.+?\\s+来自\\s*.+?\\s+[0-9.万]+赞")
@@ -34,6 +41,7 @@ object WorkIdentityExtractor {
         .filter { it.isNotBlank() && !chrome.matches(it) }
 
     fun extract(packageName: String, text: String, nodes: List<IdentityNode> = emptyList()): WorkHint {
+        if (packageName == "com.ss.android.ugc.aweme" && nodes.isNotEmpty()) return douyin(nodes)
         // Only known content fields; arbitrary UI labels must not become a post identity.
         val supported = packageName == "com.xingin.xhs" || packageName == "com.ss.android.ugc.aweme"
         val title = if (supported) nodes.firstOrNull {
@@ -60,5 +68,24 @@ object WorkIdentityExtractor {
         } else ""
         return WorkHint(title.ifBlank { detailTitle }, author, galleryIndex = gallery?.groupValues?.get(1)?.toIntOrNull() ?: 0,
             galleryTotal = gallery?.groupValues?.get(2)?.toIntOrNull() ?: 0)
+    }
+
+    private fun douyin(nodes: List<IdentityNode>): WorkHint {
+        fun field(id: String) = nodes.firstOrNull { it.resourceId.substringAfterLast('/') == id }
+        // The same title resource is reused by comment authors. Classify the page first.
+        if (field("e4u")?.text?.matches(Regex("评论\\s*\\d+")) == true && field("back_btn") != null)
+            return WorkHint(page = WorkPage.COMMENTS)
+        val expanded = field("g8t")
+        val caption = expanded?.text ?: field("desc")?.text.orEmpty()
+        val author = if (expanded != null) field("g9q")?.text.orEmpty()
+            else field("user_avatar")?.description?.ifBlank { field("title")?.text.orEmpty() }
+                ?: field("title")?.text.orEmpty()
+        val cleanAuthor = author.trim().removePrefix("@").trim()
+        if (caption.isBlank() || cleanAuthor.isBlank()) return WorkHint(page = WorkPage.NON_CONTENT)
+        val truncated = Regex("(?:\\.\\.\\.|…)\\s*展开[>〉]?\\s*$").containsMatchIn(caption)
+        val cleanCaption = caption.replace(Regex("(?:\\.\\.\\.|…)\\s*展开[>〉]?\\s*$"), "")
+            .replace(Regex("\\s+\\d{2}月\\d{2}日\\s*$"), "").trim().replace(Regex("\\s+"), " ")
+        return WorkHint(cleanCaption, cleanAuthor, page = if (expanded != null) WorkPage.CAPTION else WorkPage.VIDEO,
+            truncated = truncated)
     }
 }

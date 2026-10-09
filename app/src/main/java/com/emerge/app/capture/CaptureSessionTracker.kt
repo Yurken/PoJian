@@ -26,6 +26,8 @@ internal class CaptureSessionTracker {
     fun pause() { paused = true }
     @Volatile private var revision = 0L
     val packageName: String? get() = session?.packageName
+    fun canAttachComments(packageName: String): Boolean = session?.packageName == packageName &&
+        lastHint.page in setOf(WorkPage.VIDEO, WorkPage.CAPTION)
 
     fun reset() {
         revision++
@@ -42,10 +44,13 @@ internal class CaptureSessionTracker {
         hint: WorkHint = WorkIdentityExtractor.extract(packageName, text)): CaptureSample {
         val old = session
         val gap = elapsed - lastElapsed
-        val key = hint.key(packageName)
+        val inherited = hint.page == WorkPage.COMMENTS && canAttachComments(packageName)
+        val matchedCaption = hint.matchesCaption(lastHint)
+        val effectiveHint = if (inherited || matchedCaption) lastHint else hint
+        val key = effectiveHint.key(packageName)
         val conflictingIdentity = (key != null && lastHint.key(packageName) != null && key != lastHint.key(packageName)) ||
             (hint.author.isNotBlank() && lastHint.author.isNotBlank() && hint.author != lastHint.author)
-        val same = !conflictingIdentity && ((key != null && key == old?.workKey) ||
+        val same = !conflictingIdentity && (inherited || matchedCaption || (key != null && key == old?.workKey) ||
             ContentContinuity.same(lastText, text) || hint.followsGallery(lastHint))
         val continuing = old != null && old.packageName == packageName &&
             (gap in 0..6000 || (paused && gap in 0..15_000) || deleted) && same
@@ -63,7 +68,7 @@ internal class CaptureSessionTracker {
             visibleText = text, endTimestamp = now, sampleCount = 1,
             workKey = content.workKey, identityMethod = content.identityMethod
         )
-        return CaptureSample(event, continuing, elapsed, revision, text, hint, content)
+        return CaptureSample(event, continuing, elapsed, revision, text, effectiveHint, content)
     }
 
     fun isCurrent(sample: CaptureSample): Boolean = sample.revision == revision

@@ -131,8 +131,14 @@ open class BrowseAccessibilityService : AccessibilityService() {
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) { sessions.reset(); return }
             val elapsed = android.os.SystemClock.elapsedRealtime()
-            val sample = sessions.sample(activePackage, text, now, elapsed, type,
-                WorkIdentityExtractor.extract(activePackage, text, identityNodes))
+            val hint = WorkIdentityExtractor.extract(activePackage, text, identityNodes)
+            if (hint.page == WorkPage.NON_CONTENT ||
+                (hint.page == WorkPage.COMMENTS && !sessions.canAttachComments(activePackage))) {
+                sessions.pause()
+                app.captureDiagnostics.update { it.copy(result = "当前不是可识别作品，或评论缺少原视频上下文，未增加作品数") }
+                return
+            }
+            val sample = sessions.sample(activePackage, text, now, elapsed, type, hint)
             val id = app.repository.saveCapture(sample.event, sample.continuing, generation,
                 work = sample.work, sampleText = sample.rawText) {
                 app.captureSettings.isPermissionCurrent(activePackage, permission) && sessions.isCurrent(sample)
@@ -173,9 +179,9 @@ open class BrowseAccessibilityService : AccessibilityService() {
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             if (node.isVisibleToUser && Rect.intersects(bounds, screen)) {
-                node.text?.toString()?.trim()?.take(500)?.takeIf { it.isNotBlank() }?.let {
-                    identityNodes += IdentityNode(node.viewIdResourceName.orEmpty(), it)
-                }
+                identityNodes += IdentityNode(node.viewIdResourceName.orEmpty(),
+                    node.text?.toString()?.trim()?.take(2000).orEmpty(),
+                    node.contentDescription?.toString()?.trim()?.take(2000).orEmpty())
                 listOf(node.text, node.contentDescription).forEach { raw ->
                     val line = raw?.toString()?.trim()?.take(2000)
                     if (!line.isNullOrBlank() && lines.add(line)) length += line.length
