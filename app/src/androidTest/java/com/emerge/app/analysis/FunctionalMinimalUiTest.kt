@@ -64,8 +64,9 @@ class FunctionalMinimalUiTest {
             onAnalyze = { analysisCalls++ }, now = now) }
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-0"))
         compose.onNodeWithTag("viewpoint-bar-0").performClick()
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
-        compose.onNodeWithTag("viewpoint-details").performScrollToNode(hasText(original))
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details")))
         compose.onNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
         compose.onNode(hasText("本时段预计停留：1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
         compose.onNode(hasText("本时段预计停留：2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
@@ -96,8 +97,8 @@ class FunctionalMinimalUiTest {
     @Test fun weeklyViewpointBarsOpenSpecificViewpointQuotes() {
         val midnight = LocalDate.of(2026, 10, 9).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val now = midnight + 12 * 3600000L
-        val records = (1L..3L).map { id -> BrowseEvent(id, "reader", midnight + 3600000L, 32,
-            "找工作很难，很多人因此感到焦虑", endTimestamp = midnight + 3660000L,
+        val records = (1L..4L).map { id -> BrowseEvent(id, "reader", midnight + 3600000L, 32,
+            when (id) { 3L -> "女性应该经济独立并自主生活"; 4L -> "菜单"; else -> "找工作很难，很多人因此感到焦虑" }, endTimestamp = midnight + 3660000L,
             durationMillis = 60000, sampleCount = 2, workKey = "work-$id") }
         render { OverviewScreen(calculateStatistics(records, StatisticsPeriod.WEEK, now), StatisticsPeriod.WEEK, {},
             active = false, statusLabel = "已暂停", appNames = mapOf("reader" to "测试阅读器"),
@@ -105,9 +106,12 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
         saveScreenshot("emerge-viewpoint-chart.png")
         compose.onNodeWithTag("viewpoint-bar-6").performClick()
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onAllNodesWithText("就业焦虑").onFirst().assertIsDisplayed()
-        compose.onNodeWithText("重复观点 2 个 · 情绪表达 3 个；以下均为观点候选，不代表事实或你的立场。").assertIsDisplayed()
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
+        compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("就业焦虑，2个作品，50.0%；女性独立，1个作品，25.0%；暂未识别观点，1个作品，25.0%")
+        saveScreenshot("emerge-daily-viewpoint-pie.png")
     }
 
     @Test fun recordingStartsRemainGatedUntilTheUserDownloadsAModel() {

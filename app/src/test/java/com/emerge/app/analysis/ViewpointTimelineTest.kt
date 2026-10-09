@@ -8,6 +8,30 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ViewpointTimelineTest {
+    @Test fun dailySharesMergeViewpointsAndIncludeUnknownWorksInDenominator() {
+        val rows = listOf(event(1, "找工作很难，很多人因此感到焦虑"),
+            event(2, "求职困难让年轻人越来越焦虑"), event(3, "女性应该经济独立并自主生活"), event(4, "菜单"))
+        val groups = ViewpointTimeline.groups(ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone).flatMap { it.items })
+        assertEquals(2, groups.first { it.label == "就业焦虑" }.items.size)
+        assertEquals(50.0, groups.first { it.label == "就业焦虑" }.percent, .001)
+        assertEquals(25.0, groups.first { it.label == "暂未识别观点" }.percent, .001)
+        assertEquals(100.0, groups.sumOf { it.percent }, .001)
+    }
+
+    @Test fun dailySharesDeduplicateWorksAcrossHours() {
+        val rows = listOf(event(1, "女性应该经济独立并自主生活", now - 7200000, "same"),
+            event(2, "女性应该经济独立并自主生活", now - 60000, "same"))
+        val groups = ViewpointTimeline.groups(ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone).flatMap { it.items })
+        assertEquals(1, groups.single().total)
+        assertEquals(100.0, groups.single().percent, .001)
+    }
+
+    @Test fun expandUiSuffixDoesNotHideAViewpointAndCountsNeedNoRiskSampleThreshold() {
+        val bucket = ViewpointTimeline.build(listOf(event(1, "女性应该经济独立并自主生活... 展开>")), StatisticsPeriod.DAY, now, zone)[11]
+        assertEquals(1, bucket.items.size)
+        assertEquals("女性独立", bucket.items.single().label)
+        assertNull(bucket.score)
+    }
     private val zone = ZoneId.of("Asia/Shanghai")
     private val now = ZonedDateTime.of(2026, 10, 9, 12, 0, 0, 0, zone).toInstant().toEpochMilli()
     private fun event(id: Long, text: String, timestamp: Long = now - 60000, work: String = "work-$id") =
