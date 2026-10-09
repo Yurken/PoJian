@@ -164,11 +164,11 @@ internal fun AnalysisCards(
                         }
                         MetadataText("主题比例分母：${report.coverageSessions} 条有效记录，每条按主要内容归一类。")
                         if (report.topics.isNotEmpty()) {
-                            Text("观点主题", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            report.topics.forEachIndexed { index, topic ->
-                                ProportionRow(topic.topic,
-                                    "${topic.count} 个 · ${ReportExporter.percent(topic.count, report.claims.size)}",
-                                    fraction(topic.count, report.claims.size), ChartColors[index % ChartColors.size])
+                            Text("观点概括", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            report.claims.groupBy { ViewpointTimeline.label(it.quote) }.entries.forEachIndexed { index, entry ->
+                                ProportionRow(entry.key,
+                                    "${entry.value.size} 个 · ${ReportExporter.percent(entry.value.size, report.claims.size)}",
+                                    fraction(entry.value.size, report.claims.size), ChartColors[index % ChartColors.size])
                             }
                             MetadataText("观点主题分母：${report.claims.size} 个观点，一条记录可能有多个观点。")
                         }
@@ -415,7 +415,7 @@ private fun GroupRow(index: Int, group: ClaimGroup, onClick: () -> Unit) {
         .padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("${index.toString().padStart(2, '0')} · ${group.topic}", color = Ink,
+            Text("${index.toString().padStart(2, '0')} · ${ViewpointTimeline.label(group.quote)}", color = Ink,
                 fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Text("${group.observations.size} 个观点 ›", color = Muted, fontSize = 11.sp)
         }

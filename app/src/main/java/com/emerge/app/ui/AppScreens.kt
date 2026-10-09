@@ -49,11 +49,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         StatisticsPeriod.HOURS24 -> "截至 " + Instant.ofEpochMilli(now).atZone(zone).format(DateTimeFormatter.ofPattern("M/d HH:mm"))
         StatisticsPeriod.WEEK -> "${today.minusDays(6).format(DateTimeFormatter.ofPattern("M月d日"))} — ${today.format(DateTimeFormatter.ofPattern("M月d日"))}"
     }
-    var selectedHour by rememberSaveable(period) { mutableStateOf<Int?>(null) }
-    var detailHour by rememberSaveable(period) { mutableStateOf<Int?>(null) }
     var showSources by rememberSaveable { mutableStateOf(false) }
-    val hour = selectedHour ?: stats.trend.indices.maxByOrNull { stats.trend[it].count } ?: 0
-    val hasReport = analysis.report?.period == period.label
     LazyColumn(modifier.fillMaxSize().testTag("overview-list"),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -90,38 +86,8 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
         }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
-        if (!hasReport && stats.total > 0) item(key = "record-distribution") {
-            WhiteCard {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (period == StatisticsPeriod.DAY) "今日小时分布" else "${period.label}接触分布",
-                        style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                    MetadataText("按作品估计数")
-                }
-                if (period == StatisticsPeriod.DAY) {
-                    HourlyRecordHeatmapContent(stats.trend.map { it.count }, hour, { selectedHour = it },
-                        countLabel = "数字为作品估计数") { h, count -> "${h}时，${count}个作品（估计），点击选择时段" }
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        MetadataText("${hour.toString().padStart(2, '0')}:00 · ${stats.trend.getOrNull(hour)?.count ?: 0} 个作品",
-                            Modifier.weight(1f))
-                        TextButton(onClick = { detailHour = hour }, modifier = Modifier.testTag("overview-open-hour")) {
-                            Text("回看原文 ›")
-                        }
-                    }
-                } else {
-                    val maximum = (stats.trend.maxOfOrNull { it.count } ?: 0).coerceAtLeast(1)
-                    stats.trend.forEach { bucket ->
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            MetadataText(bucket.label, Modifier.width(if (period == StatisticsPeriod.HOURS24) 90.dp else 44.dp))
-                            LinearProgressIndicator(progress = { bucket.count.toFloat() / maximum },
-                                modifier = Modifier.weight(1f).height(6.dp), color = Accent,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant)
-                            MetadataText("${bucket.count} 个")
-                        }
-                    }
-                }
-                ExpandableNote("作品统计说明", "标题和作者相同的作品按同一身份归并；无法确认身份时按一次连续观看估计。各时段内作品去重，跨时段会再次出现，数量不能直接相加。时长按时间窗口切分；过去24小时首尾小时只包含窗口内部分。空白不代表没有浏览。")
-            }
+        item(key = "viewpoint-timeline") {
+            ViewpointTimelineCard(rawEvents, period, now, analysis.report, appNames)
         }
         if (rawEvents.isEmpty()) item(key = "start-guide") {
             WhiteCard {
@@ -162,35 +128,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
         }
     }
-    detailHour?.let { selected ->
-        val records = rawEvents.filter { event -> window.slices(event).any { it.hour == selected } }
-            .sortedByDescending { it.timestamp }
-        ModalBottomSheet(onDismissRequest = { detailHour = null },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = MaterialTheme.colorScheme.surface) {
-            LazyColumn(Modifier.fillMaxWidth().fillMaxHeight(.85f).testTag("overview-hour-records"),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item {
-                    SectionTitle("${selected.toString().padStart(2, '0')}:00—${(selected + 1).toString().padStart(2, '0')}:00",
-                        "${records.size} 条保存记录")
-                }
-                if (records.isEmpty()) item { MetadataText("这个时段没有保存的记录。") }
-                items(records, key = { it.id }) { record ->
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MetadataText(appNames[record.packageName] ?: record.packageName)
-                        MetadataText(when {
-                            record.sourceType.startsWith("audio_") -> "音频转写 · 不计入浏览停留"
-                            !window.durationKnown(record) -> "未统计时长"
-                            else -> "本时段预计停留：${formatDuration(window.slices(record).filter { it.hour == selected }.sumOf { it.durationMillis })}"
-                        })
-                        QuoteBlock(record.visibleText)
-                    }
-                }
-                item { TextButton(onClick = { detailHour = null; onRecords() }) { Text("查看全部足迹 ›") } }
-            }
-        }
-    }
+
 }
 
 @Composable

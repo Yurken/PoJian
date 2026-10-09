@@ -62,15 +62,14 @@ class FunctionalMinimalUiTest {
             active = false, statusLabel = "已暂停", appNames = mapOf("com.example.reader" to "资料阅读器"),
             onRecords = {}, onSettings = {}, analysis = AnalysisState(), rawEvents = records,
             onAnalyze = { analysisCalls++ }, now = now) }
-        compose.onNodeWithTag("hour-0").performScrollTo().assertIsDisplayed()
-            .assertContentDescriptionEquals("0时，1个作品（估计），点击选择时段").performClick()
-        compose.onNodeWithTag("overview-open-hour").performScrollTo().performClick()
-        compose.onNodeWithTag("overview-hour-records").assertIsDisplayed()
-        compose.onNode(hasText("00:00—01:00") and hasAnyAncestor(hasTestTag("overview-hour-records"))).assertIsDisplayed()
-        compose.onNodeWithTag("overview-hour-records").performScrollToNode(hasText(original))
-        compose.onNode(hasText(original) and hasAnyAncestor(hasTestTag("overview-hour-records"))).assertIsDisplayed()
-        compose.onNode(hasText("本时段预计停留：1 分 0 秒") and hasAnyAncestor(hasTestTag("overview-hour-records"))).assertExists()
-        compose.onNode(hasText("本时段预计停留：2 分 0 秒") and hasAnyAncestor(hasTestTag("overview-hour-records"))).assertDoesNotExist()
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-0"))
+        compose.onNodeWithTag("viewpoint-bar-0").performClick()
+        compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
+        compose.onNodeWithTag("viewpoint-details").performScrollToNode(hasText(original))
+        compose.onNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
+        compose.onNode(hasText("本时段预计停留：1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
+        compose.onNode(hasText("本时段预计停留：2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
+        saveScreenshot("emerge-viewpoint-details.png")
         compose.runOnIdle { assertEquals(0, analysisCalls) }
     }
 
@@ -92,6 +91,23 @@ class FunctionalMinimalUiTest {
         compose.runOnIdle { assertEquals(2, pauseCalls); assertEquals(false, paused.value); assertEquals(1, stopCalls) }
         compose.onNodeWithTag("audio-import").assertDoesNotExist()
         compose.onNodeWithTag("audio-capture").assertDoesNotExist()
+    }
+
+    @Test fun weeklyViewpointBarsOpenSpecificViewpointQuotes() {
+        val midnight = LocalDate.of(2026, 10, 9).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val now = midnight + 12 * 3600000L
+        val records = (1L..3L).map { id -> BrowseEvent(id, "reader", midnight + 3600000L, 32,
+            "找工作很难，很多人因此感到焦虑", endTimestamp = midnight + 3660000L,
+            durationMillis = 60000, sampleCount = 2, workKey = "work-$id") }
+        render { OverviewScreen(calculateStatistics(records, StatisticsPeriod.WEEK, now), StatisticsPeriod.WEEK, {},
+            active = false, statusLabel = "已暂停", appNames = mapOf("reader" to "测试阅读器"),
+            onRecords = {}, onSettings = {}, rawEvents = records, now = now) }
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
+        saveScreenshot("emerge-viewpoint-chart.png")
+        compose.onNodeWithTag("viewpoint-bar-6").performClick()
+        compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
+        compose.onAllNodesWithText("就业焦虑").onFirst().assertIsDisplayed()
+        compose.onNodeWithText("重复观点 2 个 · 情绪表达 3 个；以下均为观点候选，不代表事实或你的立场。").assertIsDisplayed()
     }
 
     @Test fun recordingStartsRemainGatedUntilTheUserDownloadsAModel() {
