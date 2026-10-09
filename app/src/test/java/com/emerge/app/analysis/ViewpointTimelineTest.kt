@@ -41,8 +41,8 @@ class ViewpointTimelineTest {
     @Test fun labelsRetainSpecificViewpointsAndNegation() {
         assertEquals("就业焦虑", ViewpointTimeline.label("找工作很难，很多人因此感到焦虑"))
         assertEquals("女性独立", ViewpointTimeline.label("女性应该经济独立并自主生活"))
-        assertEquals("女性不应该独立生活", ViewpointTimeline.label("女性不应该独立生活"))
-        assertEquals("人工智能需要更多可靠的证据", ViewpointTimeline.label("人工智能需要更多可靠的证据"))
+        assertEquals("反对女性独立", ViewpointTimeline.label("女性不应该独立生活"))
+        assertEquals("AI可靠性", ViewpointTimeline.label("人工智能需要更多可靠的证据"))
     }
 
     @Test fun volumeAloneCannotProduceRiskAndRepeatedVisitsAreNotNewWorks() {

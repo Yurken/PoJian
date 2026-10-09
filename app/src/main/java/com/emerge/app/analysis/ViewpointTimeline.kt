@@ -27,12 +27,7 @@ object ViewpointTimeline {
             ViewpointShare(label, entries, works.size)
         }.sortedWith(compareByDescending<ViewpointShare> { it.items.size }.thenBy { it.label })
     }
-    fun label(quote: String): String = when {
-        Regex("(?:不|无需|别)[^，。；]{0,8}(?:焦虑|独立)").containsMatchIn(quote) -> quote.trim().take(32)
-        Regex("就业|求职|招聘|裁员|找工作").containsMatchIn(quote) && Regex("焦虑|困难|很难|难找|失业").containsMatchIn(quote) -> "就业焦虑"
-        Regex("女性|女人|女生").containsMatchIn(quote) && Regex("独立|自主|不依赖").containsMatchIn(quote) -> "女性独立"
-        else -> quote.trim().take(32).let { if (quote.trim().length > 32) "$it…" else it }
-    }
+    fun label(quote: String): String = ViewpointLabeler.label(quote)
 
     fun build(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long, zone: ZoneId,
         report: CognitiveReport? = null): List<ViewpointBucket> {
@@ -68,7 +63,7 @@ object ViewpointTimeline {
                     it.start == end && end == now && now < localEnd.toInstant().toEpochMilli() && it.start >= start
             } }.map { candidates.getValue(it) }.distinctBy { it.record.packageName + "|" +
                 (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }
-            val recognized = items.filter { it.label != null }
+            val recognized = items.filter { it.label != null && it.label != "待归纳" }
             val repeated = recognized.groupBy { it.label }.values.sumOf { (it.size - 1).coerceAtLeast(0) }
             val emotional = recognized.count { it.emotional }
             val score = if (recognized.size < 3) null else

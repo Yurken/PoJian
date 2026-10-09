@@ -99,12 +99,13 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
 
 @Composable
 private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names: Map<String, String>, key: String,
-    initiallyExpanded: Boolean = false) {
+    initiallyExpanded: Boolean = false, headerColor: Color? = null, showPercent: Boolean = false) {
     var expanded by rememberSaveable(key, share.label) { mutableStateOf(initiallyExpanded) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth().clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
-            Text(share.label, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            Text("${share.items.size} 个作品 ${if (expanded) "−" else "+"}", color = Accent, style = MaterialTheme.typography.labelMedium)
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
+            Text((if (showPercent) "● " else "") + share.label, Modifier.weight(1f), color = headerColor ?: MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleSmall)
+            val amount = if (showPercent) "${share.items.size} 个 · ${String.format(Locale.CHINA, "%.1f", share.percent)}%" else "${share.items.size} 个作品"
+            Text("$amount ${if (expanded) "−" else "+"}", color = Accent, style = MaterialTheme.typography.labelMedium)
         }
         if (expanded) share.items.forEach { item ->
             var raw by rememberSaveable(key, item.record.id) { mutableStateOf(false) }
@@ -137,20 +138,16 @@ private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names:
             var angle = -90f
             groups.forEachIndexed { i, group ->
                 val sweep = group.items.size * 360f / total
-                drawArc(if (group.label == "暂未识别观点") Color.LightGray else colors[i % colors.size],
+                drawArc(if (group.label in listOf("暂未识别观点", "待归纳")) Color.LightGray else colors[i % colors.size],
                     angle, sweep, true, origin, Size(diameter, diameter))
                 angle += sweep
             }
         }
         groups.forEachIndexed { i, group ->
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("● ${group.label}", Modifier.weight(1f), color = if (group.label == "暂未识别观点") Muted else colors[i % colors.size],
-                    style = MaterialTheme.typography.bodyMedium)
-                MetadataText("${group.items.size} 个 · ${String.format(Locale.CHINA, "%.1f", group.percent)}%")
-            }
-            ViewpointGroup(group, start, end, names, "pie-$date")
+            ViewpointGroup(group, start, end, names, "pie-$date", headerColor =
+                if (group.label in listOf("暂未识别观点", "待归纳")) Muted else colors[i % colors.size], showPercent = true)
         }
         if (total == 0) MetadataText("当天没有保存的浏览作品。")
-        ExpandableNote("观点归组说明", "当前使用离线规则和已生成报告中的观点候选。同义表达仅在有明确规则时归为一组，否定观点保留区别，不会为每个作品强行编造观点。其余内容标记为暂未识别。每个作品当前取一个代表性观点候选；完整语义归组需要后续模型。")
+        ExpandableNote("观点归组说明", "当前使用离线规则和已生成报告中的观点候选。同义表达仅在有明确规则时归为一组，否定观点保留区别，不会为每个作品强行编造观点。未命中短语规则的候选标记为待归纳，没有候选的作品标记为暂未识别；这些占位项不表示它们传递相同观点。每个作品当前取一个代表性观点候选；完整语义归组需要后续模型。")
     }
 }
