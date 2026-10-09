@@ -74,6 +74,22 @@ class ValidatorTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     gateway.Config.from_env()
 
+    def test_unconfigured_mode_must_be_explicit(self):
+        with patch.dict("os.environ", {"EMERGE_SERVICE_TOKEN": "client-token", "EMERGE_ALLOW_UNCONFIGURED": "1"}, clear=True):
+            with self.assertRaises(ValueError):
+                gateway.Config.from_env()
+            config = gateway.Config.from_env(require_upstream=False)
+            self.assertFalse(config.model_configured)
+            self.assertEqual("", config.upstream_key)
+
+    def test_unconfigured_mode_still_requires_token_and_valid_configuration(self):
+        env = {"EMERGE_SERVICE_TOKEN": "client-token"}
+        for extra in ({"EMERGE_SERVICE_TOKEN": ""}, {"EMERGE_UPSTREAM_MODEL": ""},
+                      {"EMERGE_UPSTREAM_URL": "http://public.example/v1/chat/completions"}):
+            with self.subTest(extra=extra), patch.dict("os.environ", env | extra, clear=True):
+                with self.assertRaises(ValueError):
+                    gateway.Config.from_env(require_upstream=False)
+
 
 class FakeUpstream(BaseHTTPRequestHandler):
     def log_message(self, *args):
@@ -128,7 +144,9 @@ class HttpTests(unittest.TestCase):
 
     def call(self, path="/analyze", token="phone-service-token", raw=None, method="POST", headers=None):
         body = json.dumps(sources()).encode("utf-8") if raw is None else raw
-        values = {"Authorization": "Bearer " + token, "Content-Type": "application/json"}
+        values = {"Content-Type": "application/json"}
+        if token is not None:
+            values["Authorization"] = "Bearer " + token
         values.update(headers or {})
         connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
         try:
@@ -150,8 +168,15 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(sources(), json.loads(request["messages"][1]["content"]))
 
     def test_health_does_not_call_upstream(self):
-        self.assertEqual((200, {"status": "ok", "version": 1}), self.call("/health", method="GET", token=""))
+        self.assertEqual((200, {"status": "ok", "version": 1, "model_configured": True}), self.call("/health", method="GET", token=""))
         self.assertEqual([], self.upstream.requests)
+
+    def test_status_requires_service_token(self):
+        self.assertEqual(401, self.call("/status", token=None, method="GET")[0])
+        self.assertEqual(401, self.call("/status", token="wrong", method="GET")[0])
+        status, body = self.call("/status", method="GET")
+        self.assertEqual(200, status)
+        self.assertFalse(body["service"]["monitor"])
 
     def test_bad_auth_rejects_before_upstream(self):
         self.assertEqual(401, self.call(token="wrong")[0])

@@ -50,6 +50,9 @@ class FakeProviders:
         self.search_calls += 1
         return self.sources
 
+    def search_key(self):
+        return self.options.search_key
+
 
 class InputTests(unittest.TestCase):
     def test_valid_text(self): self.assertEqual(m.validate_monitor(request_data())["kind"], "text")
@@ -115,7 +118,8 @@ class EvidenceTests(unittest.TestCase):
     def test_attribution_flag_type(self):
         with self.assertRaises(m.UpstreamError): m.validate_extraction({"claims": [claim(uncertain="false")]}, m.validate_monitor(request_data()))
     def test_retrieval_discards_snippet_only_and_duplicate_urls(self):
-        provider = m.Providers(legacy.Config("https://example.org", "model", "key", "token"), m.Options(search_key="test"))
+        config = legacy.Config("https://example.org", "model", "key", "token")
+        provider = m.Providers(config, m.RuntimeConfig(config, m.Options(search_key="test"), ":memory:"))
         data = {"results": [{"url": "https://example.org/a", "content": "仅摘要"},
                             {"url": "https://example.org/b", "raw_content": "取得的正文", "title": "文档"},
                             {"url": "https://example.org/b", "raw_content": "重复正文"}]}
@@ -160,7 +164,8 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(self.run_pipeline(provider)["claims"][0]["verdict"], "not_checked")
     def test_no_claims_does_not_mean_true(self): self.assertEqual(self.run_pipeline(FakeProviders(claims=[]))["claims"], [])
     def test_model_without_vision_configuration(self):
-        provider = m.Providers(legacy.Config("https://example.org", "model", "key", "token"), m.Options())
+        config = legacy.Config("https://example.org", "model", "key", "token")
+        provider = m.Providers(config, m.RuntimeConfig(config, m.Options(), ":memory:"))
         with self.assertRaises(m.UpstreamError): provider.model("system", {}, m.time.monotonic() + 30, "image")
 
 
@@ -176,6 +181,87 @@ class BudgetTests(unittest.TestCase):
         for thread in threads: thread.start()
         for thread in threads: thread.join()
         self.assertEqual(sum(answers), 3); budget.close()
+
+
+class UnconfiguredStartupTests(unittest.TestCase):
+    def test_monitor_starts_without_model_key_only_when_selected(self):
+        env = {"EMERGE_SERVICE_TOKEN": "test-token", "EMERGE_ALLOW_UNCONFIGURED": "1"}
+        with patch.dict("os.environ", env, clear=True), patch.object(m, "DailyBudget") as budget_factory, \
+                patch.object(m, "make_handler") as handler_factory, patch.object(m, "ThreadingHTTPServer") as server_factory, \
+                patch("builtins.print"):
+            server_factory.return_value.serve_forever.side_effect = KeyboardInterrupt
+            m.main()
+            config = handler_factory.call_args.args[0]
+            self.assertFalse(config.model_configured)
+            self.assertEqual("", config.upstream_key)
+            server_factory.return_value.server_close.assert_called_once()
+            budget_factory.return_value.close.assert_called_once()
+
+    def test_missing_key_without_explicit_switch_still_refuses_startup(self):
+        for value in (None, "0", "true"):
+            env = {"EMERGE_SERVICE_TOKEN": "test-token"}
+            if value is not None:
+                env["EMERGE_ALLOW_UNCONFIGURED"] = value
+            with self.subTest(value=value), patch.dict("os.environ", env, clear=True), \
+                    patch.object(m, "ThreadingHTTPServer") as server_factory:
+                with self.assertRaises(SystemExit):
+                    m.main()
+                server_factory.assert_not_called()
+
+
+class UnconfiguredHttpTests(unittest.TestCase):
+    def setUp(self):
+        self.config = legacy.Config(legacy.DEFAULT_UPSTREAM, "qwen-plus", "", "test-token")
+        self.provider = FakeProviders()
+        self.budget = m.DailyBudget(":memory:", 5)
+        self.server = m.ThreadingHTTPServer(("127.0.0.1", 0), m.make_handler(self.config, self.provider.options, self.budget, self.provider))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.thread.join(); self.budget.close()
+
+    def call(self, path, token=None, method="POST"):
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = "Bearer " + token
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.request(method, path, json.dumps(request_data()) if method == "POST" else None, headers)
+            reply = connection.getresponse()
+            return reply.status, json.loads(reply.read())
+        finally:
+            connection.close()
+
+    def assert_no_processing(self):
+        self.assertEqual(self.provider.model_calls, 0)
+        self.assertEqual(self.provider.search_calls, 0)
+        self.assertEqual(self.budget.db.execute("SELECT COALESCE(SUM(used), 0) FROM daily").fetchone()[0], 0)
+
+    def test_health_and_capabilities_report_unconfigured_model(self):
+        self.assertEqual(self.call("/health", method="GET"), (200, {"status": "ok", "version": 1, "model_configured": False}))
+        status, body = self.call("/capabilities", method="GET")
+        self.assertEqual(status, 200)
+        self.assertFalse(body["model_configured"])
+        self.assertTrue(body["monitor"])
+        self.assert_no_processing()
+
+    def test_unauthenticated_analysis_still_returns_unauthorized(self):
+        with patch.object(legacy, "request_upstream") as upstream:
+            for path in ("/monitor", "/analyze"):
+                for token in (None, "wrong"):
+                    with self.subTest(path=path, token=token):
+                        self.assertEqual(self.call(path, token=token)[0], 401)
+            upstream.assert_not_called()
+        self.assert_no_processing()
+
+    def test_authenticated_analysis_returns_unconfigured_without_processing(self):
+        with patch.object(legacy, "request_upstream") as upstream:
+            for path in ("/monitor", "/analyze"):
+                with self.subTest(path=path):
+                    self.assertEqual(self.call(path, token="test-token"), (503, {"error": "Model API is not configured"}))
+            upstream.assert_not_called()
+        self.assert_no_processing()
 
 
 class HttpTests(unittest.TestCase):
@@ -199,14 +285,298 @@ class HttpTests(unittest.TestCase):
     def test_budget_is_enforced(self):
         for _ in range(5): self.assertEqual(self.call()[0], 200)
         self.assertEqual(self.call()[0], 429)
-    def test_health_preserved(self): self.assertEqual(self.call(path="/health", method="GET")[0], 200)
-    def test_capabilities_are_configuration_not_accuracy(self): self.assertIn("retrieval_configured", self.call(path="/capabilities", method="GET")[1])
+    def test_health_preserved(self): self.assertEqual(self.call(path="/health", method="GET"), (200, {"status": "ok", "version": 1, "model_configured": True}))
+    def test_capabilities_are_configuration_not_accuracy(self):
+        body = self.call(path="/capabilities", method="GET")[1]
+        self.assertIn("retrieval_configured", body)
+        self.assertTrue(body["model_configured"])
     def test_unknown_endpoint(self): self.assertEqual(self.call(path="/nothing")[0], 404)
     def test_legacy_analyze_preserved(self):
         body = {"version": 1, "segments": [{"id": 1, "text": BODY, "timestamp": 100, "startMillis": 0, "endMillis": 100}], "history": []}
         with patch.object(legacy, "request_upstream", return_value={"summary": "legacy contract", "claims": [], "model": "fixture"}):
             status, result = self.call(path="/analyze", body=body)
             self.assertEqual(status, 200); self.assertEqual(result["summary"], "legacy contract")
+
+
+class StatusPageTests(unittest.TestCase):
+    def setUp(self):
+        self.config = legacy.Config("https://example.org/v1/chat/completions", "fixture-model", "sk-test-secret-key", "test-token")
+        self.provider = FakeProviders(); self.budget = m.DailyBudget(":memory:", 5)
+        self.stats = m.admin.Stats()
+        self.server = m.ThreadingHTTPServer(("127.0.0.1", 0), m.make_handler(self.config, self.provider.options, self.budget, self.provider, stats=self.stats))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True); self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.thread.join(); self.budget.close()
+
+    def call(self, path, token="test-token", method="POST", body=None):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = "Bearer " + token
+        connection.request(method, path, json.dumps(body if body is not None else request_data()) if method == "POST" else None, headers)
+        reply = connection.getresponse(); status, data = reply.status, reply.read(); connection.close()
+        return status, data
+
+    def status_body(self):
+        status, data = self.call("/status", method="GET")
+        self.assertEqual(status, 200)
+        return json.loads(data)
+
+    def test_admin_page_served_as_html(self):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        connection.request("GET", "/admin")
+        reply = connection.getresponse()
+        status, data = reply.status, reply.read()
+        content_type = reply.getheader("Content-Type")
+        connection.close()
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", content_type)
+        text = data.decode("utf-8")
+        self.assertIn("服务状态", text)
+        self.assertIn('fetch("status"', text)
+
+    def test_status_reports_service_and_settings(self):
+        body = self.status_body()
+        self.assertTrue(body["service"]["monitor"])
+        self.assertTrue(body["service"]["model_configured"])
+        self.assertTrue(body["service"]["retrieval_configured"])
+        settings = body["settings"]
+        self.assertEqual(settings["text"]["model"], "fixture-model")
+        self.assertEqual(settings["text"]["timeout"], self.config.timeout)
+        self.assertEqual(settings["service_token"], "已配置")
+        self.assertEqual(settings["daily_limit"], self.provider.options.daily_limit)
+        self.assertEqual(settings["budget_used_today"], 0)
+
+    def test_status_masks_all_credentials(self):
+        raw = self.status_body()
+        encoded = m.admin.status_json(raw).decode("utf-8")
+        self.assertNotIn("sk-test-secret-key", encoded)
+        self.assertNotIn("test-key", encoded)  # retrieval key from FakeProviders options
+        self.assertNotIn("test-token", encoded)
+        self.assertTrue(raw["settings"]["text"]["api_key"].startswith("****"))
+        self.assertTrue(raw["settings"]["retrieval"]["configured"])
+
+    def test_stats_record_requests_without_content(self):
+        self.assertEqual(self.call("/monitor", token="wrong")[0], 401)
+        self.assertEqual(self.call("/health", method="GET", token=None)[0], 200)
+        snapshot = self.stats.snapshot()
+        self.assertEqual(snapshot["by_status"]["401"], 1)
+        self.assertIn("/monitor", snapshot["endpoints"])
+        self.assertEqual(snapshot["endpoints"]["/monitor"]["errors"], 1)
+        recent_paths = [row["path"] for row in snapshot["recent"]]
+        self.assertIn("/health", recent_paths)
+
+    def test_stats_exclude_request_content(self):
+        secret_text = "绝不该出现的正文内容"
+        self.call("/monitor", token="wrong", body=request_data(text=secret_text))
+        snapshot = self.stats.snapshot()
+        self.assertNotIn(secret_text, m.admin.status_json(snapshot).decode("utf-8"))
+
+    def test_budget_usage_reflected(self):
+        self.assertEqual(self.call("/monitor")[0], 200)
+        self.assertEqual(self.status_body()["settings"]["budget_used_today"], 1)
+
+    def test_status_requires_service_token(self):
+        self.assertEqual(self.call("/status", token=None, method="GET")[0], 401)
+        self.assertEqual(self.call("/status", token="wrong", method="GET")[0], 401)
+
+    def test_snapshot_returns_full_recent_buffer(self):
+        for _ in range(60):
+            token = self.stats.begin(); self.stats.end(token, "/health", 200)
+        recent = self.stats.snapshot()["recent"]
+        self.assertEqual(len(recent), 60)
+        self.assertEqual(recent[0]["path"], "/health")
+
+
+class ConfigApiTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.config = legacy.Config("https://example.org/v1/chat/completions", "fixture-model",
+                                    "sk-test-secret-key", "test-token")
+        self.options = m.Options(vision_url="https://example.org/vision", vision_model="vision-model",
+                                 vision_key="vision-secret", search_key="tavily-secret", daily_limit=7)
+        self.runtime_path = os.path.join(self.directory.name, "runtime-config.json")
+        self.runtime = m.RuntimeConfig(self.config, self.options, self.runtime_path)
+        self.budget = m.DailyBudget(":memory:", self.runtime.daily_limit)
+        self.server = m.ThreadingHTTPServer(("127.0.0.1", 0),
+                                            m.make_handler(self.config, self.options, self.budget, runtime=self.runtime))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.thread.join()
+        self.budget.close(); self.directory.cleanup()
+
+    def call(self, path, body=None, token="test-token", method="POST"):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = "Bearer " + token
+        connection.request(method, path, json.dumps(body if body is not None else {}) if method == "POST" else None, headers)
+        reply = connection.getresponse(); status, data = reply.status, reply.read(); connection.close()
+        return status, json.loads(data) if data else {}
+
+    def status(self):
+        status, body = self.call("/status", method="GET")
+        self.assertEqual(status, 200)
+        return body
+
+    def test_status_and_config_endpoints_require_token(self):
+        self.assertEqual(self.call("/status", token=None, method="GET")[0], 401)
+        self.assertEqual(self.call("/config/update", {"text_model": "x"}, token=None)[0], 401)
+        self.assertEqual(self.call("/config/update", {"text_model": "x"}, token="wrong")[0], 401)
+
+    def test_update_applies_immediately_and_persists(self):
+        self.assertEqual(self.call("/config/update", {"text_key": "sk-new-secret-9abc", "text_model": "new-model"})[0], 200)
+        settings = self.status()["settings"]
+        self.assertEqual(settings["text"]["model"], "new-model")
+        self.assertEqual(settings["text"]["api_key"], "****9abc")
+        self.assertTrue(settings["text"]["configured"])
+        self.assertEqual(settings["config_source"], "runtime")
+        reloaded = m.RuntimeConfig(self.config, self.options, self.runtime_path)
+        self.assertEqual(reloaded.provider_settings(False), ("https://example.org/v1/chat/completions", "sk-new-secret-9abc", "new-model"))
+
+    def test_update_rejects_invalid_url_and_keeps_config(self):
+        self.assertEqual(self.call("/config/update", {"text_url": "http://evil.example/x"})[0], 400)
+        self.assertEqual(self.call("/config/update", {"daily_limit": 0})[0], 400)
+        settings = self.status()["settings"]
+        self.assertEqual(settings["text"]["url"], "https://example.org/v1/chat/completions")
+        self.assertEqual(settings["daily_limit"], 7)
+
+    def test_empty_fields_keep_existing_values(self):
+        self.assertEqual(self.call("/config/update", {"text_key": "", "text_model": ""})[0], 200)
+        settings = self.status()["settings"]
+        self.assertEqual(settings["text"]["model"], "fixture-model")
+        self.assertEqual(settings["text"]["api_key"], "****-key")
+
+    def test_daily_limit_update_syncs_budget(self):
+        self.assertEqual(self.call("/config/update", {"daily_limit": 3})[0], 200)
+        for _ in range(3):
+            self.assertTrue(self.budget.reserve())
+        self.assertFalse(self.budget.reserve())
+
+    def test_vision_and_retrieval_updates(self):
+        self.assertEqual(self.call("/config/update", {"vision_model": "vision-2", "search_key": "tavily-2"})[0], 200)
+        settings = self.status()["settings"]
+        self.assertEqual(settings["vision"]["model"], "vision-2")
+        self.assertEqual(settings["vision"]["api_key"], "****cret")
+        self.assertEqual(settings["retrieval"]["api_key"], "****ly-2")
+        self.assertTrue(settings["retrieval"]["configured"])
+
+    def test_profiles_save_apply_delete(self):
+        self.assertEqual(self.call("/config/profile/save", {"name": "工作自用"})[0], 200)
+        profiles = self.status()["settings"]["profiles"]
+        self.assertEqual([row["name"] for row in profiles], ["工作自用"])
+        self.assertEqual(profiles[0]["text_model"], "fixture-model")
+        self.assertEqual(self.call("/config/update", {"text_model": "other-model"})[0], 200)
+        self.assertEqual(self.status()["settings"]["text"]["model"], "other-model")
+        self.assertEqual(self.call("/config/profile/apply", {"name": "工作自用"})[0], 200)
+        self.assertEqual(self.status()["settings"]["text"]["model"], "fixture-model")
+        self.assertEqual(self.call("/config/profile/apply", {"name": "不存在"})[0], 404)
+        self.assertEqual(self.call("/config/profile/delete", {"name": "工作自用"})[0], 200)
+        self.assertEqual(self.status()["settings"]["profiles"], [])
+        self.assertEqual(self.call("/config/profile/delete", {"name": "工作自用"})[0], 404)
+
+    def test_profile_names_are_validated(self):
+        self.assertEqual(self.call("/config/profile/save", {"name": ""})[0], 400)
+        self.assertEqual(self.call("/config/profile/save", {"name": "很" * 41})[0], 400)
+        for index in range(10):
+            self.assertEqual(self.call("/config/profile/save", {"name": f"配置{index}"})[0], 200)
+        self.assertEqual(self.call("/config/profile/save", {"name": "超出上限"})[0], 400)
+
+    def test_full_keys_never_appear_in_responses(self):
+        self.assertEqual(self.call("/config/update", {"text_key": "sk-live-full-secret", "vision_key": "vision-full-secret",
+                                                     "search_key": "tavily-full-secret"})[0], 200)
+        self.assertEqual(self.call("/config/profile/save", {"name": "敏感"})[0], 200)
+        encoded = json.dumps(self.status(), ensure_ascii=False)
+        for secret in ("sk-live-full-secret", "vision-full-secret", "tavily-full-secret", "sk-test-secret-key"):
+            self.assertNotIn(secret, encoded)
+        self.assertIn("****cret", encoded)
+
+    def test_provider_probes(self):
+        with patch.object(m, "post_json", return_value={}) as mocked:
+            for target in ("text", "vision", "retrieval"):
+                status, body = self.call("/config/test", {"target": target})
+                self.assertEqual(status, 200)
+                self.assertTrue(body["ok"])
+                self.assertIsInstance(body["ms"], int)
+            self.assertEqual(mocked.call_count, 3)
+        with patch.object(m, "post_json", side_effect=m.UpstreamError("Provider rejected the request")):
+            status, body = self.call("/config/test", {"target": "text"})
+            self.assertEqual(status, 200)
+            self.assertEqual(body, {"ok": False, "error": "Provider rejected the request"})
+        self.assertEqual(self.call("/config/test", {"target": "other"})[0], 400)
+
+
+class AdminConsoleTests(unittest.TestCase):
+    def setUp(self):
+        self.config = legacy.Config("https://example.org/v1/chat/completions", "fixture-model",
+                                    "sk-test-secret-key", "test-token")
+        self.options = m.Options(admin_user="ops", admin_password="console-password-1")
+        self.runtime = m.RuntimeConfig(self.config, self.options, ":memory:")
+        self.budget = m.DailyBudget(":memory:", 5)
+        self.server = m.ThreadingHTTPServer(("127.0.0.1", 0),
+                                            m.make_handler(self.config, self.options, self.budget, runtime=self.runtime))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.thread.join(); self.budget.close()
+
+    def request(self, path, payload=None, token=None, method="POST"):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        headers = {"Content-Type": "application/json"}
+        if token is not None:
+            headers["Authorization"] = "Bearer " + token
+        connection.request(method, path, json.dumps(payload if payload is not None else {}) if method == "POST" else None, headers)
+        reply = connection.getresponse(); status, data = reply.status, reply.read(); connection.close()
+        return status, json.loads(data) if data else {}
+
+    def login(self, user="ops", password="console-password-1"):
+        return self.request("/admin/login", {"user": user, "password": password})
+
+    def test_login_issues_session_for_console_endpoints(self):
+        status, body = self.login()
+        self.assertEqual(status, 200)
+        session = body["token"]
+        self.assertEqual(self.request("/status", token=session, method="GET")[0], 200)
+        self.assertEqual(self.request("/config/profile/save", {"name": "方案A"}, token=session)[0], 200)
+        self.assertEqual(self.request("/config/test", {"target": "retrieval"}, token=session)[0], 400)
+
+    def test_bad_login_rejected_and_throttled(self):
+        self.assertEqual(self.login(password="wrong")[0], 401)
+        self.assertEqual(self.login(user="nobody")[0], 401)
+        for _ in range(3):
+            self.assertEqual(self.login(password="wrong")[0], 401)
+        self.assertEqual(self.login(password="wrong")[0], 429)
+
+    def test_logout_revokes_session(self):
+        session = self.login()[1]["token"]
+        self.assertEqual(self.request("/status", token=session, method="GET")[0], 200)
+        self.assertEqual(self.request("/admin/logout", {}, token=session)[0], 200)
+        self.assertEqual(self.request("/status", token=session, method="GET")[0], 401)
+        self.assertEqual(self.request("/status", token="test-token", method="GET")[0], 200)
+
+    def test_default_password_falls_back_to_service_token(self):
+        options = m.Options()
+        runtime = m.RuntimeConfig(self.config, options, ":memory:")
+        budget = m.DailyBudget(":memory:", 5)
+        server = m.ThreadingHTTPServer(("127.0.0.1", 0), m.make_handler(self.config, options, budget, runtime=runtime))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            connection_port = server.server_port
+            def login(user, password):
+                connection = http.client.HTTPConnection("127.0.0.1", connection_port, timeout=3)
+                connection.request("POST", "/admin/login", json.dumps({"user": user, "password": password}),
+                                   {"Content-Type": "application/json"})
+                reply = connection.getresponse(); status, data = reply.status, reply.read(); connection.close()
+                return status, json.loads(data)
+            self.assertEqual(login("admin", "test-token")[0], 200)
+            self.assertEqual(login("admin", "wrong")[0], 401)
+        finally:
+            server.shutdown(); server.server_close(); thread.join(); budget.close()
 
 
 if __name__ == "__main__": unittest.main()
