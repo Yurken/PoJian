@@ -15,12 +15,16 @@ interface BrowseEventDao {
     suspend fun trimAllSamples()
     @Query("DELETE FROM observed_works WHERE workKey NOT IN (SELECT workKey FROM browse_events WHERE workKey IS NOT NULL)")
     suspend fun trimWorks()
-    @Query("SELECT * FROM browse_events ORDER BY timestamp DESC, id DESC")
+    @Query("SELECT * FROM browse_events WHERE sourceType != 'recommendation_list' ORDER BY timestamp DESC, id DESC")
     fun observeAll(): Flow<List<BrowseEvent>>
-    @Query("SELECT * FROM browse_events ORDER BY timestamp DESC, id DESC LIMIT 200")
+    @Query("SELECT * FROM browse_events WHERE sourceType != 'recommendation_list' ORDER BY timestamp DESC, id DESC LIMIT 200")
     fun observeRecent(): Flow<List<BrowseEvent>>
-    @Query("SELECT COUNT(*) FROM browse_events")
+    @Query("SELECT COUNT(*) FROM browse_events WHERE sourceType != 'recommendation_list'")
     fun observeCount(): Flow<Int>
+    @Query("SELECT * FROM browse_events ORDER BY timestamp, id")
+    suspend fun chronologicalEvents(): List<BrowseEvent>
+    @Query("UPDATE browse_samples SET visitId = :target WHERE visitId = :source")
+    suspend fun moveSamples(source: Long, target: Long)
     @Insert suspend fun insert(event: BrowseEvent): Long
     @Update suspend fun update(event: BrowseEvent): Int
     @Query("UPDATE browse_events SET visibleText = :text WHERE id = :id")

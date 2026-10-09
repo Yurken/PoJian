@@ -25,6 +25,14 @@ data class WorkHint(val title: String = "", val author: String = "", val nativeI
 data class IdentityNode(val resourceId: String, val text: String)
 
 object WorkIdentityExtractor {
+    private val feedCard = Regex("(?m)^(?:笔记|视频)\\s+.+?\\s+来自\\s*.+?\\s+[0-9.万]+赞")
+    fun isRecommendationList(packageName: String, text: String): Boolean =
+        packageName == "com.xingin.xhs" && feedCard.findAll(text).take(2).count() >= 2
+
+    private val chrome = Regex("^(?:关注|已关注|返回|更多内容|评论框|说点什么.*|共.*条评论|点赞.*|收藏.*|评论\\s*\\d*|\\d+|图片[，,].*|\\d+分钟前|昨天.*|今天.*)$")
+    fun body(text: String): List<String> = text.lines().map { it.trim().replace(Regex("\\s+"), " ") }
+        .filter { it.isNotBlank() && !chrome.matches(it) }
+
     fun extract(packageName: String, text: String, nodes: List<IdentityNode> = emptyList()): WorkHint {
         // Only known content fields; arbitrary UI labels must not become a post identity.
         val supported = packageName == "com.xingin.xhs" || packageName == "com.ss.android.ugc.aweme"
@@ -43,7 +51,14 @@ object WorkIdentityExtractor {
             }.orEmpty() else ""
         }
         val gallery = Regex("图片[，,、\\s]*第\\s*(\\d+)\\s*张[，,、\\s]*共\\s*(\\d+)\\s*张").find(text)
-        return WorkHint(title, author, galleryIndex = gallery?.groupValues?.get(1)?.toIntOrNull() ?: 0,
+        // Obfuscated resource IDs are common on real phones. A detail page with one
+        // visible author and a gallery may still expose its title in the text tree.
+        val detailTitle = if (packageName == "com.xingin.xhs" && gallery != null && gallery.groupValues[2] == "1" && author.isNotBlank() &&
+            !isRecommendationList(packageName, text)) {
+            val tail = text.substring(gallery.range.last + 1).substringAfter('\n', "")
+            body(tail).firstOrNull { it.length in 8..240 && it != author }.orEmpty()
+        } else ""
+        return WorkHint(title.ifBlank { detailTitle }, author, galleryIndex = gallery?.groupValues?.get(1)?.toIntOrNull() ?: 0,
             galleryTotal = gallery?.groupValues?.get(2)?.toIntOrNull() ?: 0)
     }
 }

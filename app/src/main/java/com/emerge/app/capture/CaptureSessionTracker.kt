@@ -22,6 +22,8 @@ internal class CaptureSessionTracker {
     private var lastText = ""
     private var lastHint = WorkHint()
     private var work: ObservedWork? = null
+    private var paused = false
+    fun pause() { paused = true }
     @Volatile private var revision = 0L
     val packageName: String? get() = session?.packageName
 
@@ -33,6 +35,7 @@ internal class CaptureSessionTracker {
         lastText = ""
         lastHint = WorkHint()
         work = null
+        paused = false
     }
 
     fun sample(packageName: String, text: String, now: Long, elapsed: Long, type: Int,
@@ -44,7 +47,8 @@ internal class CaptureSessionTracker {
             (hint.author.isNotBlank() && lastHint.author.isNotBlank() && hint.author != lastHint.author)
         val same = !conflictingIdentity && ((key != null && key == old?.workKey) ||
             ContentContinuity.same(lastText, text) || hint.followsGallery(lastHint))
-        val continuing = old != null && old.packageName == packageName && (gap in 0..6000 || deleted) && same
+        val continuing = old != null && old.packageName == packageName &&
+            (gap in 0..6000 || (paused && gap in 0..15_000) || deleted) && same
         val content = if (continuing && (key == null || work!!.identityMethod != "session_estimate")) work!! else ObservedWork(
             key ?: "visit:${UUID.randomUUID()}", packageName, hint.title, hint.author,
             if (key == null) "session_estimate" else hint.method, if (continuing) old!!.timestamp else now)
@@ -52,7 +56,7 @@ internal class CaptureSessionTracker {
             workKey = content.workKey, identityMethod = content.identityMethod,
             visibleText = (old.visibleText.lines() + text.lines()).distinct().joinToString("\n").take(16000),
             endTimestamp = now,
-            durationMillis = old.durationMillis + (gap.takeIf { it in 0..6000 } ?: 0L),
+            durationMillis = old.durationMillis + (gap.takeIf { !paused && it in 0..6000 } ?: 0L),
             sampleCount = old.sampleCount + 1
         ) else BrowseEvent(
             packageName = packageName, timestamp = now, eventType = type,
@@ -73,6 +77,7 @@ internal class CaptureSessionTracker {
         work = sample.work
         lastElapsed = sample.elapsedRealtime
         deleted = id == null
+        paused = false
     }
 
 }

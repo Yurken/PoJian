@@ -72,4 +72,34 @@ class WorkIdentityTest {
         assertNotNull(WorkIdentityExtractor.extract("com.xingin.xhs", "", nodes).key("com.xingin.xhs"))
         assertNull(WorkIdentityExtractor.extract("com.other", "", nodes).key("com.other"))
     }
+    @Test fun realSingleImagePostKeepsVisitDespiteCountersAndTemporaryMissingRoot() {
+        val original = "不写bug\n关注\n图片,第1张,共1张,双指左划或右划即可查看更多内容\n更多内容\n神经网络 GNN CNN 创新创新点 创新思路\n创新点 创新思路，代码改进。\n点赞7\n收藏2\n评论1"
+        val first = tracker.sample("com.xingin.xhs", original, 100000, 1000, 4096)
+        tracker.saved(first, 12)
+        val changed = original.replace("点赞7", "点赞8")
+        val second = tracker.sample("com.xingin.xhs", changed, 102000, 3000, 4096)
+        assertTrue(second.continuing)
+        assertEquals(2000L, second.event.durationMillis)
+        tracker.saved(second, 12)
+        tracker.pause()
+        val resumed = tracker.sample("com.xingin.xhs", changed, 110000, 11000, 4096)
+        assertTrue(resumed.continuing)
+        assertEquals(12L, resumed.event.id)
+        assertEquals(2000L, resumed.event.durationMillis)
+    }
+
+    @Test fun recommendationCardsAreNotASingleConsumedWork() {
+        val feed = "笔记 hit跳车or留下？ 来自一条咸鱼 8赞\n一条咸鱼\n8\n笔记 没有头绪的宝放心好啦 来自师姐 1赞\n视频 宿舍小锅吃什么 来自日食记 1408赞"
+        assertTrue(WorkIdentityExtractor.isRecommendationList("com.xingin.xhs", feed))
+        assertFalse(WorkIdentityExtractor.isRecommendationList("com.other", feed))
+        assertFalse(WorkIdentityExtractor.isRecommendationList("com.xingin.xhs", "作者\n关注\n这是一篇完整的笔记正文"))
+    }
+
+    @Test fun pauseCannotMergeAnotherPostOrHideALongAbsence() {
+        val hint = WorkHint("一个有稳定标题的作品", "作者甲")
+        tracker.saved(sample("正文", hint), 12)
+        tracker.pause()
+        assertFalse(sample("正文", WorkHint("另一个完全不同的作品", "作者甲"), 3000).continuing)
+        assertFalse(sample("正文", hint, 20000).continuing)
+    }
 }

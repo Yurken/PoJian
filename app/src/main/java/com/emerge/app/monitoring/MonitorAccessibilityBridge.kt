@@ -105,6 +105,9 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             windowId = root.windowId
             root.getBoundsInScreen(bounds)
             val text = visibleText(root)
+            if (com.emerge.app.capture.WorkIdentityExtractor.isRecommendationList(name, text)) {
+                monitor.clearScreen(); hide(); return
+            }
             val token = MonitorPolicy.hash("$name|$windowId|$revision|$text")
             monitor.setScreen(name, text, token)
         } finally { root.recycle() }

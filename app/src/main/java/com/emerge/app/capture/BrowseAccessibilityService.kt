@@ -66,20 +66,9 @@ open class BrowseAccessibilityService : AccessibilityService() {
         if (event == null || event.eventType !in supported) return
         app.captureDiagnostics.update { it.copy(connected = true, eventsReceived = it.eventsReceived + 1) }
         if (!app.captureSettings.enabled.value || app.captureSettings.allowedPackages.value.isEmpty()) return
-        val name = event.packageName?.toString()
-        if (excluded(name) || name == null || !app.captureSettings.isPackageAllowed(name)) {
-            pending?.cancel()
-            sessions.reset()
-            app.captureDiagnostics.update { it.copy(lastCheck = System.currentTimeMillis(), result =
-                if (excluded(name)) "当前是破茧、系统界面或输入法，已跳过" else "当前应用不在选择范围内，不会读取内容") }
-            return
-        }
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            if (name != sessions.packageName) {
-                pending?.cancel()
-                sessions.reset()
-            }
-        }
+        // Events also come from status bars, keyboards and accessibility overlays.
+        // Their package is not evidence that the user left the post. Only the
+        // verified active root below can end a viewing session.
         latestType = event.eventType
         if (pending?.isActive == true) return
         val type = latestType
@@ -109,13 +98,14 @@ open class BrowseAccessibilityService : AccessibilityService() {
         try {
             root = rootInActiveWindow
             if (root == null) {
-                sessions.reset()
+                sessions.pause()
                 app.captureDiagnostics.update { it.copy(lastCheck = now, result = "已连接服务，但当前窗口没有内容节点") }
                 return
             }
             val activePackage = root.packageName?.toString()
             if (excluded(activePackage)) {
-                sessions.reset()
+                if (activePackage == packageName || activePackage == "com.android.settings") sessions.reset()
+                else sessions.pause()
                 app.captureDiagnostics.update { it.copy(lastCheck = now, result = "当前是破茧、系统界面或输入法，已跳过") }
                 return
             }
@@ -130,8 +120,13 @@ open class BrowseAccessibilityService : AccessibilityService() {
             val text = extractText(root, identityNodes)
             app.captureDiagnostics.update { it.copy(lastCheck = now, lastPackage = activePackage) }
             if (text.isBlank()) {
-                sessions.reset()
+                sessions.pause()
                 app.captureDiagnostics.update { it.copy(result = "可以访问窗口，但读不到可见文字（受画面或节点限制）") }
+                return
+            }
+            if (WorkIdentityExtractor.isRecommendationList(activePackage, text)) {
+                sessions.reset()
+                app.captureDiagnostics.update { it.copy(result = "当前是推荐列表，摘要不计为已浏览作品；打开单篇后开始计数") }
                 return
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) { sessions.reset(); return }

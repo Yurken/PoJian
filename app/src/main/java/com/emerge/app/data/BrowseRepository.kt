@@ -1,6 +1,8 @@
 package com.emerge.app.data
 
 import androidx.room.withTransaction
+import com.emerge.app.capture.WorkIdentityExtractor
+import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -11,8 +13,51 @@ class BrowseRepository(private val database: BrowseDatabase) {
     private val captureMutex = Mutex()
     private val deletionGeneration = AtomicLong()
     val recentEvents = dao.observeRecent()
-    val allEvents = dao.observeAll()
+    val allEvents = dao.observeAll().onStart { repairAdjacentVisits() }
     val count = dao.observeCount()
+    private var repaired = false
+
+    /** Conservative upgrade: preserve samples, never join across another work or an unknown gap. */
+    internal suspend fun repairAdjacentVisits() = captureMutex.withLock { repairLocked() }
+    private suspend fun repairLocked() {
+        if (repaired) return
+        database.withTransaction {
+            var previous: BrowseEvent? = null
+            for (original in dao.chronologicalEvents()) {
+                if (original.sourceType != "accessibility") { previous = null; continue }
+                if (WorkIdentityExtractor.isRecommendationList(original.packageName, original.visibleText)) {
+                    // Retain the raw observation, but do not claim a feed screen is one watched work.
+                    dao.update(original.copy(sourceType = "recommendation_list"))
+                    previous = null
+                    continue
+                }
+                val hint = WorkIdentityExtractor.extract(original.packageName, original.visibleText)
+                val key = hint.key(original.packageName)
+                val event = if (key != null && original.identityMethod in setOf("unknown", "session_estimate")) {
+                    dao.insertWork(ObservedWork(key, original.packageName, hint.title, hint.author, hint.method, original.timestamp))
+                    original.copy(workKey = key, identityMethod = hint.method).also { dao.update(it) }
+                } else original
+                val old = previous
+                val gap = if (old == null) Long.MAX_VALUE else event.timestamp - maxOf(old.timestamp, old.endTimestamp)
+                val identical = old != null && WorkIdentityExtractor.body(old.visibleText) == WorkIdentityExtractor.body(event.visibleText)
+                if (old != null && key != null && old.workKey == event.workKey && old.packageName == event.packageName &&
+                    gap in 0..6000 && identical) {
+                    val merged = old.copy(endTimestamp = maxOf(old.endTimestamp, event.endTimestamp, event.timestamp),
+                        durationMillis = old.durationMillis + event.durationMillis,
+                        sampleCount = old.sampleCount + event.sampleCount)
+                    dao.update(merged)
+                    dao.moveSamples(event.id, old.id)
+                    dao.deleteEvent(event.id)
+                    dao.trimSamples(old.id)
+                    audio.invalidateForEvent(event.id)
+                    previous = merged
+                } else previous = event
+            }
+            dao.trimWorks()
+        }
+        repaired = true
+    }
+
     suspend fun record(event: BrowseEvent) = database.withTransaction {
         val id = dao.insert(event)
         if (audio.trimsAudio()) audio.invalidateAllAnalyses()
@@ -36,6 +81,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
         sampleText: String? = null,
         permitted: () -> Boolean
     ): Long? = captureMutex.withLock {
+        repairLocked()
         fun current() = deletionGeneration.get() == generation && permitted()
         if (!current()) return@withLock null
         val id = database.withTransaction {
