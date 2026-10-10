@@ -54,6 +54,9 @@ class FakeProviders:
     def search_key(self):
         return self.options.search_key
 
+    def retrieval_available(self):
+        return bool(self.options.search_key)
+
 
 class InputTests(unittest.TestCase):
     def test_valid_text(self): self.assertEqual(m.validate_monitor(request_data())["kind"], "text")
@@ -179,8 +182,8 @@ class PipelineTests(unittest.TestCase):
         with patch.object(m, "post_json", return_value=envelope):
             result = m.analyze_monitor(m.validate_monitor(request_data()), provider)
         self.assertEqual(len(result["claims"]), 1)
-        self.assertEqual(result["claims"][0]["verdict"], "not_checked")
-        self.assertIn("尚未配置联网取证", result["claims"][0]["explanation"])
+        self.assertEqual(result["claims"][0]["verdict"], "insufficient")
+        self.assertIn("未取得可用的网页正文", result["claims"][0]["explanation"])
 
 
 class BudgetTests(unittest.TestCase):
@@ -470,7 +473,9 @@ class ConfigApiTests(unittest.TestCase):
         settings = self.status()["settings"]
         self.assertFalse(settings["vision"]["configured"])
         self.assertEqual(settings["vision"]["model"], "")
-        self.assertFalse(settings["retrieval"]["configured"])
+        # Retrieval stays available through the text model's built-in web search.
+        self.assertTrue(settings["retrieval"]["configured"])
+        self.assertIn("模型联网搜索", settings["retrieval"]["provider"])
         self.assertEqual(self.call("/config/update", {"text_url": "-"})[0], 400)
         self.assertEqual(self.call("/config/update", {"text_model": "-"})[0], 400)
 
@@ -566,7 +571,13 @@ class AdminConsoleTests(unittest.TestCase):
         session = body["token"]
         self.assertEqual(self.request("/status", token=session, method="GET")[0], 200)
         self.assertEqual(self.request("/config/profile/save", {"name": "方案A"}, token=session)[0], 200)
-        self.assertEqual(self.request("/config/test", {"target": "retrieval"}, token=session)[0], 400)
+        # No Tavily key here: retrieval probe falls back to the text model's web search path.
+        with patch.object(m, "post_json", return_value={"search_info": {"search_results": [{"url": "https://example.org/a"}]}}):
+            self.assertEqual(self.request("/config/test", {"target": "retrieval"}, token=session)[1]["ok"], True)
+        with patch.object(m, "post_json", return_value={}):
+            body = self.request("/config/test", {"target": "retrieval"}, token=session)[1]
+            self.assertFalse(body["ok"])
+            self.assertIn("enable_search", body["error"])
 
     def test_bad_login_rejected_and_throttled(self):
         self.assertEqual(self.login(password="wrong")[0], 401)
@@ -661,6 +672,85 @@ class ProbeErrorDetailTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("HTTP 401", result["error"])
         self.assertIn("Invalid API-key provided", result["error"])
+
+
+class BuiltinSearchTests(unittest.TestCase):
+    def setUp(self):
+        self.config = legacy.Config("https://example.org/v1/chat/completions", "fixture-model",
+                                    "sk-test-secret-key", "test-token")
+        self.runtime = m.RuntimeConfig(self.config, m.Options(), ":memory:")
+        self.providers = m.Providers(self.config, self.runtime)
+
+    def test_retrieval_available_via_text_model(self):
+        self.assertTrue(self.providers.retrieval_available())
+        empty = m.RuntimeConfig(legacy.Config("https://example.org", "model", "", "token"), m.Options(), ":memory:")
+        self.assertFalse(m.Providers(self.config, empty).retrieval_available())
+        settings = self.runtime.masked_settings()
+        self.assertTrue(settings["retrieval"]["configured"])
+        self.assertIn("模型联网搜索", settings["retrieval"]["provider"])
+
+    def test_builtin_search_fetches_page_bodies(self):
+        search_reply = {"search_info": {"search_results": [
+            {"url": "https://example.org/report", "title": "原始报告"},
+            {"url": "https://example.org/report", "title": "重复链接"},
+            {"url": "http://127.0.0.1/internal", "title": "非法地址"},
+            {"url": "https://example.org/second", "title": "抓取失败"}]}}
+        pages = {"https://example.org/report": SOURCE["excerpt"]}
+        with patch.object(m, "post_json", return_value=search_reply) as mocked, \
+                patch.object(m, "fetch_page_text", side_effect=lambda url, deadline: pages.get(url, "")):
+            sources = self.providers.search("某产品的测试", m.time.monotonic() + 60)
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(sources[0]["excerpt"], SOURCE["excerpt"])
+        self.assertEqual(mocked.call_count, 1)
+        payload = mocked.call_args[0][2]
+        self.assertTrue(payload["enable_search"])
+
+    def test_builtin_search_empty_results_yield_no_sources(self):
+        with patch.object(m, "post_json", return_value={}):
+            self.assertEqual(self.providers.search("问题", m.time.monotonic() + 60), [])
+
+    def test_builtin_search_full_pipeline(self):
+        extraction = {"observed_text": "", "claims": [claim()]}
+        replies = [
+            {"choices": [{"message": {"content": json.dumps(extraction, ensure_ascii=False)}}]},
+            {"search_info": {"search_results": [{"url": "https://example.org/report", "title": "原始报告"}]}},
+            {"choices": [{"message": {"content": json.dumps(FakeProviders().verdict, ensure_ascii=False)}}]},
+        ]
+        with patch.object(m, "post_json", side_effect=replies), \
+                patch.object(m, "fetch_page_text", return_value=SOURCE["excerpt"]):
+            result = m.analyze_monitor(m.validate_monitor(request_data()), self.providers)
+        self.assertEqual(result["claims"][0]["verdict"], "contradicted")
+        self.assertEqual(result["claims"][0]["sources"][0]["url"], "https://example.org/report")
+        self.assertTrue(result["coverage"]["search_attempted"])
+
+    def test_fetch_page_text_extracts_and_rejects(self):
+        class PageHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == "/html":
+                    body = "<html><head><script>var secret='x';</script></head><body><p>正文第一句。</p><p>正文第二句。</p></body></html>".encode()
+                    self.send_response(200); self.send_header("Content-Type", "text/html")
+                else:
+                    body = b"\x89PNG\r\n\x1a\n"
+                    self.send_response(200); self.send_header("Content-Type", "image/png")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers(); self.wfile.write(body)
+            def log_message(self, *args):
+                pass
+        server = ThreadingHTTPServer(("127.0.0.1", 0), PageHandler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            base = f"http://127.0.0.1:{server.server_port}"
+            with patch.object(m, "evidence_url", return_value=True):
+                body = m.fetch_page_text(base + "/html", m.time.monotonic() + 10)
+                self.assertIn("正文第一句", body)
+                self.assertIn("正文第二句", body)
+                self.assertNotIn("secret", body)
+                self.assertEqual(m.fetch_page_text(base + "/image", m.time.monotonic() + 10), "")
+            self.assertEqual(m.fetch_page_text("http://127.0.0.1/anything", m.time.monotonic() + 10), "")
+            self.assertEqual(m.fetch_page_text("not-a-url", m.time.monotonic() + 10), "")
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
 
 
 if __name__ == "__main__": unittest.main()

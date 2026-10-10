@@ -15,7 +15,8 @@ export EMERGE_SERVICE_TOKEN='自行生成的高强度访问令牌'
 export EMERGE_VISION_URL="$EMERGE_UPSTREAM_URL"
 export EMERGE_VISION_MODEL='你的视觉模型名称'
 export EMERGE_VISION_API_KEY='你的视觉模型密钥'
-# 当前实现的检索适配器：Tavily Search，要求取得 raw_content 正文。
+# 检索优先使用 Tavily（要求取得 raw_content 正文）；不配置时回退到文字模型的联网搜索
+# （enable_search 仅用于发现 URL，正文由服务端自行抓取）。
 export TAVILY_API_KEY='你的检索密钥'
 export EMERGE_MONITOR_DAILY_LIMIT=200
 python server/monitor_server.py

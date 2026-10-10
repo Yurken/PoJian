@@ -9,6 +9,7 @@ import hmac
 import ipaddress
 import json
 import os
+from html.parser import HTMLParser
 from pathlib import Path
 import socket
 import sqlite3
@@ -193,7 +194,7 @@ class RuntimeConfig:
     @property
     def retrieval_configured(self) -> bool:
         with self._lock:
-            return bool(self._search_key)
+            return bool(self._search_key) or bool(self._text["key"])
 
     @property
     def daily_limit(self) -> int:
@@ -320,8 +321,9 @@ class RuntimeConfig:
                 "vision": {"url": self._vision["url"] or self._text["url"], "model": self._vision["model"],
                            "api_key": admin.mask_secret(self._vision["key"]),
                            "configured": bool(self._vision["model"]) and bool(self._vision["key"] or self._text["key"])},
-                "retrieval": {"provider": "Tavily Search", "api_key": admin.mask_secret(self._search_key),
-                              "configured": bool(self._search_key)},
+                "retrieval": {"provider": "Tavily Search" if self._search_key else "模型联网搜索（enable_search）",
+                              "api_key": admin.mask_secret(self._search_key),
+                              "configured": bool(self._search_key) or bool(self._text["key"])},
                 "daily_limit": self._daily_limit,
                 "profiles": profiles,
             }
@@ -410,11 +412,24 @@ def probe_provider(target: str, runtime: RuntimeConfig) -> dict:
                 {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + PROBE_JPEG}}]}],
                 "max_tokens": 1, "temperature": 0, "stream": False}, PROBE_TIMEOUT, detail=True)
         elif target == "retrieval":
-            if not runtime.search_key():
-                raise ClientError("尚未配置检索密钥")
-            post_json("https://api.tavily.com/search", runtime.search_key(),
-                      {"query": "ping", "max_results": 1, "search_depth": "basic",
-                       "include_answer": False, "include_raw_content": False}, PROBE_TIMEOUT, detail=True)
+            key = runtime.search_key()
+            if key:
+                post_json("https://api.tavily.com/search", key,
+                          {"query": "ping", "max_results": 1, "search_depth": "basic",
+                           "include_answer": False, "include_raw_content": False}, PROBE_TIMEOUT, detail=True)
+            else:
+                settings = runtime.provider_settings(False)
+                if not settings or not settings[1]:
+                    raise ClientError("尚未配置检索密钥，文字模型也未配置")
+                result = post_json(settings[0], settings[1], {"model": settings[2], "messages": [
+                    {"role": "user", "content": "联网搜索测试"}], "max_tokens": 50,
+                    "stream": False, "enable_search": True}, PROBE_TIMEOUT, detail=True)
+                info = result.get("search_info")
+                if not isinstance(info, dict):
+                    message = result.get("choices", [{}])[0].get("message", {})
+                    info = message.get("search_info") if isinstance(message, dict) else {}
+                if not (isinstance(info, dict) and info.get("search_results")):
+                    return {"ok": False, "error": "联网搜索未返回结果（该端点可能不支持 enable_search）"}
         else:
             raise ClientError("未知的测试目标")
     except UpstreamError as error:
@@ -459,6 +474,66 @@ def validate_monitor(payload: object) -> dict:
             "captured_at": payload["captured_at"], "check_facts": payload["check_facts"], "image": image}
 
 
+class _PageTextExtractor(HTMLParser):
+    """Minimal HTML-to-text extractor; skips script/style/noscript entirely."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self._skip = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript"):
+            self._skip += 1
+        elif tag in ("p", "div", "br", "li", "h1", "h2", "h3", "h4", "tr", "section", "article"):
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript") and self._skip:
+            self._skip -= 1
+
+    def handle_data(self, data):
+        if not self._skip:
+            self.parts.append(data)
+
+    def text(self) -> str:
+        return " ".join(" ".join(self.parts).split())
+
+
+def fetch_page_text(url: str, deadline: float, max_bytes: int = 256 * 1024) -> str:
+    """Fetch raw page text for evidence alignment. Any failure drops the source (returns "")."""
+    if not evidence_url(url):
+        return ""
+    try:
+        timeout = min(8.0, deadline - time.monotonic())
+        if timeout <= 0:
+            return ""
+        request = Request(url, headers={"User-Agent": "Mozilla/5.0 (compatible; pojian-evidence/1)"})
+        with build_opener().open(request, timeout=timeout) as response:
+            if not evidence_url(response.geturl()):
+                return ""
+            if response.headers.get_content_type() not in ("text/html", "text/plain"):
+                return ""
+            chunks, total = [], 0
+            while True:
+                if time.monotonic() > deadline:
+                    return ""
+                block = response.read1(min(65536, max_bytes + 1 - total))
+                if not block:
+                    break
+                total += len(block)
+                if total > max_bytes:
+                    return ""
+                chunks.append(block)
+        body = b"".join(chunks).decode("utf-8", "ignore")
+        if "<" not in body:
+            return " ".join(body.split())[:6000]
+        parser = _PageTextExtractor()
+        parser.feed(body)
+        return parser.text()
+    except Exception:
+        # Untrusted external page: any failure means this source simply cannot support a verdict.
+        return ""
 def _provider_error_detail(error: HTTPError) -> str:
     """Extract a short message from a provider's JSON error body (OpenAI-compatible shape)."""
     try:
@@ -553,10 +628,16 @@ class Providers:
         except (KeyError, IndexError, TypeError, ValueError, UnicodeError, RecursionError):
             raise UpstreamError("Model response did not match the JSON contract") from None
 
+    def retrieval_available(self) -> bool:
+        return bool(self.runtime.search_key()) or bool(self.runtime.provider_settings(False)[1])
+
     def search(self, query: str, deadline: float) -> list[dict]:
         search_key = self.runtime.search_key()
-        if not search_key:
-            return []
+        if search_key:
+            return self._search_tavily(search_key, query, deadline)
+        return self._search_builtin(query, deadline)
+
+    def _search_tavily(self, search_key: str, query: str, deadline: float) -> list[dict]:
         remaining = min(15, deadline - time.monotonic())
         if remaining <= 0:
             raise UpstreamError("Monitor deadline exceeded", 504)
@@ -578,6 +659,39 @@ class Providers:
             seen.add(row["url"])
             cleaned.append({"id": len(cleaned), "url": row["url"],
                             "title": str(row.get("title", "外部资料"))[:200], "excerpt": raw[:6000]})
+            if len(cleaned) == 4:
+                break
+        return cleaned
+
+    def _search_builtin(self, query: str, deadline: float) -> list[dict]:
+        # Fallback retrieval: the text model's enable_search only discovers URLs; page bodies
+        # are fetched independently so verdicts still rest on retrieved raw content.
+        settings = self.runtime.provider_settings(False)
+        if not settings or not settings[1]:
+            return []
+        remaining = min(45, deadline - time.monotonic())
+        if remaining <= 0:
+            raise UpstreamError("Monitor deadline exceeded", 504)
+        result = post_json(settings[0], settings[1], {"model": settings[2], "messages": [
+            {"role": "user", "content": "联网检索：" + query[:500]}], "max_tokens": 1200,
+            "stream": False, "enable_search": True}, remaining)
+        info = result.get("search_info")
+        if not isinstance(info, dict):
+            message = result.get("choices", [{}])[0].get("message", {})
+            info = message.get("search_info") if isinstance(message, dict) else {}
+        rows = info.get("search_results", []) if isinstance(info, dict) else []
+        if not isinstance(rows, list):
+            return []
+        cleaned, seen = [], set()
+        for row in rows[:10]:
+            if not isinstance(row, dict) or not evidence_url(row.get("url")) or row["url"] in seen:
+                continue
+            body = fetch_page_text(row["url"], deadline)
+            if not text(body, 500_000):
+                continue
+            seen.add(row["url"])
+            cleaned.append({"id": len(cleaned), "url": row["url"],
+                            "title": str(row.get("title", "外部资料"))[:200], "excerpt": body[:6000]})
             if len(cleaned) == 4:
                 break
         return cleaned
@@ -646,7 +760,7 @@ def analyze_monitor(source: dict, providers: Providers) -> dict:
         if searched:
             claim["explanation"] = "每次请求最多核查一条事实声明，本条超出本次取证预算"
             continue
-        if not providers.search_key():
+        if not providers.retrieval_available():
             claim["explanation"] = "尚未配置联网取证服务，不能用模型自身知识代替事实核查"
             continue
         searched = True

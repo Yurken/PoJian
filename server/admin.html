@@ -236,7 +236,7 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
       <div class="field"><label for="cfg_vision_url">视觉接口（留空同文字接口；填 - 清空回退）</label><input id="cfg_vision_url" autocomplete="off"></div>
       <div class="field"><label for="cfg_vision_model">视觉模型（留空停用视觉；填 - 清空）</label><input id="cfg_vision_model" autocomplete="off"></div>
       <div class="field"><label for="cfg_vision_key">视觉密钥（留空同文字密钥；填 - 清空）</label><input id="cfg_vision_key" type="password" autocomplete="new-password"></div>
-      <div class="field"><label for="cfg_search_key">检索密钥（Tavily；填 - 清空）</label><input id="cfg_search_key" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="cfg_search_key">检索密钥（Tavily，选填；不填用文字模型联网搜索；填 - 清空）</label><input id="cfg_search_key" type="password" autocomplete="new-password"></div>
       <div class="field"><label for="cfg_daily_limit">每日限额（次）</label><input id="cfg_daily_limit" type="number" min="1" max="10000"></div>
     </div>
     <div class="msg" id="configMsg"></div>
