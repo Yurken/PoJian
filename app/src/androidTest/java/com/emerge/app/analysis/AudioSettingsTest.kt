@@ -42,8 +42,9 @@ class AudioSettingsTest {
     }
     @Test fun invalidCredentialOrReleaseHttpDoesNotChangeSettings() {
         val settings = AudioAnalysisSettings(context)
+        val original = settings.config.value
         assertTrue(runCatching { settings.save(TextServiceConfig(true, "http://127.0.0.1:8787", "token"), false) }.isFailure)
         assertTrue(runCatching { settings.save(TextServiceConfig(true, "https://service.example", "token\nInjected: value"), false) }.isFailure)
-        assertEquals(TextServiceConfig(), settings.config.value)
+        assertTrue(original == settings.config.value)
     }
 }

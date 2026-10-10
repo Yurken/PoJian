@@ -90,6 +90,13 @@ internal fun AnalysisCards(
             }
         } else {
             WhiteCard {
+                SectionTitle("分析覆盖", "${report.usableSnapshots} 条有效记录")
+                MetadataText("云端结构结果 ${report.structuredAnalyzedRecords} 条 · 本地规则 ${report.localFallbackRecords} 条")
+                MetadataText("有效结构结果覆盖 ${ReportExporter.percent(report.structuredAnalyzedRecords, report.usableSnapshots)}，包含未提取出观点的记录；每次最多提取 3 个观点，采样不代表整条记录或全部设备浏览都已分析。")
+                if (report.rejectedSemanticsRecords > 0) MetadataText("${report.rejectedSemanticsRecords} 条云端结果与当前原文不匹配或未通过校验，使用本地规则。")
+                if (report.structuredAnalyzedRecords == 0) MetadataText("当前回顾没有有效云端结构结果，观点与依据来自本地规则候选。")
+            }
+            WhiteCard {
                 SectionTitle("24 小时信息回顾",
                     if (period == StatisticsPeriod.WEEK) "最近 7 天按小时合计" else if (period == StatisticsPeriod.HOURS24) "过去24小时按钟点合计" else "今天 00:00—24:00")
                 HourlyRecordHeatmapContent(
@@ -165,8 +172,8 @@ internal fun AnalysisCards(
                         MetadataText("主题比例分母：${report.coverageSessions} 条有效记录，每条按主要内容归一类。")
                         if (report.topics.isNotEmpty()) {
                             Text("观点概括", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                            report.claims.groupBy { ViewpointTimeline.label(it.quote) }.entries.forEachIndexed { index, entry ->
-                                ProportionRow(entry.key,
+                            report.claims.groupBy { viewpointClaim(it).key }.entries.forEachIndexed { index, entry ->
+                                ProportionRow(viewpointClaim(entry.value.first()).label,
                                     "${entry.value.size} 个 · ${ReportExporter.percent(entry.value.size, report.claims.size)}",
                                     fraction(entry.value.size, report.claims.size), ChartColors[index % ChartColors.size])
                             }
@@ -194,7 +201,7 @@ internal fun AnalysisCards(
                         }
                     }
                     ExpandableNote("结果说明",
-                        "主题集中、观点一致或负面情绪，都不会单独得出结论。内容是谁写的、立场如何、材料源头在哪，目前都无法验证。结果不会推断你的态度、情绪或认知状况，也不能证明你是否处于信息茧房。")
+                        "主题集中、观点一致或负面情绪，都不会单独得出结论。云端结果对观点结构作出估计，本地规则提供候选；两者都需要核查表达者和材料源头。结果不会推断你的态度、情绪或认知状况，也不能证明你是否处于信息茧房。")
                 }
             }
 
@@ -231,7 +238,7 @@ internal fun AnalysisCards(
                 ExpandableNote("导出说明",
                     "报告包含生成时的原文引用。PDF 附录最多 100 个观点，完整列表请导出文本。清空应用不会删除已导出的文件。")
                 ExpandableNote("数据范围与方法",
-                    "${report.period}，统计至 ${reportTime(report.end, report.zone)}。共 ${report.rawRecords} 条原始记录，保留 ${report.usableSnapshots} 条有效记录，合并 ${report.mergedSnapshots} 条重复内容，跳过 ${report.skippedRecords} 条无正文的记录，${report.unknownDurationRecords} 条未统计时长。历史对比使用之前的 ${report.comparisonRecords} 条记录。\n\n${report.method}。覆盖已授权应用提供的可见文字与已保存的音频转写；未授权的页面文字、没获取到的正文、未转写的音频和视频画面不在统计范围内。音频转写未统计观看时长，媒体长度不计入浏览停留。停留时长不等于阅读、理解或认同。")
+                    "${report.period}，统计至 ${reportTime(report.end, report.zone)}。共 ${report.rawRecords} 条原始记录，保留 ${report.usableSnapshots} 条有效记录，合并 ${report.mergedSnapshots} 条重复内容，跳过 ${report.skippedRecords} 条无正文的记录，${report.unknownDurationRecords} 条未统计时长。历史对比使用之前的 ${report.comparisonRecords} 条记录。\n\n${report.method}。覆盖已授权应用提供的可见文字、已保存的音频转写及视觉提取文字；视觉文字可能有误。未授权的页面文字、没获取到的正文、未转写的音频和未采样的视频画面不在统计范围内。音频转写与视觉文字不增加观看时长，媒体长度不计入浏览停留。停留时长不等于阅读、理解或认同。")
             }
         }
     }
@@ -415,7 +422,7 @@ private fun GroupRow(index: Int, group: ClaimGroup, onClick: () -> Unit) {
         .padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("${index.toString().padStart(2, '0')} · ${ViewpointTimeline.label(group.quote)}", color = Ink,
+            Text("${index.toString().padStart(2, '0')} · ${viewpointClaim(group.observations.first()).label}", color = Ink,
                 fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Text("${group.observations.size} 个观点 ›", color = Muted, fontSize = 11.sp)
         }
@@ -437,7 +444,12 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
         QuoteBlock(item.quote)
         Text(item.increment.label, color = incrementColor(item.increment), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            MetadataText(if (item.analysisSource == "structured_model") "观点来源：云端结构结果 · 仍需核对" else "观点来源：本地规则候选")
             Text("讨论对象：${item.subject.ifBlank { "未识别，请查看原文" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
+            if (item.analysisSource == "structured_model") {
+                Text("判断维度：${item.dimension.ifBlank { "待确认" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
+                Text("立场：${item.stance.ifBlank { "待确认" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
+            }
             Text("适用条件：${item.conditions.ifBlank { "未识别到适用条件" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
             MetadataText("出处：${if (item.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表你的看法"}")
             MetadataText(if (fromAudio) "音频转写 · 未统计观看时长，媒体长度不计入浏览停留。"
@@ -470,6 +482,9 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
+
+private fun viewpointClaim(item: ClaimObservation) = ViewpointClaim(item.quote, item.topic, item.subject,
+    item.dimension, item.stance, item.conditions, item.uncertainAttribution, item.analysisSource)
 
 @Composable
 private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<String, String>, title: String) {

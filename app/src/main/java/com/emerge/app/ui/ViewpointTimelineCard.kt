@@ -29,9 +29,9 @@ import java.util.Locale
 
 @Composable
 internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    report: CognitiveReport?, appNames: Map<String, String>) {
+    report: CognitiveReport?, appNames: Map<String, String>, semantics: List<EventSemantics> = emptyList()) {
     val zone = ZoneId.systemDefault()
-    val buckets = remember(events, period, now, report) { ViewpointTimeline.build(events, period, now, zone, report) }
+    val buckets = remember(events, period, now, report, semantics) { ViewpointTimeline.build(events, period, now, zone, report, semantics) }
     var selected by rememberSaveable(period) { mutableStateOf<Int?>(null) }
     val latest = buckets.indexOfLast { it.items.isNotEmpty() }.coerceAtLeast(0)
     val index = (selected ?: latest).coerceIn(0, buckets.lastIndex)
@@ -81,6 +81,8 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
         Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             SectionTitle("这个时段看了哪些观点", "${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
             if (bucket.items.isEmpty()) MetadataText("这个时段没有保存的作品。")
+            val modeled = bucket.items.count { it.analysisSource == "structured_model" }
+            if (bucket.items.isNotEmpty()) MetadataText("$modeled/${bucket.items.size} 个作品至少有一条有效云端采样结果，其余使用本地规则；采样不代表整部作品已分析。未识别的作品保留在分母中。")
             ViewpointTimeline.groups(bucket.items).forEachIndexed { i, share ->
                 ViewpointGroup(share, bucket.start, bucket.end, appNames, "bucket-$index", i == 0 && share.items.size <= 3)
             }
@@ -90,9 +92,9 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
         else Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val dayEnd = if (date == today) now else date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-    val dayGroups = remember(events, date, dayEnd, report) {
+    val dayGroups = remember(events, date, dayEnd, report, semantics) {
         ViewpointTimeline.groups(ViewpointTimeline.build(events, StatisticsPeriod.DAY, dayEnd, zone,
-            report?.takeIf { it.period == StatisticsPeriod.DAY.label }).flatMap { it.items })
+            report?.takeIf { it.period == StatisticsPeriod.DAY.label }, semantics).flatMap { it.items })
     }
     DailyViewpointPie(dayGroups, "$date", appNames, date.atStartOfDay(zone).toInstant().toEpochMilli(), dayEnd)
 }
@@ -100,9 +102,10 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
 @Composable
 private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names: Map<String, String>, key: String,
     initiallyExpanded: Boolean = false, headerColor: Color? = null, showPercent: Boolean = false) {
-    var expanded by rememberSaveable(key, share.label) { mutableStateOf(initiallyExpanded) }
+    var expanded by rememberSaveable(key, share.key) { mutableStateOf(initiallyExpanded) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { expanded = !expanded }, verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { expanded = !expanded },
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Text((if (showPercent) "● " else "") + share.label, Modifier.weight(1f), color = headerColor ?: MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleSmall)
             val amount = if (showPercent) "${share.items.size} 个 · ${String.format(Locale.CHINA, "%.1f", share.percent)}%" else "${share.items.size} 个作品"
             Text("$amount ${if (expanded) "−" else "+"}", color = Accent, style = MaterialTheme.typography.labelMedium)
@@ -111,6 +114,7 @@ private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names:
             var raw by rememberSaveable(key, item.record.id) { mutableStateOf(false) }
             Column(Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 MetadataText(names[item.record.packageName] ?: item.record.packageName)
+                MetadataText(if (item.analysisSource == "structured_model") "云端结构结果 · 仍需核对原文" else "本地规则候选 · 未经语义模型确认")
                 val duration = ObservationWindow(start, end, ZoneId.systemDefault()).durationMillis(item.record)
                 MetadataText(duration?.let { "本时段预计停留：${formatDuration(it)}" } ?: "未统计时长")
                 item.quote?.takeIf { it != share.label }?.let { QuoteBlock(it) }
@@ -124,14 +128,29 @@ private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names:
 @Composable
 private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names: Map<String, String>, start: Long, end: Long) {
     val total = groups.firstOrNull()?.total ?: 0
+    val overlaps = groups.sumOf { it.items.size } > total
+    val works = groups.flatMap { it.items }.distinctBy { it.record.packageName + "|" +
+        (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }
+    val modeled = works.count { it.analysisSource == "structured_model" }
     val colors = listOf(Color(0xFF3298F4), Color(0xFF42C587), Color(0xFFFFAA45), Color(0xFFB678DC), Color(0xFFEF729D), Color(0xFF35B9C9))
     WhiteCard {
         SectionTitle("一天接触的观点占比", "$date · $total 个作品（估计）")
-        MetadataText("相同观点的作品归为一组，百分比按作品数计算；接触不代表认同。未识别的作品也计入分母。")
-        Canvas(Modifier.fillMaxWidth().height(220.dp).testTag("daily-viewpoint-pie").semantics {
+        MetadataText("$modeled/$total 个作品至少有一条有效云端采样结果，其余使用本地规则，采样不代表整部作品已分析。比例分母为当天全部去重作品，包含未识别部分；一个作品可表达多个观点，各组比例之和可能超过 100%。接触不代表认同。")
+        val chartSemantics = Modifier.fillMaxWidth().testTag("daily-viewpoint-pie").semantics {
             contentDescription = groups.joinToString("；") { "${it.label}，${it.items.size}个作品，${String.format(Locale.CHINA, "%.1f", it.percent)}%" }
                 .ifBlank { "暂无作品" }
-        }) {
+        }
+        if (overlaps) Column(chartSemantics, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            groups.forEachIndexed { i, group ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(group.label, style = MaterialTheme.typography.bodySmall)
+                    LinearProgressIndicator(progress = { (group.percent / 100.0).toFloat() },
+                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        color = if (group.label in listOf("暂未识别观点", "待归纳")) Muted else colors[i % colors.size],
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant)
+                }
+            }
+        } else Canvas(chartSemantics.height(220.dp)) {
             val diameter = minOf(size.width, size.height) * .9f
             val origin = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
             if (total == 0) drawCircle(Color.LightGray, diameter / 2)
@@ -148,6 +167,6 @@ private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names:
                 if (group.label in listOf("暂未识别观点", "待归纳")) Muted else colors[i % colors.size], showPercent = true)
         }
         if (total == 0) MetadataText("当天没有保存的浏览作品。")
-        ExpandableNote("观点归组说明", "当前使用离线规则和已生成报告中的观点候选。同义表达仅在有明确规则时归为一组，否定观点保留区别，不会为每个作品强行编造观点。未命中短语规则的候选标记为待归纳，没有候选的作品标记为暂未识别；这些占位项不表示它们传递相同观点。每个作品当前取一个代表性观点候选；完整语义归组需要后续模型。")
+        ExpandableNote("观点归组说明", "有效云端结果优先，按主题、讨论对象、判断维度、适用条件和立场归组，保留同一作品的多个观点。有效结果未提取观点时仍保留为暂未识别；对象、维度或立场不明确的结果标为待确认。没有有效云端结果时使用本地规则候选；待归纳和暂未识别只是未知状态。每组同作品计一次，多观点使用独立比例条，避免把重叠占比画成完整饼图。音频片段和视觉转录文字不单独增加作品数或观看时长。")
     }
 }

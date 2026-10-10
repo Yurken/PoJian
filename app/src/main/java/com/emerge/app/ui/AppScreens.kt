@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
 import com.emerge.app.analysis.CognitiveReport
+import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.analysis.ObservationWindow
 import com.emerge.app.data.BrowseEvent
 import java.time.Instant
@@ -37,7 +38,8 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     rawEvents: List<BrowseEvent> = emptyList(), onAnalyze: (String) -> Unit = {},
     onExport: (CognitiveReport, Boolean) -> Unit = { _, _ -> },
     onPurposeChange: (String) -> Unit = {}, selectedAppCount: Int = 0,
-    now: Long = System.currentTimeMillis(), audioContent: (@Composable () -> Unit)? = null) {
+    now: Long = System.currentTimeMillis(), audioContent: (@Composable () -> Unit)? = null,
+    semantics: List<EventSemantics> = emptyList()) {
     val zone = ZoneId.systemDefault()
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val window = ObservationWindow.forPeriod(period, now, zone)
@@ -87,7 +89,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
         item(key = "viewpoint-timeline") {
-            ViewpointTimelineCard(rawEvents, period, now, analysis.report, appNames)
+            ViewpointTimelineCard(rawEvents, period, now, analysis.report?.takeUnless { analysis.stale }, appNames, semantics)
         }
         if (rawEvents.isEmpty()) item(key = "start-guide") {
             WhiteCard {

@@ -28,6 +28,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     val events = app.repository.recentEvents.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val count = app.repository.count.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
     val allEvents = app.repository.allEvents.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val semantics = app.repository.semantics.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     val captureEnabled = app.captureSettings.enabled
     val allowedPackages = app.captureSettings.allowedPackages
     private val serviceState = MutableStateFlow(false)
@@ -58,8 +59,8 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         viewModelScope.launch {
-            allEvents.collect {
-                invalidate("记录已更新，正在同步回顾", cancelAnalysis = false, clearReport = false)
+            combine(allEvents, semantics) { events, extracted -> events to extracted }.collect {
+                invalidate("记录或观点结果已更新，正在同步回顾", cancelAnalysis = false, clearReport = false)
                 scheduleAnalysis()
             }
         }
@@ -152,6 +153,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             val selectedPeriod = period
             val purpose = analysisState.value.purpose
             val snapshot = allEvents.value.toList()
+            val semanticSnapshot = semantics.value.toList()
             if (snapshot.isEmpty()) {
                 analysisState.update { it.copy(running = false, report = null, status = "暂无记录，采集后会自动更新") }
                 return@launch
@@ -161,7 +163,8 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 val result = withContext(Dispatchers.Default) {
                     val computationContext = currentCoroutineContext()
                     CognitiveAnalyzer().analyze(snapshot, selectedPeriod, System.currentTimeMillis(),
-                        purpose = purpose.trim().ifBlank { "未填写" }, checkCancellation = { computationContext.ensureActive() })
+                        purpose = purpose.trim().ifBlank { "未填写" }, checkCancellation = { computationContext.ensureActive() },
+                        semantics = semanticSnapshot)
                 }
                 ensureActive()
                 analysisState.update { it.copy(running = false, report = result, stale = generation != version,

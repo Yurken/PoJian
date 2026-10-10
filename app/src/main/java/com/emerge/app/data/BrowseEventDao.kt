@@ -5,6 +5,18 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BrowseEventDao {
+    @Query("SELECT * FROM browse_events WHERE id = :id")
+    suspend fun event(id: Long): BrowseEvent?
+    @Query("SELECT * FROM browse_semantics ORDER BY analyzedAt DESC, eventId DESC")
+    fun observeSemantics(): Flow<List<BrowseSemantic>>
+    @Query("SELECT * FROM browse_semantics WHERE eventId = :eventId")
+    suspend fun semanticsForEvent(eventId: Long): BrowseSemantic?
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putSemantics(semantics: BrowseSemantic)
+    @Query("DELETE FROM browse_semantics WHERE eventId = :eventId AND analyzedAt = :analyzedAt AND inputText = :inputText")
+    suspend fun removeSemanticsVersion(eventId: Long, analyzedAt: Long, inputText: String)
+    @Query("DELETE FROM browse_semantics")
+    suspend fun clearSemantics()
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertWork(work: ObservedWork)
     @Insert suspend fun insertSample(sample: BrowseSample)
     @Query("SELECT visibleText FROM browse_samples WHERE visitId = :visitId ORDER BY id DESC LIMIT 1")

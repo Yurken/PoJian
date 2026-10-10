@@ -3,6 +3,8 @@ package com.emerge.app.monitoring
 import android.content.Context
 import com.emerge.app.EmergeApplication
 import com.emerge.app.analysis.CognitiveAnalyzer
+import com.emerge.app.analysis.ArgumentUnit
+import com.emerge.app.audioanalysis.TextServiceConfig
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.ui.StatisticsPeriod
 import kotlinx.coroutines.*
@@ -24,7 +26,7 @@ data class MonitorState(val findings: List<MonitorFinding> = emptyList(), val bu
 
 private data class MonitorInput(val id: String, val packageName: String, val text: String, val at: Long,
     val kind: String, val token: String, val epoch: Long, val permission: Long, val deletion: Long,
-    val encounter: String, val image: String = "") {
+    val encounter: String, val image: String = "", val snapshots: List<BrowseEvent> = emptyList()) {
     val key: String get() = MonitorPolicy.hash(packageName + "|" + kind + "|" + text + "|" + image)
 }
 
@@ -39,7 +41,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     val state = mutableState.asStateFlow()
     private val arguments = readArguments().toMutableList()
     private val cache = linkedMapOf<String, Pair<Long, JSONObject>>()
-    private var previousEvents: Map<Long, String>? = null
+    private var previousEvents: Map<Long, BrowseEvent>? = null
     @Volatile private var connection: HttpURLConnection? = null
     @Volatile private var manualHandler: (() -> Unit)? = null
     private var lastLocalAnalysis = 0L
@@ -57,33 +59,39 @@ class MonitorRuntime(private val app: EmergeApplication) {
         }
         scope.launch { for (input in queue) process(input) }
         scope.launch {
-            app.repository.allEvents.collect { rows ->
-                val fingerprints = rows.associate { it.id to MonitorPolicy.hash(it.visibleText) }
+            combine(app.repository.allEvents, app.repository.semantics) { rows, semantics -> rows to semantics }
+                .collect { (rows, semantics) ->
+                val events = rows.associateBy { it.id }
                 val previous = previousEvents
-                previousEvents = fingerprints
+                previousEvents = events
                 // Revisions and deletions invalidate derived comparisons, including in-flight requests.
-                if (previous != null && previous.any { (id, hash) -> fingerprints[id] != hash }) invalidate()
-                val added = rows.filter { row -> previous != null && fingerprints[row.id] != previous[row.id] &&
-                    row.timestamp >= startedAt - 120_000 && row.sourceType != "visual_model" }
+                if (previous != null && previous.any { (id, old) ->
+                    val updated = events[id]
+                    updated == null || (updated.visibleText != old.visibleText && !MonitorInputs.isAppend(old, updated))
+                }) invalidate(clearSemantics = false)
+                val added = rows.filter { row -> previous != null && row.visibleText != previous[row.id]?.visibleText &&
+                    MonitorInputs.observationTime(row) >= startedAt - 120_000 && row.sourceType != "visual_model" }
                     .sortedBy { it.timestamp }
                 if (config.value.realtime && app.captureSettings.enabled.value) {
                     // A transcript batch is submitted with nearby stable context, not once per tiny segment.
                     added.groupBy { it.audioSessionId ?: "event:${it.id}" }.values.forEach { batch ->
                         val last = batch.last()
                         if (last.packageName !in app.captureSettings.allowedPackages.value) return@forEach
-                        val text = if (last.audioSessionId != null) rows.filter {
+                        val snapshots = if (last.audioSessionId != null) rows.filter {
                             it.audioSessionId == last.audioSessionId && it.timestamp <= last.timestamp &&
                                 last.timestamp - it.timestamp <= 30_000
-                        }.sortedBy { it.timestamp }.takeLast(4).joinToString("\n") { it.visibleText }.takeLast(6000)
+                        }.sortedBy { it.timestamp }.takeLast(4) else listOf(last)
+                        val text = if (last.audioSessionId != null) snapshots.joinToString("\n") { it.visibleText }.takeLast(6000)
                         else last.visibleText.take(6000)
                         val screen = state.value
                         val token = if (last.packageName == screen.currentPackage &&
                             (if (last.audioSessionId != null) last.timestamp >= screen.contextSince
                             else MonitorPolicy.normalized(text.take(4000)) == MonitorPolicy.normalized(screen.screenText.take(4000))))
                             screen.contextToken else ""
-                        submit("event:${last.id}", last.packageName, text, last.timestamp,
+                        submit("event:${last.id}", last.packageName, text, MonitorInputs.observationTime(last),
                             if (last.audioSessionId != null) "audio" else "text", token,
-                            last.audioSessionId?.let { "audio:$it" } ?: screen.encounter.takeIf { screen.currentPackage == last.packageName }.orEmpty().ifBlank { "event:${last.id}" })
+                            last.audioSessionId?.let { "audio:$it" } ?: screen.encounter.takeIf { screen.currentPackage == last.packageName }.orEmpty().ifBlank { "event:${last.id}" },
+                            snapshots = snapshots)
                     }
                 }
                 if (config.value.cocoon && app.captureSettings.enabled.value && rows.isNotEmpty() &&
@@ -91,7 +99,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     lastLocalAnalysis = System.currentTimeMillis()
                     val analysisGeneration = app.repository.captureGeneration
                     val report = CognitiveAnalyzer().analyze(rows, StatisticsPeriod.WEEK, lastLocalAnalysis,
-                        checkCancellation = { scope.coroutineContext.ensureActive() })
+                        checkCancellation = { scope.coroutineContext.ensureActive() }, semantics = semantics)
                     val repeated = report.findings.firstOrNull { it.title.startsWith("观察到持续低增量重复") }
                     if (repeated != null && analysisGeneration == app.repository.captureGeneration && config.value.cocoon && app.captureSettings.enabled.value) {
                         val members = report.groups.firstOrNull { it.topic == repeated.topic }?.observations.orEmpty()
@@ -133,13 +141,19 @@ class MonitorRuntime(private val app: EmergeApplication) {
         submit("manual:$now", current.currentPackage, current.screenText, now, "text", current.contextToken, current.encounter.ifBlank { "screen:$now" })
     }
     private fun submit(id: String, packageName: String, text: String, at: Long, kind: String,
-        token: String, encounter: String, image: String = "") {
+        token: String, encounter: String, image: String = "", snapshots: List<BrowseEvent>? = null) {
         val permission = app.captureSettings.permissionToken(packageName) ?: return
         if (text.length < 12 && image.isEmpty()) return
-        val input = MonitorInput(id, packageName, text, at, kind, token, epoch.get(), permission,
-            app.repository.captureGeneration, encounter, image)
-        if (!queue.trySend(input).isSuccess) {
-            mutableState.update { it.copy(skipped = it.skipped + 1, notice = "处理队列已满，部分内容未核查") }
+        val inputEpoch = epoch.get()
+        val generation = app.repository.captureGeneration
+        scope.launch {
+            val targets = snapshots ?: listOfNotNull(MonitorInputs.screenSnapshot(
+                app.repository.allEvents.first(), packageName, text, at))
+            val input = MonitorInput(id, packageName, text, at, kind, token, inputEpoch, permission,
+                generation, encounter, image, targets)
+            if (current(input) && !queue.trySend(input).isSuccess) {
+                mutableState.update { it.copy(skipped = it.skipped + 1, notice = "处理队列已满，部分内容未核查") }
+            }
         }
     }
     private fun current(input: MonitorInput) = input.epoch == epoch.get() &&
@@ -156,7 +170,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         try {
             val now = System.currentTimeMillis()
             val checkFacts = policy.realtime || input.id.startsWith("manual")
-            val cacheKey = input.key + ":" + checkFacts
+            val cacheKey = input.key + ":" + checkFacts + ":" + MonitorPolicy.hash(service.endpoint + "|" + service.token)
             val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now >= it.first && now - it.first <= 300_000 }?.second }
             val json = if (cached != null) JSONObject(cached.toString()).put("id", input.id) else {
                 if (input.kind == "frame" && frameCount() >= policy.dailyFrames) { unchecked(input, "今日关键画面额度已用完，此画面未核查"); return }
@@ -165,7 +179,12 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 if (input.kind == "frame") reserveFrame()
                 mutableState.update { it.copy(requestsToday = app.audioCoordinator.settings.requestsToday(), framesToday = frameCount()) }
                 request(input, service.endpoint, service.token, checkFacts).also { value ->
-                    synchronized(cache) { cache[cacheKey] = now to value; while (cache.size > 32) cache.remove(cache.keys.first()) }
+                    synchronized(cache) {
+                        if (current(input) && app.audioCoordinator.settings.config.value == service) {
+                            cache[cacheKey] = now to value
+                            while (cache.size > 32) cache.remove(cache.keys.first())
+                        }
+                    }
                 }
             }
             currentCoroutineContext().ensureActive()
@@ -174,6 +193,23 @@ class MonitorRuntime(private val app: EmergeApplication) {
             val observed = json.optString("observed_text", "").take(6000)
             val claims = json.getJSONArray("claims")
             require(claims.length() <= 3) { "核查返回的声明数量超限" }
+            val units = (0 until claims.length()).map { index ->
+                val row = claims.getJSONObject(index)
+                fun string(name: String, required: Boolean = false): String {
+                    if (!required && !row.has(name)) return ""
+                    return row.get(name) as? String ?: error("观点字段类型无效")
+                }
+                val uncertain = if (!row.has("uncertain")) true else row.get("uncertain") as? Boolean
+                    ?: error("观点归属标记无效")
+                ArgumentUnit(string("quote", true), string("topic"), string("subject"),
+                    string("dimension"), string("stance"), string("evidence"),
+                    string("conditions"), uncertain)
+            }
+            val available = input.text + if (input.kind == "frame") "\n$observed" else ""
+            val validationEvent = BrowseEvent(id = 1, packageName = input.packageName, timestamp = input.at,
+                eventType = 0, visibleText = available)
+            require(com.emerge.app.analysis.EventSemantics(1, available, System.currentTimeMillis(), units, input.kind)
+                .validFor(validationEvent)) { "观点结构或依据与本次采样不一致" }
             val outputs = (0 until claims.length()).map { index ->
                 val row = claims.getJSONObject(index)
                 val quote = row.getString("quote")
@@ -195,12 +231,25 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     quote, row.getString("explanation").take(1000), sources, row.optString("topic", "").take(100), input.token, input.kind)
             }
             if (!current(input)) return
+            val targets = input.snapshots.toMutableList()
             if (input.kind == "frame" && observed.isNotBlank()) {
                 // A visual-model transcription is explicitly marked; it adds no measured viewing duration.
-                app.repository.saveCapture(BrowseEvent(packageName = input.packageName, timestamp = input.at,
-                    eventType = 0, visibleText = observed, sourceType = "visual_model"), false, input.deletion) { current(input) }
+                val visual = BrowseEvent(packageName = input.packageName, timestamp = input.at,
+                    eventType = 0, visibleText = observed, sourceType = "visual_model")
+                val id = app.repository.saveCapture(visual, false, input.deletion) {
+                    current(input) && app.audioCoordinator.settings.config.value == service
+                }
+                if (id != null) targets += visual.copy(id = id)
             }
-            commit(input, outputs, claims, observed, policy)
+            // Store extracted semantics separately from external fact-check sources.
+            MonitorInputs.allocate(targets, units, System.currentTimeMillis(), input.kind, available).forEach { semantics ->
+                val snapshot = targets.first { it.id == semantics.eventId }
+                app.repository.saveSemantics(snapshot, semantics, input.deletion) {
+                    current(input) && app.audioCoordinator.settings.config.value == service
+                }
+            }
+            if (!current(input) || app.audioCoordinator.settings.config.value != service) return
+            commit(input, outputs, claims, observed, policy, service)
             notice(if (outputs.isEmpty()) "当前采样未提取到可核查声明，不代表内容已被证明真实" else
                 "已处理 ${outputs.size} 个候选；未显示、未采样和超出候选上限的部分不在核查范围内")
         } catch (error: Exception) {
@@ -209,8 +258,9 @@ class MonitorRuntime(private val app: EmergeApplication) {
         } finally { connection = null; mutableState.update { it.copy(busy = false) } }
     }
 
-    @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, claims: JSONArray, observed: String, policy: MonitorConfig) {
-        if (!current(input)) return
+    @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, claims: JSONArray, observed: String,
+        policy: MonitorConfig, service: TextServiceConfig) {
+        if (!current(input) || app.audioCoordinator.settings.config.value != service) return
         outputs.forEach(::publish)
         val repeated = synchronized(arguments) {
                 (0 until claims.length()).forEach { index ->
@@ -220,7 +270,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
                         arguments += ObservedArgument(input.key, input.packageName, input.at,
                             row.optString("topic", ""), row.optString("subject", ""), row.optString("dimension", ""),
                             row.optString("stance", ""), evidence, row.optString("conditions", ""),
-                            row.optBoolean("uncertain", true), input.encounter)
+                            row.optBoolean("uncertain", true) || listOf("topic", "subject", "dimension", "stance")
+                                .any { row.optString(it).isBlank() }, input.encounter)
                     }
                 }
                 while (arguments.size > 600) arguments.removeAt(0)
@@ -273,11 +324,12 @@ class MonitorRuntime(private val app: EmergeApplication) {
         mutableState.update { it.copy(findings = (listOf(finding) + it.findings.filterNot { old -> old.id == finding.id }).take(80)) }
         prefs.edit().putString("findings", JSONArray().apply { state.value.findings.forEach { put(encode(it)) } }.toString()).apply()
     }
-    @Synchronized fun invalidate() {
+    @Synchronized fun invalidate(clearSemantics: Boolean = true) {
         epoch.incrementAndGet(); connection?.disconnect()
         synchronized(cache) { cache.clear() }; synchronized(arguments) { arguments.clear() }
         mutableState.update { it.copy(findings = emptyList(), busy = false, notice = "材料已变更，旧核查与比较结果已清除") }
         prefs.edit().remove("findings").remove("arguments").apply()
+        if (clearSemantics) scope.launch { app.repository.clearSemantics() }
     }
     fun saveConfig(value: MonitorConfig) {
         val clean = value.bounded()

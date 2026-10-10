@@ -6,10 +6,29 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 
-data class ViewpointItem(val record: BrowseEvent, val label: String?, val quote: String?, val emotional: Boolean)
+data class ViewpointClaim(val quote: String, val topic: String = "", val subject: String = "",
+    val dimension: String = "", val stance: String = "", val conditions: String = "",
+    val uncertain: Boolean = false, val analysisSource: String = "local_rules",
+    val record: BrowseEvent? = null) {
+    private fun normalized(value: String) = value.trim().replace(Regex("\\s+"), " ").lowercase()
+    val confirmed: Boolean get() = !uncertain && topic.isNotBlank() && subject.isNotBlank() && dimension.isNotBlank() && stance.isNotBlank()
+    val key: String get() = if (analysisSource == "structured_model")
+        listOf(analysisSource, topic, subject, dimension, conditions, stance,
+            if (confirmed) "" else quote).joinToString("|") { normalized(it) }
+        else "local_rules|${ViewpointTimeline.label(quote)}"
+    val label: String get() = if (analysisSource == "structured_model") {
+        listOf(topic.takeIf(String::isNotBlank), subject.takeIf(String::isNotBlank),
+            dimension.takeIf(String::isNotBlank), conditions.takeIf(String::isNotBlank),
+            stance.takeIf(String::isNotBlank), if (confirmed) null else "待确认")
+            .filterNotNull().joinToString(" · ").ifBlank { "观点待确认" }
+    } else ViewpointTimeline.label(quote)
+}
+data class ViewpointItem(val record: BrowseEvent, val label: String?, val quote: String?, val emotional: Boolean,
+    val claims: List<ViewpointClaim> = emptyList(), val analysisSource: String = "local_rules")
 data class ViewpointBucket(val label: String, val start: Long, val end: Long,
     val items: List<ViewpointItem>, val score: Int?, val repeated: Int, val emotional: Int)
-data class ViewpointShare(val label: String, val items: List<ViewpointItem>, val total: Int) {
+data class ViewpointShare(val label: String, val items: List<ViewpointItem>, val total: Int,
+    val key: String = label, val analysisSource: String = "local_rules") {
     val percent: Double get() = if (total == 0) 0.0 else items.size * 100.0 / total
 }
 
@@ -18,19 +37,46 @@ object ViewpointTimeline {
     private val emotion = Regex("焦虑|恐慌|恐惧|绝望|完蛋|没有未来|毁掉")
     private val negatedEmotion = Regex("(?:不必|不用|无需|别|不要)[^，。；]{0,6}(?:焦虑|恐慌|恐惧|绝望)")
     private val predicate = Regex("应该|必须|需要|不能|独立|自主|焦虑|认为|觉得|导致|越来越|意味着|会|难|值得|自由")
+    private fun workKey(item: ViewpointItem) = item.record.packageName + "|" +
+        (item.record.workKey ?: "record:${item.record.id}:${item.record.timestamp}")
+    private fun claims(item: ViewpointItem): List<ViewpointClaim> = item.claims.ifEmpty {
+        if (item.analysisSource == "structured_model") emptyList()
+        else item.quote?.let { listOf(ViewpointClaim(it, record = item.record)) }.orEmpty()
+    }
+    /** Union all observed claims of a work; a completed model result supersedes phrase candidates. */
+    private fun works(items: List<ViewpointItem>): List<ViewpointItem> = items.groupBy(::workKey).values.map { visits ->
+        val model = visits.filter { it.analysisSource == "structured_model" }
+        val used = model.ifEmpty { visits }
+        val representative = used.firstOrNull { claims(it).isNotEmpty() } ?: used.first()
+        val all = used.flatMap(::claims).distinctBy { it.key }
+        representative.copy(label = all.firstOrNull()?.label, quote = all.firstOrNull()?.quote,
+            emotional = used.any { it.emotional }, claims = all)
+    }
     fun groups(items: List<ViewpointItem>): List<ViewpointShare> {
-        val works = items.groupBy { it.record.packageName + "|" +
-            (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }.values.map { visits ->
-            visits.firstOrNull { it.label != null } ?: visits.first()
+        val works = works(items)
+        val grouped = linkedMapOf<String, MutableList<ViewpointItem>>()
+        val descriptions = linkedMapOf<String, Pair<String, String>>()
+        works.forEach { item ->
+            val candidates = claims(item)
+            if (candidates.isEmpty()) {
+                val key = "unknown"
+                grouped.getOrPut(key) { mutableListOf() } += item
+                descriptions[key] = "暂未识别观点" to "unknown"
+            } else candidates.forEach { claim ->
+                grouped.getOrPut(claim.key) { mutableListOf() } += item.copy(record = claim.record ?: item.record,
+                    label = claim.label, quote = claim.quote, claims = listOf(claim))
+                descriptions[claim.key] = claim.label to claim.analysisSource
+            }
         }
-        return works.groupBy { it.label ?: "暂未识别观点" }.map { (label, entries) ->
-            ViewpointShare(label, entries, works.size)
+        return grouped.map { (key, entries) ->
+            val (label, source) = descriptions.getValue(key)
+            ViewpointShare(label, entries.distinctBy(::workKey), works.size, key, source)
         }.sortedWith(compareByDescending<ViewpointShare> { it.items.size }.thenBy { it.label })
     }
     fun label(quote: String): String = ViewpointLabeler.label(quote)
 
     fun build(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long, zone: ZoneId,
-        report: CognitiveReport? = null): List<ViewpointBucket> {
+        report: CognitiveReport? = null, semantics: List<EventSemantics> = emptyList()): List<ViewpointBucket> {
         val window = ObservationWindow.forPeriod(period, now, zone)
         val day = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         val first = if (period == StatisticsPeriod.WEEK) day.minusDays(6).atStartOfDay(zone)
@@ -42,15 +88,29 @@ object ViewpointTimeline {
         }
         val selected = events.filter { it.sourceType == "accessibility" && window.contains(it) }
         val observations = report?.takeIf { it.period == period.label }?.claims?.groupBy { it.eventId }.orEmpty()
+        val modelResults = semantics.groupBy { it.eventId }.mapValues { (_, values) ->
+            values.withIndex().maxWithOrNull(compareBy<IndexedValue<EventSemantics>> { it.value.analyzedAt }
+                .thenBy { it.index })!!.value
+        }
         val candidates = selected.associateWith { event ->
-            val quote = observations[event.id]?.firstOrNull()?.quote ?: event.visibleText.lines().map {
+            val model = modelResults[event.id]?.takeIf { it.validFor(event) }
+            val modelClaims = model?.claims?.map { ViewpointClaim(it.quote, it.topic, it.subject,
+                it.dimension, it.stance, it.conditions, it.uncertain, "structured_model", event) }
+            // A report may be stale; only the full input snapshot can authorize a model result here.
+            val reportClaims = observations[event.id].orEmpty().filter {
+                it.analysisSource == "local_rules" && event.visibleText.contains(it.quote)
+            }.map { ViewpointClaim(it.quote, it.topic,
+                it.subject, it.dimension, it.stance, it.conditions, it.uncertainAttribution, it.analysisSource, event) }
+            val fallback = event.visibleText.lines().map {
                 it.trim().replace(Regex("(?:\\.\\.\\.|…)?\\s*展开[>〉]?\\s*$"), "").trim()
             }
                 .firstOrNull { it.length in 10..300 && predicate.containsMatchIn(it) &&
                     !Regex("按钮|来自|回复|评论|图片[,，]").containsMatchIn(it) }
-            ViewpointItem(event, quote?.let(::label), quote, quote?.let {
-                emotion.containsMatchIn(it) && !negatedEmotion.containsMatchIn(it)
-            } == true)
+            val chosen = modelClaims ?: reportClaims.ifEmpty { fallback?.let { listOf(ViewpointClaim(it, record = event)) }.orEmpty() }
+            val source = if (model != null || chosen.any { it.analysisSource == "structured_model" }) "structured_model" else "local_rules"
+            ViewpointItem(event, chosen.firstOrNull()?.label, chosen.firstOrNull()?.quote, chosen.any {
+                emotion.containsMatchIn(it.quote) && !negatedEmotion.containsMatchIn(it.quote)
+            }, chosen, source)
         }
         val slices = selected.associateWith(window::slices)
         return List(count) { index ->
@@ -58,13 +118,15 @@ object ViewpointTimeline {
             val localEnd = if (period == StatisticsPeriod.WEEK) localStart.plusDays(1) else localStart.plusHours(1)
             val start = maxOf(window.start, localStart.toInstant().toEpochMilli())
             val end = minOf(now, localEnd.toInstant().toEpochMilli()).coerceAtLeast(start)
-            val items = if (start > end) emptyList() else selected.filter { event -> slices.getValue(event).any {
+            val items = if (start > end) emptyList() else works(selected.filter { event -> slices.getValue(event).any {
                 it.start >= start && it.start < end || it.end > start && it.start < end ||
                     it.start == end && end == now && now < localEnd.toInstant().toEpochMilli() && it.start >= start
-            } }.map { candidates.getValue(it) }.distinctBy { it.record.packageName + "|" +
-                (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }
-            val recognized = items.filter { it.label != null && it.label != "待归纳" }
-            val repeated = recognized.groupBy { it.label }.values.sumOf { (it.size - 1).coerceAtLeast(0) }
+            } }.map { candidates.getValue(it) })
+            val recognized = items.filter { item -> claims(item).any {
+                if (it.analysisSource == "structured_model") it.confirmed else it.label != "待归纳"
+            } }
+            val repeated = groups(recognized).filter { it.label != "待归纳" && !it.label.endsWith("待确认") }
+                .sumOf { (it.items.size - 1).coerceAtLeast(0) }.coerceAtMost((recognized.size - 1).coerceAtLeast(0))
             val emotional = recognized.count { it.emotional }
             val score = if (recognized.size < 3) null else
                 ((60.0 * repeated + 40.0 * emotional) / recognized.size).toInt().coerceIn(0, 100)

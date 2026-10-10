@@ -3,9 +3,17 @@ package com.emerge.app.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class], version = 4, exportSchema = true)
+@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class], version = 5, exportSchema = true)
 abstract class BrowseDatabase : RoomDatabase() {
     companion object {
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""CREATE TABLE IF NOT EXISTS browse_semantics (
+                    eventId INTEGER NOT NULL PRIMARY KEY, inputText TEXT NOT NULL,
+                    analyzedAt INTEGER NOT NULL, claimsJson TEXT NOT NULL, inputKind TEXT NOT NULL,
+                    FOREIGN KEY(eventId) REFERENCES browse_events(id) ON UPDATE NO ACTION ON DELETE CASCADE)""")
+            }
+        }
         val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE browse_events ADD COLUMN workKey TEXT DEFAULT NULL")

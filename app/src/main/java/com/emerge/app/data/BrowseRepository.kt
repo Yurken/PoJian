@@ -1,7 +1,10 @@
 package com.emerge.app.data
 
 import androidx.room.withTransaction
+import com.emerge.app.analysis.EventSemantics
+import com.emerge.app.analysis.SemanticsCodec
 import com.emerge.app.capture.WorkIdentityExtractor
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.sync.Mutex
@@ -14,6 +17,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
     private val deletionGeneration = AtomicLong()
     val recentEvents = dao.observeRecent()
     val allEvents = dao.observeAll().onStart { repairAdjacentVisits() }
+    val semantics = dao.observeSemantics().map { rows -> rows.mapNotNull(SemanticsCodec::decode) }
     val count = dao.observeCount()
     private var repaired = false
 
@@ -72,6 +76,38 @@ class BrowseRepository(private val database: BrowseDatabase) {
 
     /** A sample taken before deletion must never become a new row after deletion. */
     internal val captureGeneration: Long get() = deletionGeneration.get()
+
+    suspend fun findEvent(id: Long): BrowseEvent? = dao.event(id)
+    suspend fun getEvent(id: Long): BrowseEvent? = findEvent(id)
+    suspend fun clearSemantics() = captureMutex.withLock {
+        database.withTransaction { dao.clearSemantics() }
+    }
+
+    /** Bind a completed result to the full input snapshot; never upsert the encounter itself. */
+    suspend fun saveSemantics(
+        snapshot: BrowseEvent,
+        semantics: EventSemantics,
+        generation: Long,
+        permitted: () -> Boolean
+    ): Boolean = captureMutex.withLock {
+        fun current() = deletionGeneration.get() == generation && permitted()
+        if (!current() || !semantics.validFor(snapshot)) return@withLock false
+        val saved = database.withTransaction {
+            if (!current()) return@withTransaction false
+            val event = dao.event(snapshot.id) ?: return@withTransaction false
+            if (!semantics.validFor(event)) return@withTransaction false
+            val previous = dao.semanticsForEvent(snapshot.id)
+            if (previous != null && previous.analyzedAt > semantics.analyzedAt) return@withTransaction false
+            if (!current()) return@withTransaction false
+            dao.putSemantics(SemanticsCodec.encode(semantics))
+            true
+        }
+        // Revocation/deletion can change while Room completes the transaction.
+        if (saved && !current()) {
+            dao.removeSemanticsVersion(snapshot.id, semantics.analyzedAt, semantics.inputText)
+            false
+        } else saved
+    }
 
     internal suspend fun saveCapture(
         event: BrowseEvent,

@@ -45,6 +45,10 @@ object MonitorCoreCases {
         test("one sitting is insufficient") { check(MonitorPolicy.repetition(argsHistory.map { it.copy(capturedAt = now) }, now) == null) }
         test("novel evidence does not trigger repetition") { check(MonitorPolicy.repetition(argsHistory.mapIndexed { i, a -> a.copy(evidence = "证据$i") }, now) == null) }
         test("unknown attribution excluded") { check(MonitorPolicy.repetition(argsHistory.map { it.copy(uncertain = true) }, now) == null) }
+        test("missing topic or dimension cannot trigger a repetition alert") {
+            check(MonitorPolicy.repetition(argsHistory.map { it.copy(topic = "") }, now) == null)
+            check(MonitorPolicy.repetition(argsHistory.map { it.copy(dimension = "") }, now) == null)
+        }
         test("different dimensions remain separate") { check(MonitorPolicy.repetition(argsHistory.mapIndexed { i, a -> a.copy(dimension = "维度$i") }, now) == null) }
         test("conditions remain separate") { check(MonitorPolicy.repetition(argsHistory.mapIndexed { i, a -> a.copy(conditions = "条件$i") }, now) == null) }
         test("opposing stances not collapsed") { check(MonitorPolicy.repetition(argsHistory.mapIndexed { i, a -> a.copy(stance = if (i % 2 == 0) "支持" else "反对") }, now) == null) }

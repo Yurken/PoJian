@@ -125,6 +125,42 @@ class FunctionalMinimalUiTest {
         compose.runOnIdle { assertEquals(1, downloadCalls); assertEquals(0, startCalls); assertEquals(0, pauseCalls) }
     }
 
+    @Test fun oneWorkWithTwoModelViewpointsUsesIndependentSharesAndPreservesQuotes() {
+        val midnight = LocalDate.of(2026, 10, 10).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val now = midnight + 12 * 3600000L
+        val row = BrowseEvent(901, "reader", midnight + 3600000L, 32,
+            "今年招聘岗位减少\n未来岗位需求可能回升", sampleCount = 1, workKey = "modeled")
+        val unknown = row.copy(id = 902, visibleText = "菜单", workKey = "unknown")
+        val records = listOf(row, unknown)
+        val semantics = listOf(EventSemantics(row.id, row.visibleText, now, listOf(
+            ArgumentUnit("今年招聘岗位减少", "就业", "招聘岗位", "数量", "减少", conditions = "今年", uncertain = false),
+            ArgumentUnit("未来岗位需求可能回升", "就业", "招聘岗位", "需求", "回升", conditions = "未来", uncertain = false))))
+        render { OverviewScreen(calculateStatistics(records, StatisticsPeriod.WEEK, now), StatisticsPeriod.WEEK, {},
+            active = false, statusLabel = "已暂停", appNames = mapOf("reader" to "测试阅读器"),
+            onRecords = {}, onSettings = {}, rawEvents = records, now = now, semantics = semantics) }
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
+        compose.onNodeWithTag("daily-viewpoint-pie").assert(SemanticsMatcher("multi-viewpoint work denominator") { node ->
+            val description = node.config[SemanticsProperties.ContentDescription].joinToString()
+            description.contains("今年 · 减少，1个作品，50.0%") &&
+                description.contains("未来 · 回升，1个作品，50.0%") && description.contains("暂未识别观点，1个作品，50.0%")
+        })
+        saveScreenshot("pojian-model-viewpoint-shares.png")
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details")))
+        compose.onNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
+    }
+
+    @Test fun cloudMasterSwitchHasAnIndependentCallback() {
+        val cloud = mutableStateOf(true)
+        var cloudCalls = 0
+        var monitorCalls = 0
+        render { com.emerge.app.monitoring.MonitorSettingsSection(
+            com.emerge.app.monitoring.MonitorConfig(), { monitorCalls++ }, 0, 0, {}, {},
+            cloudEnabled = cloud.value, onCloudEnabledChange = { cloud.value = it; cloudCalls++ }) }
+        compose.onNodeWithTag("monitor-switch-云端分析").assertIsOn().performClick().assertIsOff()
+        compose.runOnIdle { assertEquals(1, cloudCalls); assertEquals(0, monitorCalls) }
+    }
+
     private fun saveScreenshot(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()

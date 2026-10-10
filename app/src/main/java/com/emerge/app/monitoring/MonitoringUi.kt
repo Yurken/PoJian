@@ -106,9 +106,11 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
 
 @Composable
 fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> Unit,
-    requestCount: Int, frameCount: Int, onCloud: () -> Unit, onCaptureTools: () -> Unit) {
+    requestCount: Int, frameCount: Int, onCloud: () -> Unit, onCaptureTools: () -> Unit,
+    cloudEnabled: Boolean = false, onCloudEnabledChange: (Boolean) -> Unit = {}) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("监测与提醒", style = MaterialTheme.typography.titleMedium)
+        MonitorSwitch("云端分析", "启用后，手动核查及已开启的自动分析会发送必要文字或采样画面。关闭后保留本地采集与规则回顾。", cloudEnabled, onCloudEnabledChange)
         MonitorSwitch("悬浮球", "仅在所选应用显示，不抢焦点；拖动调整位置，点击核查。", config.bubble) { onChange(config.copy(bubble = it)) }
         MonitorSwitch("信息茧房线索观察", "区分议题、对象、观点与依据；不把某种价值观本身当作风险。", config.cocoon) { onChange(config.copy(cocoon = it)) }
         MonitorSwitch("实时事实核查", "启用云端服务后，自动发送新增文字及稳定口播片段并检索外部依据。", config.realtime) { onChange(config.copy(realtime = it)) }
@@ -131,7 +133,7 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
 private fun MonitorSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) { Text(title); Text(detail, style = MaterialTheme.typography.bodySmall) }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag("monitor-switch-$title"))
     }
 }
 

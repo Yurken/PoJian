@@ -77,12 +77,13 @@ class AudioUiTest {
             }, onDelete = {})
         }
         compose.onNodeWithTag("audio-detail-segments").performScrollToNode(hasTestTag("audio-edit-action-41"))
-        compose.onNodeWithTag("audio-edit-action-41").performClick()
-        compose.onNodeWithTag("audio-edit-41").performTextReplacement("不应保存的修订")
+        compose.onNodeWithTag("audio-edit-action-41").performScrollTo().performClick()
+        compose.onNodeWithTag("audio-edit-41").performScrollTo().performTextReplacement("不应保存的修订")
         compose.onNodeWithText("取消修订").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(null, savedId) }
-        compose.onNodeWithTag("audio-edit-action-41").performClick()
-        compose.onNodeWithTag("audio-edit-41").performTextReplacement("  改为准确的原始观点  ")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.onNodeWithTag("audio-edit-action-41").performScrollTo().performClick()
+        compose.onNodeWithTag("audio-edit-41").performScrollTo().performTextReplacement("  改为准确的原始观点  ")
         compose.onNodeWithTag("audio-save-41").performScrollTo().performClick()
         compose.runOnIdle {
             assertEquals(41L, savedId)
@@ -115,11 +116,12 @@ class AudioUiTest {
             sourceType = "audio_import", audioSessionId = "session-7", mediaStartMillis = 3_000, mediaEndMillis = 11_000)
         render { RecordsScreen(listOf(event), 1, mapOf("imported-material" to "导入材料")) }
 
+        compose.onNodeWithTag("record-group-imported-material").performClick()
         compose.onNodeWithText("音频转写").assertIsDisplayed()
         compose.onNodeWithText("媒体偏移 00:03 — 00:11").assertIsDisplayed()
         compose.onNodeWithText("旧版本").assertDoesNotExist()
         compose.onNodeWithText("查看原文 ›").performClick()
-        compose.onNodeWithText("媒体偏移用于定位转写，不计入浏览停留时长。").assertIsDisplayed()
+        compose.onNodeWithText("媒体偏移用于定位转写，不计入浏览停留时长。").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun analysisFailureIsVisibleWithinTheDetailSheetAndAllowsRetry() {

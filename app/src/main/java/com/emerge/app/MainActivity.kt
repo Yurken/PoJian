@@ -67,6 +67,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(audioAlert) { audioAlert?.let { snackbar.showSnackbar(it) } }
     val all by model.allEvents.collectAsStateWithLifecycle()
+    val semantics by model.semantics.collectAsStateWithLifecycle()
     val count by model.count.collectAsStateWithLifecycle()
     val enabled by model.captureEnabled.collectAsStateWithLifecycle()
     val allowed by model.allowedPackages.collectAsStateWithLifecycle()
@@ -184,9 +185,9 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                         if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
                     } },
                     // Keep the optional slot's old name for source compatibility; it no longer hosts recording controls.
-                    audioContent = { MonitorOverviewCard(monitor, monitorConfig, { tab = 1 }, { tab = 2 }) })
+                    audioContent = { MonitorOverviewCard(monitor, monitorConfig, { tab = 1 }, { tab = 2 }) }, semantics = semantics)
                 tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
-                    onRecords = { showRecords = true }, onClear = app.monitor::invalidate)
+                    onRecords = { showRecords = true }, onClear = { app.monitor.invalidate() })
                 else -> SettingsScreen(permission, enabled, count, { value ->
                     if (!value) app.audioCoordinator.stopAll()
                     model.setCapture(value)
@@ -194,7 +195,10 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     { confirmClear = true }, message, contentModifier, diagnostics, selectedApps,
                     onChooseApps = { showApps = true }, audioContent = {
                         MonitorSettingsSection(monitorConfig, app.monitor::saveConfig,
-                            app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { /* 网关配置见服务端管理台 */ }, { showCaptureTools = true })
+                            app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { /* 网关配置见服务端管理台 */ }, { showCaptureTools = true },
+                            cloudEnabled = audioConfig.enabled, onCloudEnabledChange = { value ->
+                                audioModel.saveConfig(audioConfig.copy(enabled = value), {}, { error -> app.monitor.notice(error) })
+                            })
                     })
             }
         }

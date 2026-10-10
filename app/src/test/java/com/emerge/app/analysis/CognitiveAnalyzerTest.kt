@@ -71,9 +71,24 @@ class CognitiveAnalyzerTest {
         val report = analyze(event(7, now, "当前就业形势很差，因为招聘岗位同比减少20%"))
         val text = ReportExporter.text(report)
         assertTrue(text.contains("记录 #7"))
-        assertTrue(text.contains("没有使用多模态模型"))
+        assertTrue(text.contains("当前没有有效云端结构结果"))
+        assertTrue(text.contains("未实现语义编码、时序图学习"))
         assertTrue(text.contains("不代表没有信息茧房"))
         assertTrue(text.contains("当前就业形势很差"))
+    }
+
+    @Test fun structuredReportExportsCoverageContextAndVerbatimEvidence() {
+        val row = event(7, now, "当前招聘岗位减少，因为岗位同比减少20%")
+        val model = EventSemantics(row.id, row.visibleText, now, listOf(ArgumentUnit(
+            "当前招聘岗位减少", "就业", "招聘岗位", "数量", "减少", "岗位同比减少20%", "当前", false)))
+        val report = CognitiveAnalyzer().analyze(listOf(row), StatisticsPeriod.DAY, now, zone,
+            semantics = listOf(model))
+        val text = ReportExporter.text(report)
+        assertTrue(text.contains("语义覆盖：1/1"))
+        assertTrue(text.contains("云端结构结果（仍需核对）"))
+        assertTrue(text.contains("判断维度：数量；立场：减少"))
+        assertTrue(text.contains("岗位同比减少20%"))
+        assertFalse(text.contains("当前没有有效云端结构结果"))
     }
     @Test fun changingCountersDoNotCreateRepeatedExposure() {
         val prose = "当前就业形势越来越差，因为招聘岗位数量同比下降20%"

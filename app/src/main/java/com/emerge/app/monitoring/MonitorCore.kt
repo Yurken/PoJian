@@ -87,7 +87,8 @@ object MonitorPolicy {
 
     /** Same topic is not same stance; several fragments from one audio session are one encounter. */
     fun repetition(history: List<ObservedArgument>, now: Long, zone: ZoneId = ZoneId.systemDefault()): ObservedArgument? {
-        val eligible = history.filter { !it.uncertain && it.subject.isNotBlank() && it.stance.isNotBlank() &&
+        val eligible = history.filter { !it.uncertain && it.topic.isNotBlank() && it.subject.isNotBlank() &&
+            it.dimension.isNotBlank() && it.stance.isNotBlank() &&
             it.evidence.isNotBlank() && it.capturedAt <= now && now - it.capturedAt <= 7 * 86_400_000L }
         val latest = eligible.maxByOrNull { it.capturedAt } ?: return null
         val scope = eligible.filter { it.topic == latest.topic && it.subject == latest.subject &&

@@ -29,6 +29,8 @@ object ReportExporter {
             appendLine("作品身份按平台提供的标识或作者与标题估计，无法确认时按连续观看计数。再次打开已识别作品增加观看次数，音频片段和视觉文字不单独计为作品。下文的分析记录数和观点数不是作品数。")
         }
         appendLine("范围内共 ${report.rawRecords} 条原始记录；合并内容相同的连续记录 ${report.mergedSnapshots} 条；跳过桌面和无正文的记录 ${report.skippedRecords} 条；保留有效记录 ${report.usableSnapshots} 条。跨越范围边界的记录按重叠部分计入。")
+        appendLine("语义覆盖：${report.structuredAnalyzedRecords}/${report.usableSnapshots} 条有效记录具有通过原文校验的云端结构结果（${percent(report.structuredAnalyzedRecords, report.usableSnapshots)}）；${report.localFallbackRecords} 条使用本地规则；${report.rejectedSemanticsRecords} 条云端结构结果未通过校验并回退。覆盖包含模型未提取观点的记录，只表示该记录有采样结果，每次最多提取 3 个观点，不代表整条记录或全部设备浏览都已分析。")
+        if (report.structuredAnalyzedRecords == 0) appendLine("当前没有有效云端结构结果；本报告中的观点和依据均为本地规则候选。")
         appendLine("有效记录共 ${report.coverageSessions} 条；范围内预计停留合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条未统计时长。显示为零只表示还没采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")
         appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒视为一段浏览结束。每条记录只算一次，按与统计范围、日期和小时的交叠分摊。它不等于实际阅读、理解或看视频的时间；旧版本记录不补算时长，音频转写未统计观看时长，媒体长度不计入浏览停留。")
@@ -44,8 +46,8 @@ object ReportExporter {
         appendLine("主题按每条有效记录的主要内容归类，一条只归一个主题，含未分类和娱乐。条数比例的分母是全部有效记录，时长比例的分母是范围内预计停留总量。没有时长数据不按零阅读处理。")
         appendLine("娱乐与休闲单独统计，不会因为缺少论据或反复观看而被评价为“低价值”。专题内容占比高，也可能正符合你的浏览目的。")
         report.topics.forEach { appendLine("${it.topic}：${it.count}/${report.claims.size} 个观点（${percent(it.count, report.claims.size)}）") }
-        if (report.claims.isEmpty()) appendLine("没有识别到符合规则的观点，这不代表没有浏览，也不代表不存在信息茧房。")
-        appendLine("观点比例的分母是识别出的观点数，不是全部内容或停留时间。主题只覆盖预设词表，内容立场没有做语义验证。")
+        if (report.claims.isEmpty()) appendLine("没有识别到可回查的观点，这不代表没有浏览，也不代表不存在信息茧房。")
+        appendLine("观点比例的分母是识别出的观点数，不是全部内容或停留时间。云端结果采用模型提取的主题和立场，仍需核对；本地规则候选只覆盖预设词表，内容立场未经语义模型确认。")
         appendLine()
         appendLine("## 3. 信息茧房线索与内容情绪")
         report.findings.forEach {
@@ -95,7 +97,9 @@ object ReportExporter {
                 appendLine("记录 #${observation.eventId} | 开始时间 ${time(observation.timestamp)} | ${observation.packageName}")
                 appendLine("该记录在本次范围内的预计停留：${observation.durationMillis?.let { duration(it) } ?: "未统计"}（同一记录里的多个观点共用时长，不能相加）")
                 appendLine("观点原文：${observation.quote}")
+                appendLine("观点来源：${if (observation.analysisSource == "structured_model") "云端结构结果（仍需核对）" else "本地规则候选"}")
                 appendLine("讨论对象：${observation.subject.ifBlank { "未识别到，暂不与历史对比" }}")
+                if (observation.analysisSource == "structured_model") appendLine("判断维度：${observation.dimension.ifBlank { "待确认" }}；立场：${observation.stance.ifBlank { "待确认" }}")
                 appendLine("适用条件：${observation.conditions.ifBlank { "未识别到" }}；出处：${if (observation.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表作者或你的看法"}")
                 appendLine("与历史对比：${observation.increment.label}；用于对比的早期记录：${observation.previousEventId ?: "无"}")
                 if (observation.evidenceDetails.isNotEmpty()) observation.evidenceDetails.forEach {
@@ -106,10 +110,10 @@ object ReportExporter {
             }
         }
         appendLine("## 7. 方法与局限")
-        appendLine("方法：文字过滤 → 词表主题识别 → 判断句提取 → 讨论对象匹配 → 中文字符相似度对比 → 事实/条件/建议/解释片段标注 → 按浏览时间顺序与历史对比。")
+        appendLine("方法：通过事件编号、完整原文和引用子串校验的云端结构结果优先用于主题、观点、讨论对象、判断维度、立场、条件与依据；无有效结果时使用文字过滤、词表主题和判断句规则。历史比较与时序汇总仍在本机完成。")
         appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。相似观点的判定阈值为 0.65，依据重复的阈值为 0.85；数字不同会保留为新增片段；讨论对象或时间、地区、人群条件不同的内容单独保留，出处不明的内容不参与新旧对比。每次最多对比最近 120 个同主题观点，这些阈值还没有经过标注数据验证。")
         appendLine("同一记录出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")
-        appendLine("这份回顾使用本地文字规则，没有使用多模态模型、语义编码、交叉验证、时序分析、阅读投入估计或可信执行环境等研究方法，规则匹配的结果不能替代它们。音频由本地语音模型转写后才进入文字分析。")
+        appendLine("云端结构抽取仍可能有误，原文校验不证明观点归属或推理正确。历史依据比较仍采用本地规则，未实现语义编码、时序图学习、阅读投入估计或可信执行环境；模型观点和规则候选均不能替代这些研究方法。音频转写和视觉提取文字作为材料进入分析，不单独增加作品接触数或观看时长。")
         appendLine("这份回顾在本机生成。语音转写在本机完成；配置云端并启用相应分析、实时核查或关键画面开关后，必要文字或采样画面会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
     }
 
