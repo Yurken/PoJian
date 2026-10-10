@@ -24,7 +24,7 @@ class AudioAnalysisSettings(context: Context) {
     private val preferences = context.getSharedPreferences("audio_analysis", Context.MODE_PRIVATE)
     private val state = MutableStateFlow(read())
     val config = state.asStateFlow()
-    private fun read() = TextServiceConfig(preferences.getBoolean("enabled", false),
+    private fun read() = TextServiceConfig(preferences.getBoolean("enabled", BuildConfig.POJIAN_SERVICE_TOKEN.isNotEmpty()),
         preferences.getString("endpoint", null).orEmpty().ifEmpty { TextServiceConfig.DEFAULT_ENDPOINT },
         preferences.getString("token", null)?.let { runCatching { decrypt(it) }.getOrDefault("") }.orEmpty()
             .ifEmpty { BuildConfig.POJIAN_SERVICE_TOKEN },
