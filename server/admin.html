@@ -102,11 +102,13 @@ td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size
 footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: center; }
 .field { margin-bottom: 12px; }
 .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
-.field input {
+.field input, .field textarea {
   width: 100%; background: var(--panel-2); border: 1px solid var(--border);
   color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+  font-family: inherit;
 }
-.field input:focus { outline: none; border-color: var(--accent); }
+.field input:focus, .field textarea:focus { outline: none; border-color: var(--accent); }
+.field textarea { resize: vertical; }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 2px 16px; margin-bottom: 4px; }
 .msg { font-size: 12.5px; min-height: 20px; margin-top: 8px; }
 .msg.ok { color: var(--ok); }
@@ -236,7 +238,7 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
       <div class="field"><label for="cfg_vision_url">视觉接口（留空同文字接口；填 - 清空回退）</label><input id="cfg_vision_url" autocomplete="off"></div>
       <div class="field"><label for="cfg_vision_model">视觉模型（留空停用视觉；填 - 清空）</label><input id="cfg_vision_model" autocomplete="off"></div>
       <div class="field"><label for="cfg_vision_key">视觉密钥（留空同文字密钥；填 - 清空）</label><input id="cfg_vision_key" type="password" autocomplete="new-password"></div>
-      <div class="field"><label for="cfg_search_key">检索密钥（Tavily，选填；不填用文字模型联网搜索；填 - 清空）</label><input id="cfg_search_key" type="password" autocomplete="new-password"></div>
+      <div class="field" style="grid-column: 1 / -1;"><label for="cfg_search_key">检索密钥（Tavily，多个换行分隔轮换；不填用文字模型联网搜索；填 - 清空）</label><textarea id="cfg_search_key" rows="3" autocomplete="off"></textarea></div>
       <div class="field"><label for="cfg_daily_limit">每日限额（次）</label><input id="cfg_daily_limit" type="number" min="1" max="10000"></div>
     </div>
     <div class="msg" id="configMsg"></div>
@@ -403,7 +405,9 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
     setVal("cfg_vision_key", "");
     field("cfg_vision_key").placeholder = keyHint(cfg.vision && cfg.vision.api_key);
     setVal("cfg_search_key", "");
-    field("cfg_search_key").placeholder = keyHint(cfg.retrieval && cfg.retrieval.api_key);
+    field("cfg_search_key").placeholder = (cfg.retrieval && cfg.retrieval.key_count > 1)
+      ? "留空保持不变（共 " + cfg.retrieval.key_count + " 个密钥轮换）"
+      : keyHint(cfg.retrieval && cfg.retrieval.api_key);
     setVal("cfg_daily_limit", typeof cfg.daily_limit === "number" ? String(cfg.daily_limit) : "");
   }
 
@@ -521,7 +525,8 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
     }
     if (cfg.retrieval) {
       html += block("联网取证", cfg.retrieval.configured,
-        row("服务", cfg.retrieval.provider) + row("密钥", cfg.retrieval.api_key));
+        row("服务", cfg.retrieval.provider) + row("密钥", cfg.retrieval.api_key +
+          (cfg.retrieval.key_count > 1 ? "（共 " + cfg.retrieval.key_count + " 个轮换）" : "")));
     }
     html += block("访问与限额", undefined,
       row("服务令牌", cfg.service_token) + (typeof cfg.daily_limit === "number" ? row("每日限额", cfg.daily_limit + " 次") : "") +

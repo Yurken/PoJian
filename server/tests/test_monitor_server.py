@@ -491,7 +491,33 @@ class ConfigApiTests(unittest.TestCase):
         self.assertEqual(settings["vision"]["model"], "vision-2")
         self.assertEqual(settings["vision"]["api_key"], "****cret")
         self.assertEqual(settings["retrieval"]["api_key"], "****ly-2")
+        self.assertEqual(settings["retrieval"]["key_count"], 1)
         self.assertTrue(settings["retrieval"]["configured"])
+
+    def test_search_key_pool_parsing_rotation_and_failover(self):
+        self.assertEqual(self.call("/config/update", {"search_key": "tvly-a-aaaa, tvly-b-bbbb\ntvly-c-cccc"})[0], 200)
+        settings = self.status()["settings"]
+        self.assertEqual(settings["retrieval"]["key_count"], 3)
+        self.assertNotIn("tvly-a-aaaa", json.dumps(settings))
+        reloaded = m.RuntimeConfig(self.config, self.options, self.runtime_path)
+        self.assertEqual(reloaded.search_keys(), ["tvly-a-aaaa", "tvly-b-bbbb", "tvly-c-cccc"])
+
+        providers = m.Providers(self.config, reloaded)
+        reply = {"results": [{"url": "https://example.org/r", "title": "报告",
+                              "raw_content": "原始正文内容"}]}
+        with patch.object(m, "post_json", side_effect=[m.UpstreamError("Provider rejected the request"), reply]) as mocked:
+            sources = providers.search("问题", m.time.monotonic() + 60)
+        self.assertEqual(len(sources), 1)
+        self.assertEqual(mocked.call_count, 2)
+        used_keys = [call.args[1] for call in mocked.call_args_list]
+        self.assertNotEqual(used_keys[0], used_keys[1])
+        self.assertTrue(set(used_keys) <= set(reloaded.search_keys()))
+
+    def test_dash_clears_search_key_pool(self):
+        self.assertEqual(self.call("/config/update", {"search_key": "tvly-a-aaaa tvly-b-bbbb"})[0], 200)
+        self.assertEqual(self.status()["settings"]["retrieval"]["key_count"], 2)
+        self.assertEqual(self.call("/config/update", {"search_key": "-"})[0], 200)
+        self.assertEqual(self.status()["settings"]["retrieval"]["key_count"], 0)
 
     def test_profiles_save_apply_delete(self):
         self.assertEqual(self.call("/config/profile/save", {"name": "工作自用"})[0], 200)

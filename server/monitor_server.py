@@ -11,6 +11,7 @@ import json
 import os
 from html.parser import HTMLParser
 from pathlib import Path
+import random
 import socket
 import sqlite3
 import threading
@@ -174,7 +175,7 @@ class RuntimeConfig:
         self._vision = {"url": "", "model": "", "key": ""}
         if options.vision_model:
             self._vision = {"url": options.vision_url, "model": options.vision_model, "key": options.vision_key}
-        self._search_key = options.search_key
+        self._search_keys: list[str] = [options.search_key] if options.search_key else []
         self._daily_limit = options.daily_limit
         self._profiles: list[dict] = []
         self._source = "env"
@@ -194,7 +195,7 @@ class RuntimeConfig:
     @property
     def retrieval_configured(self) -> bool:
         with self._lock:
-            return bool(self._search_key) or bool(self._text["key"])
+            return bool(self._search_keys) or bool(self._text["key"])
 
     @property
     def daily_limit(self) -> int:
@@ -213,12 +214,16 @@ class RuntimeConfig:
 
     def search_key(self) -> str:
         with self._lock:
-            return self._search_key
+            return self._search_keys[0] if self._search_keys else ""
+
+    def search_keys(self) -> list[str]:
+        with self._lock:
+            return list(self._search_keys)
 
     def update(self, fields: dict) -> None:
         text = dict(self._text)
         vision = dict(self._vision)
-        search_key = self._search_key
+        search_keys = list(self._search_keys)
         limit = self._daily_limit
         for field in ("url", "model", "key"):
             value = fields.get("text_" + field, "")
@@ -239,12 +244,16 @@ class RuntimeConfig:
             elif value:
                 vision[field] = value
         value = fields.get("search_key", "")
-        if not isinstance(value, str) or len(value) > 400:
+        if not isinstance(value, str) or len(value) > 12000:
             raise ClientError("Invalid configuration field")
         if value == "-":
-            search_key = ""
-        elif value:
-            search_key = value
+            search_keys = []
+        elif value.strip():
+            parsed = [key for key in value.replace(",", " ").replace("，", " ").split() if key]
+            if len(parsed) > 50 or any(len(key) > 200 or any(ord(c) < 33 or ord(c) > 126 for c in key)
+                                       for key in parsed):
+                raise ClientError("检索密钥格式不正确")
+            search_keys = parsed
         if fields.get("daily_limit") is not None:
             if type(fields["daily_limit"]) is not int or not 1 <= fields["daily_limit"] <= 10000:
                 raise ClientError("每日限额须为 1–10000 的整数")
@@ -256,7 +265,7 @@ class RuntimeConfig:
         if vision["model"] and not endpoint_ok(vision["url"] or text["url"]):
             raise ClientError("视觉接口必须是有效的 HTTPS 地址")
         with self._lock:
-            self._text, self._vision, self._search_key, self._daily_limit = text, vision, search_key, limit
+            self._text, self._vision, self._search_keys, self._daily_limit = text, vision, search_keys, limit
             self._source = "env" if self._path == ":memory:" else "runtime"
             self._persist()
 
@@ -264,11 +273,11 @@ class RuntimeConfig:
         with self._lock:
             return [{"name": row["name"], "saved_at": int(row["saved_at"]),
                      "text_model": row["text"]["model"], "vision_model": row["vision"]["model"],
-                     "retrieval": bool(row["search_key"])} for row in self._profiles]
+                     "retrieval": bool(row.get("search_keys") or row.get("search_key"))} for row in self._profiles]
 
     def _active_snapshot(self) -> dict:
         return {"text": dict(self._text), "vision": dict(self._vision),
-                "search_key": self._search_key, "daily_limit": self._daily_limit}
+                "search_keys": list(self._search_keys), "daily_limit": self._daily_limit}
 
     def save_profile(self, name: str) -> None:
         if not text(name, 40):
@@ -295,7 +304,14 @@ class RuntimeConfig:
             self._vision = _config_section(row.get("vision"))
             if not self._vision["model"]:
                 self._vision = {"url": "", "model": "", "key": ""}
-            self._search_key = row.get("search_key", "") if isinstance(row.get("search_key"), str) else ""
+            keys = row.get("search_keys")
+            if isinstance(keys, list):
+                self._search_keys = [key for key in keys
+                                     if isinstance(key, str) and 0 < len(key) <= 200][:50]
+            elif isinstance(row.get("search_key"), str) and row["search_key"]:
+                self._search_keys = [row["search_key"]]
+            else:
+                self._search_keys = []
             self._daily_limit = row["daily_limit"] if type(row.get("daily_limit")) is int else self._daily_limit
             self._persist()
             return True
@@ -313,7 +329,7 @@ class RuntimeConfig:
         with self._lock:
             profiles = [{"name": row["name"], "saved_at": int(row["saved_at"]),
                          "text_model": row["text"]["model"], "vision_model": row["vision"]["model"],
-                         "retrieval": bool(row["search_key"])} for row in self._profiles]
+                         "retrieval": bool(row.get("search_keys") or row.get("search_key"))} for row in self._profiles]
             return {
                 "config_source": self._source,
                 "text": {"url": self._text["url"], "model": self._text["model"],
@@ -321,9 +337,10 @@ class RuntimeConfig:
                 "vision": {"url": self._vision["url"] or self._text["url"], "model": self._vision["model"],
                            "api_key": admin.mask_secret(self._vision["key"]),
                            "configured": bool(self._vision["model"]) and bool(self._vision["key"] or self._text["key"])},
-                "retrieval": {"provider": "Tavily Search" if self._search_key else "模型联网搜索（enable_search）",
-                              "api_key": admin.mask_secret(self._search_key),
-                              "configured": bool(self._search_key) or bool(self._text["key"])},
+                "retrieval": {"provider": "Tavily Search" if self._search_keys else "模型联网搜索（enable_search）",
+                              "api_key": admin.mask_secret(self._search_keys[0] if self._search_keys else ""),
+                              "key_count": len(self._search_keys),
+                              "configured": bool(self._search_keys) or bool(self._text["key"])},
                 "daily_limit": self._daily_limit,
                 "profiles": profiles,
             }
@@ -340,8 +357,13 @@ class RuntimeConfig:
             self._text = section
         vision = _config_section(data.get("vision"))
         self._vision = vision if vision["model"] else {"url": "", "model": "", "key": ""}
-        if isinstance(data.get("search_key"), str) and len(data["search_key"]) <= 400:
-            self._search_key = data["search_key"]
+        keys = data.get("search_keys")
+        if isinstance(keys, list):
+            self._search_keys = [key for key in keys
+                                 if isinstance(key, str) and 0 < len(key) <= 200
+                                 and all(33 <= ord(c) <= 126 for c in key)][:50]
+        elif isinstance(data.get("search_key"), str) and 0 < len(data["search_key"]) <= 400:
+            self._search_keys = [data["search_key"]]
         if type(data.get("daily_limit")) is int and 1 <= data["daily_limit"] <= 10000:
             self._daily_limit = data["daily_limit"]
         profiles = data.get("profiles")
@@ -352,9 +374,17 @@ class RuntimeConfig:
                     continue
                 if not isinstance(row.get("saved_at"), (int, float)):
                     continue
+                entry_keys = row.get("search_keys")
+                if isinstance(entry_keys, list):
+                    entry_keys = [key for key in entry_keys
+                                  if isinstance(key, str) and 0 < len(key) <= 200][:50]
+                elif isinstance(row.get("search_key"), str) and row["search_key"]:
+                    entry_keys = [row["search_key"]]
+                else:
+                    entry_keys = []
                 entry = {"name": row["name"], "saved_at": float(row["saved_at"]),
                          "text": _config_section(row.get("text")), "vision": _config_section(row.get("vision")),
-                         "search_key": row.get("search_key", "") if isinstance(row.get("search_key"), str) else "",
+                         "search_keys": entry_keys,
                          "daily_limit": row["daily_limit"] if type(row.get("daily_limit")) is int else self._daily_limit}
                 if not entry["vision"]["model"]:
                     entry["vision"] = {"url": "", "model": "", "key": ""}
@@ -365,7 +395,8 @@ class RuntimeConfig:
     def _persist(self) -> None:
         if self._path == ":memory:":
             return
-        payload = {"text": self._text, "vision": self._vision, "search_key": self._search_key,
+        payload = {"text": self._text, "vision": self._vision, "search_keys": self._search_keys,
+                   "search_key": self._search_keys[0] if self._search_keys else "",
                    "daily_limit": self._daily_limit, "profiles": self._profiles}
         raw = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
         temporary = self._path + ".tmp"
@@ -632,9 +663,17 @@ class Providers:
         return bool(self.runtime.search_key()) or bool(self.runtime.provider_settings(False)[1])
 
     def search(self, query: str, deadline: float) -> list[dict]:
-        search_key = self.runtime.search_key()
-        if search_key:
-            return self._search_tavily(search_key, query, deadline)
+        keys = self.runtime.search_keys()
+        if keys:
+            order = list(keys)
+            random.shuffle(order)
+            last_error: UpstreamError | None = None
+            for key in order[:3]:
+                try:
+                    return self._search_tavily(key, query, deadline)
+                except UpstreamError as error:
+                    last_error = error
+            raise last_error or UpstreamError("Search provider returned invalid results")
         return self._search_builtin(query, deadline)
 
     def _search_tavily(self, search_key: str, query: str, deadline: float) -> list[dict]:
@@ -748,7 +787,7 @@ def validate_verdict(value: dict, sources: list[dict]) -> dict:
 
 
 def analyze_monitor(source: dict, providers: Providers) -> dict:
-    deadline = time.monotonic() + 60
+    deadline = time.monotonic() + 70
     extracted = providers.model(EXTRACT_PROMPT, {key: source[key] for key in ("text", "kind", "captured_at")}, deadline, source["image"])
     observed, claims = validate_extraction(extracted, source)
     searched = False
@@ -770,8 +809,10 @@ def analyze_monitor(source: dict, providers: Providers) -> dict:
             if not sources:
                 claim.update(verdict="insufficient", explanation="未取得可用的网页正文；搜索摘要或没有结果不能证明真假")
                 continue
+            # The verify prompt needs bounded context; quotes are still validated against the full excerpt.
+            verify_sources = [{**row, "excerpt": row["excerpt"][:2500]} for row in sources]
             result = providers.model(VERIFY_PROMPT, {"claim": claim["quote"], "conditions": claim["conditions"],
-                                     "captured_at": source["captured_at"], "sources": sources}, deadline)
+                                     "captured_at": source["captured_at"], "sources": verify_sources}, deadline)
             claim.update(validate_verdict(result, sources))
             if claim["uncertain"] and claim["verdict"] != "insufficient":
                 claim.update(verdict="insufficient", explanation="原句归属或上下文尚不明确，以下资料仅供回查。" + claim["explanation"])
