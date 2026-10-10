@@ -47,3 +47,11 @@ bash scripts/check-monitor-core.sh
 这是工程原型，不是已经验证准确率的信息茧房诊断器或视频鉴伪系统。当前仍缺少完整的跨页笔记归并、可靠的推荐流/搜索入口识别、精确声画对齐、连续视频时序推理和经过标注校准的提醒阈值。视觉文字由模型提取，可能有错；不能用引文字符串检查替代真实性验证。
 
 [产品规划](docs/PRD-Multimodal.md) · [设计与实现对照](docs/IMPLEMENTATION.md) · [实时监测架构与验证](docs/REALTIME_MONITORING.md) · [历史比较优化](docs/DESIGN_ALIGNMENT_HISTORY.md) · [既有构建记录](BUILD_VALIDATION.md) · [作品概述](docs/破茧_第一章_作品概述.md)
+
+## GitHub APK 打包
+
+GitHub Actions 的 **Build APK** 流水线只执行 `:app:assembleDebug`，上传可安装的通用 Debug APK；不运行测试、不部署服务器、不发布 Release。主分支或 `dev/**` 分支修改 Android 构建相关文件时自动触发，也支持手动运行。
+
+在仓库 **Actions → Build APK → 成功的运行 → Artifacts** 下载 `PoJian-apk-运行编号`，解压后得到 APK，保留14天。可选仓库 Secret `POJIAN_SERVICE_TOKEN` 用于注入已有的网关访问令牌，未设置时为空；模型与检索密钥仍留在服务端。
+
+流水线使用 GitHub 临时环境自动生成的 Debug 签名，未配置持久签名，因此不同运行的 APK、与本地签名 APK 之间可能无法覆盖安装。需要持续升级并保留数据时，应另行配置固定签名；遇到签名冲突不要直接卸载有数据的旧版本。
