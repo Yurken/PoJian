@@ -153,6 +153,14 @@ def _config_section(value: object, key_max: int = 400) -> dict:
     return out
 
 
+def normalize_endpoint(url: str) -> str:
+    """Accept OpenAI-compatible base URLs; append /chat/completions when missing."""
+    trimmed = url.rstrip("/")
+    if trimmed.endswith("/chat/completions") or not trimmed.endswith("/v1"):
+        return url
+    return trimmed + "/chat/completions"
+
+
 class RuntimeConfig:
     """Effective provider settings with a JSON state file that overrides the process
     environment. Mutations are validated, persisted atomically (mode 0600) and take
@@ -198,9 +206,9 @@ class RuntimeConfig:
             if image:
                 if not self._vision["model"]:
                     return None
-                return (self._vision["url"] or self._text["url"],
+                return (normalize_endpoint(self._vision["url"] or self._text["url"]),
                         self._vision["key"] or self._text["key"], self._vision["model"])
-            return (self._text["url"], self._text["key"], self._text["model"])
+            return (normalize_endpoint(self._text["url"]), self._text["key"], self._text["model"])
 
     def search_key(self) -> str:
         with self._lock:
@@ -215,18 +223,26 @@ class RuntimeConfig:
             value = fields.get("text_" + field, "")
             if not isinstance(value, str) or len(value) > 400:
                 raise ClientError("Invalid configuration field")
-            if value:
+            if value == "-":
+                if field != "key":
+                    raise ClientError("文字接口与模型不能清空")
+                text["key"] = ""
+            elif value:
                 text[field] = value
         for field in ("url", "model", "key"):
             value = fields.get("vision_" + field, "")
             if not isinstance(value, str) or len(value) > 400:
                 raise ClientError("Invalid configuration field")
-            if value:
+            if value == "-":
+                vision[field] = ""
+            elif value:
                 vision[field] = value
         value = fields.get("search_key", "")
         if not isinstance(value, str) or len(value) > 400:
             raise ClientError("Invalid configuration field")
-        if value:
+        if value == "-":
+            search_key = ""
+        elif value:
             search_key = value
         if fields.get("daily_limit") is not None:
             if type(fields["daily_limit"]) is not int or not 1 <= fields["daily_limit"] <= 10000:
@@ -370,8 +386,8 @@ def runtime_file_has_text_key(path: str) -> bool:
 
 
 PROBE_TIMEOUT = 20.0
-# 1x1 white JPEG used for vision connectivity probes.
-PROBE_JPEG = ("/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD/7QA4UGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCyBOmACZjs+EJ+/8AAEQgAAQABAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhYWGh4iJipKTlJWWl5iZmqOjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMFBgUFBQUGCAYGBgYGCAoICAgICAgKCgoKCgoKCgwMDAwMDA4ODg4ODw8PDw8PDw8PD//bAEMBAgICBAQEBwQEBxALCQsQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEP/dAAQAAf/aAAwDAQACEQMRAD8A/fiiiigD/9k=")
+# 64x64 white JPEG used for vision connectivity probes; providers reject degenerate sizes.
+PROBE_JPEG = ("/9j/4AAQSkZJRgABAQAASABIAAD/4QBMRXhpZgAATU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAQKADAAQAAAABAAAAQAAAAAD/7QA4UGhvdG9zaG9wIDMuMAA4QklNBAQAAAAAAAA4QklNBCUAAAAAABDUHYzZjwCyBOmACZjs+EJ+/8AAEQgAQABAAwEiAAIRAQMRAf/EAB8AAAEFAQEBAQEBAAAAAAAAAAABAgMEBQYHCAkKC//EALUQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUSITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+v/EAB8BAAMBAQEBAQEBAQEAAAAAAAABAgMEBQYHCAkKC//EALURAAIBAgQEAwQHBQQEAAECdwABAgMRBAUhMQYSQVEHYXETIjKBCBRCkaGxwQkjM1LwFWJy0QoWJDThJfEXGBkaJicoKSo1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoKDhYWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uLj5OXm5+jp6vLz9PX29/j5+v/bAEMAAgICAgICAwICAwUDAwMFBgUFBQUGCAYGBgYGCAoICAgICAgKCgoKCgoKCgwMDAwMDA4ODg4ODw8PDw8PDw8PD//bAEMBAgICBAQEBwQEBxALCQsQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEP/dAAQABP/aAAwDAQACEQMRAD8A/fyiiigAooooAKKKKACiiigD/9D9/KKKKACiiigAooooAKKKKAP/0f38ooooAKKKKACiiigAooooA//S/fyiiigAooooAKKKKACiiigD/9k=")
 
 
 def probe_provider(target: str, runtime: RuntimeConfig) -> dict:
@@ -384,7 +400,7 @@ def probe_provider(target: str, runtime: RuntimeConfig) -> dict:
                 raise ClientError("尚未配置文字模型密钥")
             post_json(settings[0], settings[1], {"model": settings[2],
                 "messages": [{"role": "user", "content": "ping"}],
-                "max_tokens": 1, "temperature": 0, "stream": False}, PROBE_TIMEOUT)
+                "max_tokens": 1, "temperature": 0, "stream": False}, PROBE_TIMEOUT, detail=True)
         elif target == "vision":
             settings = runtime.provider_settings(True)
             if settings is None:
@@ -392,13 +408,13 @@ def probe_provider(target: str, runtime: RuntimeConfig) -> dict:
             post_json(settings[0], settings[1], {"model": settings[2], "messages": [{"role": "user", "content": [
                 {"type": "text", "text": "ping"},
                 {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + PROBE_JPEG}}]}],
-                "max_tokens": 1, "temperature": 0, "stream": False}, PROBE_TIMEOUT)
+                "max_tokens": 1, "temperature": 0, "stream": False}, PROBE_TIMEOUT, detail=True)
         elif target == "retrieval":
             if not runtime.search_key():
                 raise ClientError("尚未配置检索密钥")
             post_json("https://api.tavily.com/search", runtime.search_key(),
                       {"query": "ping", "max_results": 1, "search_depth": "basic",
-                       "include_answer": False, "include_raw_content": False}, PROBE_TIMEOUT)
+                       "include_answer": False, "include_raw_content": False}, PROBE_TIMEOUT, detail=True)
         else:
             raise ClientError("未知的测试目标")
     except UpstreamError as error:
@@ -443,7 +459,29 @@ def validate_monitor(payload: object) -> dict:
             "captured_at": payload["captured_at"], "check_facts": payload["check_facts"], "image": image}
 
 
-def post_json(url: str, key: str, payload: dict, timeout: float) -> dict:
+def _provider_error_detail(error: HTTPError) -> str:
+    """Extract a short message from a provider's JSON error body (OpenAI-compatible shape)."""
+    try:
+        raw = error.read(2048)
+        payload = decode_json(raw)
+    except (OSError, HTTPException, ValueError, UnicodeError, RecursionError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    inner = payload.get("error")
+    if isinstance(inner, dict):
+        message = inner.get("message")
+    elif isinstance(inner, str):
+        message = inner
+    else:
+        message = payload.get("message")
+    if not isinstance(message, str):
+        return ""
+    cleaned = " ".join(message.split())
+    return cleaned[:300]
+
+
+def post_json(url: str, key: str, payload: dict, timeout: float, detail: bool = False) -> dict:
     request = Request(url, json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8"),
                       {"Content-Type": "application/json", "Authorization": "Bearer " + key}, method="POST")
     deadline = time.monotonic() + timeout
@@ -465,8 +503,14 @@ def post_json(url: str, key: str, payload: dict, timeout: float) -> dict:
             raise UpstreamError("Provider did not return an object")
         return result
     except HTTPError as error:
+        status, message = error.code, ""
+        if detail:
+            message = _provider_error_detail(error)
         error.close()
-        raise UpstreamError("Provider rejected the request") from None
+        text = "Provider rejected the request"
+        if detail:
+            text += f" (HTTP {status})" + (f": {message}" if message else "")
+        raise UpstreamError(text) from None
     except (TimeoutError, socket.timeout):
         raise UpstreamError("Provider request timed out", 504) from None
     except (URLError, HTTPException, OSError):
@@ -478,6 +522,9 @@ def post_json(url: str, key: str, payload: dict, timeout: float) -> dict:
 class Providers:
     def __init__(self, config: Config, runtime: "RuntimeConfig"):
         self.config, self.runtime = config, runtime
+
+    def search_key(self) -> str:
+        return self.runtime.search_key()
 
     def model(self, system: str, user: object, deadline: float, image: str = "") -> dict:
         remaining = min(self.config.timeout, deadline - time.monotonic())

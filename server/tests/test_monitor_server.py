@@ -7,6 +7,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -167,6 +168,19 @@ class PipelineTests(unittest.TestCase):
         config = legacy.Config("https://example.org", "model", "key", "token")
         provider = m.Providers(config, m.RuntimeConfig(config, m.Options(), ":memory:"))
         with self.assertRaises(m.UpstreamError): provider.model("system", {}, m.time.monotonic() + 30, "image")
+
+    def test_real_providers_drive_the_pipeline(self):
+        # Regression: analyze_monitor must work with real Providers (runtime-backed), not only fakes.
+        config = legacy.Config("https://example.org", "model", "key", "token")
+        runtime = m.RuntimeConfig(config, m.Options(), ":memory:")
+        provider = m.Providers(config, runtime)
+        extraction = {"observed_text": "", "claims": [claim()]}
+        envelope = {"choices": [{"message": {"content": json.dumps(extraction, ensure_ascii=False)}}]}
+        with patch.object(m, "post_json", return_value=envelope):
+            result = m.analyze_monitor(m.validate_monitor(request_data()), provider)
+        self.assertEqual(len(result["claims"]), 1)
+        self.assertEqual(result["claims"][0]["verdict"], "not_checked")
+        self.assertIn("尚未配置联网取证", result["claims"][0]["explanation"])
 
 
 class BudgetTests(unittest.TestCase):
@@ -450,6 +464,16 @@ class ConfigApiTests(unittest.TestCase):
         self.assertEqual(settings["text"]["model"], "fixture-model")
         self.assertEqual(settings["text"]["api_key"], "****-key")
 
+    def test_dash_clears_optional_fields(self):
+        self.assertEqual(self.call("/config/update",
+            {"vision_url": "-", "vision_model": "-", "vision_key": "-", "search_key": "-"})[0], 200)
+        settings = self.status()["settings"]
+        self.assertFalse(settings["vision"]["configured"])
+        self.assertEqual(settings["vision"]["model"], "")
+        self.assertFalse(settings["retrieval"]["configured"])
+        self.assertEqual(self.call("/config/update", {"text_url": "-"})[0], 400)
+        self.assertEqual(self.call("/config/update", {"text_model": "-"})[0], 400)
+
     def test_daily_limit_update_syncs_budget(self):
         self.assertEqual(self.call("/config/update", {"daily_limit": 3})[0], 200)
         for _ in range(3):
@@ -577,6 +601,66 @@ class AdminConsoleTests(unittest.TestCase):
             self.assertEqual(login("admin", "wrong")[0], 401)
         finally:
             server.shutdown(); server.server_close(); thread.join(); budget.close()
+
+
+class ProbeErrorDetailTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        class RejectingHandler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                body = json.dumps({"error": {"message": "Invalid API-key provided", "type": "authentication_error"}}).encode()
+                self.send_response(401)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            def log_message(self, *args):
+                pass
+        cls.server = ThreadingHTTPServer(("127.0.0.1", 0), RejectingHandler)
+        cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls.thread.start()
+        cls.url = f"http://127.0.0.1:{cls.server.server_port}/v1/chat/completions"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown(); cls.server.server_close(); cls.thread.join()
+
+    def test_detail_flag_includes_status_and_provider_message(self):
+        with self.assertRaises(m.UpstreamError) as caught:
+            m.post_json(self.url, "key", {}, 5, detail=True)
+        message = str(caught.exception)
+        self.assertIn("HTTP 401", message)
+        self.assertIn("Invalid API-key provided", message)
+
+    def test_default_error_stays_generic(self):
+        with self.assertRaises(m.UpstreamError) as caught:
+            m.post_json(self.url, "key", {}, 5)
+        self.assertEqual(str(caught.exception), "Provider rejected the request")
+
+    def test_base_urls_are_normalized(self):
+        self.assertEqual(m.normalize_endpoint("https://x.example/compatible-mode/v1"),
+                         "https://x.example/compatible-mode/v1/chat/completions")
+        self.assertEqual(m.normalize_endpoint("https://x.example/v1/"),
+                         "https://x.example/v1/chat/completions")
+        self.assertEqual(m.normalize_endpoint("https://x.example/v1/chat/completions"),
+                         "https://x.example/v1/chat/completions")
+        self.assertEqual(m.normalize_endpoint("https://x.example/custom/deployments/gpt/chat/completions"),
+                         "https://x.example/custom/deployments/gpt/chat/completions")
+        self.assertEqual(m.normalize_endpoint(""), "")
+
+    def test_provider_settings_normalize_stored_base_url(self):
+        config = legacy.Config("https://x.example/compatible-mode/v1", "model", "key", "token")
+        runtime = m.RuntimeConfig(config, m.Options(), ":memory:")
+        url, key, model = runtime.provider_settings(False)
+        self.assertEqual(url, "https://x.example/compatible-mode/v1/chat/completions")
+
+    def test_probe_endpoint_surfaces_detail(self):
+        config = legacy.Config(self.url, "fixture-model", "sk-key", "test-token")
+        runtime = m.RuntimeConfig(config, m.Options(), ":memory:")
+        result = m.probe_provider("text", runtime)
+        self.assertFalse(result["ok"])
+        self.assertIn("HTTP 401", result["error"])
+        self.assertIn("Invalid API-key provided", result["error"])
 
 
 if __name__ == "__main__": unittest.main()

@@ -230,13 +230,13 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
   <div class="panel" id="configPanel" hidden>
     <h2>配置管理</h2>
     <div class="form-grid">
-      <div class="field"><label for="cfg_text_url">文字接口</label><input id="cfg_text_url" autocomplete="off"></div>
+      <div class="field"><label for="cfg_text_url">文字接口（完整地址或 /v1 基础地址均可）</label><input id="cfg_text_url" autocomplete="off"></div>
       <div class="field"><label for="cfg_text_model">文字模型</label><input id="cfg_text_model" autocomplete="off"></div>
       <div class="field"><label for="cfg_text_key">文字密钥</label><input id="cfg_text_key" type="password" autocomplete="new-password"></div>
-      <div class="field"><label for="cfg_vision_url">视觉接口（默认同文字接口）</label><input id="cfg_vision_url" autocomplete="off"></div>
-      <div class="field"><label for="cfg_vision_model">视觉模型（留空停用视觉）</label><input id="cfg_vision_model" autocomplete="off"></div>
-      <div class="field"><label for="cfg_vision_key">视觉密钥</label><input id="cfg_vision_key" type="password" autocomplete="new-password"></div>
-      <div class="field"><label for="cfg_search_key">检索密钥（Tavily）</label><input id="cfg_search_key" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="cfg_vision_url">视觉接口（留空同文字接口；填 - 清空回退）</label><input id="cfg_vision_url" autocomplete="off"></div>
+      <div class="field"><label for="cfg_vision_model">视觉模型（留空停用视觉；填 - 清空）</label><input id="cfg_vision_model" autocomplete="off"></div>
+      <div class="field"><label for="cfg_vision_key">视觉密钥（留空同文字密钥；填 - 清空）</label><input id="cfg_vision_key" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="cfg_search_key">检索密钥（Tavily；填 - 清空）</label><input id="cfg_search_key" type="password" autocomplete="new-password"></div>
       <div class="field"><label for="cfg_daily_limit">每日限额（次）</label><input id="cfg_daily_limit" type="number" min="1" max="10000"></div>
     </div>
     <div class="msg" id="configMsg"></div>
@@ -326,6 +326,8 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
         if (r.ok) { setMsg(msg, okText, true); tick(); return; }
         setMsg(msg, (data && data.error) || ("请求失败（HTTP " + r.status + "）"), false);
         if (r.status === 401) logout("登录已失效，请重新登录");
+      }, function () {
+        setMsg(msg, "服务器响应异常，请刷新页面后重试", false);
       });
     }).catch(function () { setMsg(msg, "网络错误，请重试", false); });
   }
@@ -575,6 +577,9 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
         if (r.ok && data.ok) { setMsg(msg, "连通正常 · " + data.ms + " ms", true); return; }
         setMsg(msg, (data && data.error) || ("测试失败（HTTP " + r.status + "）"), false);
         if (r.status === 401) logout("登录已失效，请重新登录");
+      }, function () {
+        btn.disabled = false;
+        setMsg(msg, "服务器响应异常，请刷新页面后重试", false);
       });
     }).catch(function () {
       btn.disabled = false;
@@ -599,14 +604,14 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
   document.getElementById("saveProfileBtn").addEventListener("click", function () {
     var name = val("profileName");
     if (!name) { setMsg(document.getElementById("profileMsg"), "请输入配置名称", false); return; }
-    postConfig("/config/profile/save", { name: name }, "profileMsg", "已保存当前配置");
+    postConfig("config/profile/save", { name: name }, "profileMsg", "已保存当前配置");
     setVal("profileName", "");
   });
   document.getElementById("profilesList").addEventListener("click", function (e) {
     var apply = e.target.getAttribute && e.target.getAttribute("data-apply");
     var del = e.target.getAttribute && e.target.getAttribute("data-del");
-    if (apply) postConfig("/config/profile/apply", { name: apply }, "profileMsg", "已应用配置 " + apply);
-    if (del) postConfig("/config/profile/delete", { name: del }, "profileMsg", "已删除配置 " + del);
+    if (apply) postConfig("config/profile/apply", { name: apply }, "profileMsg", "已应用配置 " + apply);
+    if (del) postConfig("config/profile/delete", { name: del }, "profileMsg", "已删除配置 " + del);
   });
   document.getElementById("recentPager").addEventListener("click", function (e) {
     var page = e.target.getAttribute && e.target.getAttribute("data-page");

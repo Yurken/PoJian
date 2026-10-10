@@ -174,7 +174,7 @@ import os
 import sys
 try:
     from emerge_server import Config
-    from monitor_server import Options
+    from monitor_server import Options, runtime_file_has_text_key
     config = Config.from_env(require_upstream=os.getenv('EMERGE_ALLOW_UNCONFIGURED') != '1')
     Options.from_env(config)
     if (os.environ.get('EMERGE_HOST') != '127.0.0.1'
@@ -247,7 +247,11 @@ from urllib.request import Request, urlopen
 
 try:
     from emerge_server import Config
+    from monitor_server import runtime_file_has_text_key
     config = Config.from_env(require_upstream=os.getenv('EMERGE_ALLOW_UNCONFIGURED') != '1')
+    state_dir = os.path.dirname(os.environ['EMERGE_BUDGET_DB'])
+    effective_configured = config.model_configured or runtime_file_has_text_key(
+        os.path.join(state_dir, 'runtime-config.json'))
 except Exception:
     raise SystemExit('Backend configuration could not be loaded for readiness checks.') from None
 
@@ -266,7 +270,7 @@ for attempt in range(30):
                     or capabilities.get('protocol') != 1 or capabilities.get('monitor') is not True
                     or type(capabilities.get('model_configured')) is not bool
                     or capabilities['model_configured'] != health['model_configured']
-                    or health['model_configured'] != config.model_configured):
+                    or health['model_configured'] != effective_configured):
                 raise ValueError('Invalid capabilities response')
         for endpoint in ('/monitor', '/analyze'):
             try:
@@ -277,7 +281,7 @@ for attempt in range(30):
                 error.close()
                 if status != 401:
                     raise ValueError('Unauthenticated request did not return 401')
-        if not config.model_configured:
+        if not effective_configured:
             for endpoint in ('/monitor', '/analyze'):
                 headers = {'Content-Type': 'application/json',
                            'Authorization': 'Bearer ' + config.service_token}
@@ -289,14 +293,27 @@ for attempt in range(30):
                     error.close()
                     if status != 503:
                         raise ValueError('Unconfigured model request did not return 503')
+        else:
+            # A configured service must pass the configuration gate: an authenticated
+            # request with an empty body fails validation, never with 503.
+            headers = {'Content-Type': 'application/json',
+                       'Authorization': 'Bearer ' + config.service_token}
+            try:
+                with urlopen(Request(base + '/monitor', data=b'{}', headers=headers), timeout=2):
+                    raise ValueError('Empty monitor body was accepted')
+            except HTTPError as error:
+                status = error.code
+                error.close()
+                if status in (401, 503):
+                    raise ValueError('Configured model request hit the auth or configuration gate')
         break
     except (URLError, OSError, ValueError):
         if attempt == 29:
             raise SystemExit('Backend health/authentication checks failed.') from None
         time.sleep(1)
 print('Health, monitor capabilities and both authentication checks passed.')
-if config.model_configured:
-    print('Backend is ready; model API configuration is present.')
+if effective_configured:
+    print('Backend is ready; model configuration is present (environment or runtime file).')
 else:
     print('Backend is ready; model API is not configured. Authenticated analysis returns 503.')
 PY
