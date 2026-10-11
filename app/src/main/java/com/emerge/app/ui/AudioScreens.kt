@@ -13,19 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -96,7 +91,8 @@ data class AudioSessionUi(
     val analysisLabel: String? = null,
     val analysisSummary: String? = null,
     val claims: List<AudioClaimUi> = emptyList(),
-    val analyzing: Boolean = false
+    val analyzing: Boolean = false,
+    val sourcePackage: String? = null
 )
 
 data class AudioClaimUi(
@@ -148,7 +144,7 @@ fun AudioEntryCard(
             AudioTaskProgress(it, onCancelTask, compact, onPauseResume, isPaused)
         }
         if (state.task == null) {
-            Button(onClick = onCapture, enabled = canStart, shape = RoundedCornerShape(12.dp),
+            PojianButton(onClick = onCapture, enabled = canStart, shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("audio-capture"),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
                 Text("开始录音")
@@ -161,13 +157,13 @@ fun AudioEntryCard(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (state.task == null) {
-                TextButton(onClick = onImport, enabled = canStart,
+                PojianTextButton(onClick = onImport, enabled = canStart,
                     modifier = Modifier.heightIn(min = 48.dp).testTag("audio-import"),
                     contentPadding = PaddingValues(horizontal = 0.dp)) {
                     Text("导入音频")
                 }
             }
-            TextButton(onClick = onOpenRecords, modifier = Modifier.heightIn(min = 48.dp),
+            PojianTextButton(onClick = onOpenRecords, modifier = Modifier.heightIn(min = 48.dp),
                 contentPadding = PaddingValues(horizontal = 0.dp)) {
                 Text(if (state.sessionCount > 0) "音频记录 ${state.sessionCount} ›" else "音频记录 ›")
             }
@@ -223,7 +219,7 @@ private fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, o
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("正在下载语音模型", style = MaterialTheme.typography.bodyMedium,
                     color = Ink, modifier = Modifier.weight(1f))
-                TextButton(onClick = onCancel, modifier = Modifier.heightIn(min = 48.dp)
+                PojianTextButton(onClick = onCancel, modifier = Modifier.heightIn(min = 48.dp)
                     .testTag("audio-cancel-download")) { Text("取消下载") }
             }
             AudioProgress(state.progress, "模型下载进度")
@@ -234,7 +230,7 @@ private fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, o
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (state.status == AudioModelStatus.ERROR) "模型下载失败" else "首次使用需下载模型",
                     style = MaterialTheme.typography.bodyMedium, color = Ink, modifier = Modifier.weight(1f))
-                TextButton(onClick = onDownload, modifier = Modifier.heightIn(min = 48.dp)
+                PojianTextButton(onClick = onDownload, modifier = Modifier.heightIn(min = 48.dp)
                     .testTag("audio-download-model")) {
                     Text(if (state.status == AudioModelStatus.ERROR) "重新下载" else "下载模型")
                 }
@@ -278,19 +274,19 @@ private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compac
         } else AudioProgress(task.progress, "音频处理进度")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (task.phase == AudioTaskPhase.CAPTURING && onPauseResume != null) {
-                OutlinedButton(onClick = onPauseResume, shape = RoundedCornerShape(12.dp),
+                PojianSecondaryButton(onClick = onPauseResume, shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-pause-resume")) {
                     Text(if (isPaused) "继续录音" else "暂停录音")
                 }
             }
             if (task.phase == AudioTaskPhase.CAPTURING) {
-                Button(onClick = onStop, shape = RoundedCornerShape(12.dp),
+                PojianButton(onClick = onStop, shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-stop-task")) {
                     Text("停止录音")
                 }
             } else {
-                OutlinedButton(onClick = onStop, shape = RoundedCornerShape(12.dp),
+                PojianSecondaryButton(onClick = onStop, shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-stop-task")) {
                     Text("停止处理")
                 }
@@ -352,20 +348,20 @@ fun AudioRecordsScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            TextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp),
+            PojianTextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp),
                 modifier = Modifier.heightIn(min = 48.dp)) { Text("‹ 返回") }
             Text("音频记录", style = MaterialTheme.typography.headlineSmall,
                 fontFamily = FontFamily.SansSerif, color = Ink)
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 MetadataText("${sessions.size} 段转写", Modifier.weight(1f))
-                TextButton(onClick = onImport, enabled = canImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入音频") }
+                PojianTextButton(onClick = onImport, enabled = canImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入音频") }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         if (sessions.isEmpty()) item {
             WhiteCard {
                 SectionTitle("暂无音频记录")
-                OutlinedButton(onClick = onImport, enabled = canImport,
+                PojianSecondaryButton(onClick = onImport, enabled = canImport,
                     shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("导入音频")
                 }
@@ -375,7 +371,7 @@ fun AudioRecordsScreen(
             WhiteCard(Modifier.fillMaxWidth().clickable(role = Role.Button, onClickLabel = "查看音频转写") { onSession(session) }
                 .testTag("audio-session-${session.id}")) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    Text(session.title, style = MaterialTheme.typography.titleMedium, color = Ink,
+                    SourceAppText(session.sourcePackage, session.title, style = MaterialTheme.typography.titleMedium, color = Ink,
                         modifier = Modifier.weight(1f).padding(end = 12.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     AudioStatusLabel(session.statusLabel)
                 }
@@ -412,7 +408,7 @@ fun AudioSessionDetailSheet(
                 contentPadding = PaddingValues(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 item(key = "heading") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(session.title, style = MaterialTheme.typography.headlineSmall, color = Ink)
+                        SourceAppText(session.sourcePackage, session.title, style = MaterialTheme.typography.headlineSmall, color = Ink)
                         MetadataText("${session.sourceLabel} · ${audioDate(session.createdAt)}")
                         MetadataText("音频时长 ${audioTimestamp(session.durationMillis)} · ${session.segments.size} 段转写 · ${session.statusLabel}")
                         session.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error,
@@ -424,7 +420,7 @@ fun AudioSessionDetailSheet(
                 item(key = "analysis") {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SectionTitle("音频回顾")
-                        Button(onClick = onAnalyze, enabled = session.segments.isNotEmpty() && !session.analyzing,
+                        PojianButton(onClick = onAnalyze, enabled = session.segments.isNotEmpty() && !session.analyzing,
                             shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)
                                 .testTag("audio-analyze-session")) {
                             Text(if (session.analyzing) "正在分析" else if (session.analysisSummary != null || session.claims.isNotEmpty())
@@ -488,19 +484,19 @@ fun AudioSessionDetailSheet(
                             QuoteBlock(segment.correctedText)
                         }
                         if (editingId == segment.id) {
-                            OutlinedTextField(value = draft, onValueChange = { draft = it },
+                            PojianTextField(value = draft, onValueChange = { draft = it },
                                 label = { Text("修订转写") }, minLines = 3,
                                 modifier = Modifier.fillMaxWidth().testTag("audio-edit-${segment.id}"),
                                 shape = RoundedCornerShape(12.dp))
                             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Button(onClick = {
+                                PojianButton(onClick = {
                                     onSaveSegment(segment.id, draft.trim())
                                     editingId = null
                                     draft = ""
                                 }, enabled = draft.isNotBlank() && !session.analyzing, shape = RoundedCornerShape(12.dp),
                                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                                         .testTag("audio-save-${segment.id}")) { Text("保存修订") }
-                                TextButton(onClick = { editingId = null; draft = "" }, modifier = Modifier.align(Alignment.End)
+                                PojianTextButton(onClick = { editingId = null; draft = "" }, modifier = Modifier.align(Alignment.End)
                                     .heightIn(min = 48.dp)) { Text("取消修订") }
                             }
                         }
@@ -508,22 +504,22 @@ fun AudioSessionDetailSheet(
                     }
                 }
                 item(key = "delete") {
-                    TextButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)
+                    PojianTextButton(onClick = { confirmDelete = true }, modifier = Modifier.heightIn(min = 48.dp)
                         .testTag("audio-delete-session")) {
                         Text("删除这条音频记录", color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("关闭") }
+            PojianTextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("关闭") }
         }
     }
-    if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
+    if (confirmDelete) PojianDialog(onDismissRequest = { confirmDelete = false },
         title = { Text("删除这条音频记录？") },
         text = { Text("这条记录的转写和修订文字将被删除。") },
-        confirmButton = { Button(onClick = { confirmDelete = false; onDelete() },
+        confirmButton = { PojianButton(onClick = { confirmDelete = false; onDelete() },
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
             Text("删除")
-        } }, dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } })
+        } }, dismissButton = { PojianTextButton(onClick = { confirmDelete = false }) { Text("取消") } })
 }
 
 @Composable
@@ -543,7 +539,7 @@ fun AudioSettingsSection(
                 Text("云端文字分析", color = Ink, style = MaterialTheme.typography.titleMedium)
                 MetadataText(state.cloudLabel, Modifier.padding(top = 4.dp))
             }
-            TextButton(onClick = onConfigureCloud, modifier = Modifier.heightIn(min = 48.dp)) { Text("配置 ›") }
+            PojianTextButton(onClick = onConfigureCloud, modifier = Modifier.heightIn(min = 48.dp)) { Text("配置 ›") }
         }
         HelpLink("录音授权与边界", "每次录音需系统授权，部分应用不允许录制；识别可能有误，请核对原内容；录不到声音时可改用导入音频。")
     }

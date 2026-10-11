@@ -1,7 +1,6 @@
 package com.emerge.app.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -16,13 +15,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -31,7 +27,6 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.graphics.drawable.toBitmap
 import com.emerge.app.capture.CaptureStatus
 import com.emerge.app.capture.VisibilityRegion
 import com.emerge.app.analysis.ObservationWindow
@@ -44,8 +39,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 @Composable
 fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, String>, modifier: Modifier = Modifier,
@@ -55,6 +48,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
     var selectedPackage by rememberSaveable { mutableStateOf<String?>(null) }
     var showAppFilter by rememberSaveable { mutableStateOf(false) }
     var expandedPackages by rememberSaveable { mutableStateOf(emptyList<String>()) }
+    val stackedRecordHeading = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale > 1.2f
     val sequence = remember(events) { events.sortedWith(compareBy<BrowseEvent> { it.timestamp }.thenBy { it.id })
         .mapIndexed { index, event -> event.id to index + 1 }.toMap() }
     val packageCounts = remember(events) { events.groupingBy { it.packageName }.eachCount() }
@@ -80,16 +74,17 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp)) {
         item {
             SectionTitle("浏览记录", "本机保存 $count 条")
-            OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            PojianTextField(query, { query = it }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 label = { Text("搜索原文或应用") }, singleLine = true, shape = MaterialTheme.shapes.small,
                 trailingIcon = {
-                    if (query.isNotEmpty()) TextButton(onClick = { query = "" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除") }
+                    if (query.isNotEmpty()) PojianTextButton(onClick = { query = "" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除") }
                 })
             Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { showAppFilter = true }, shape = MaterialTheme.shapes.small,
+                PojianSecondaryButton(onClick = { showAppFilter = true }, shape = MaterialTheme.shapes.small,
                     modifier = Modifier.testTag("record-app-filter").heightIn(min = 48.dp).weight(1f, fill = false)) {
-                    Text(selectedPackage?.let { appNames[it] ?: it } ?: "全部应用",
+                    SourceAppText(selectedPackage, selectedPackage?.let { appNames[it] ?: it } ?: "全部应用",
+                        style = MaterialTheme.typography.labelLarge, color = LocalContentColor.current,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     Text(" ▾")
                 }
@@ -100,9 +95,9 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
         if (filtered.isEmpty()) item {
             WhiteCard {
                 SectionTitle(if (hasFilter) "无匹配记录" else "暂无记录")
-                if (hasFilter) TextButton(onClick = { query = ""; selectedPackage = null }, modifier = Modifier.heightIn(min = 48.dp)) {
+                if (hasFilter) PojianTextButton(onClick = { query = ""; selectedPackage = null }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("查看全部记录")
-                } else Button(onClick = onSettings, modifier = Modifier.heightIn(min = 48.dp), shape = MaterialTheme.shapes.small) {
+                } else PojianButton(onClick = onSettings, modifier = Modifier.heightIn(min = 48.dp), shape = MaterialTheme.shapes.small) {
                     Text("设置采集范围")
                 }
             }
@@ -110,10 +105,10 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
         grouped.forEach { (packageName, records) ->
             item(key = "app-$packageName") {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(appNames[packageName] ?: packageName, color = Ink, style = MaterialTheme.typography.titleSmall,
+                    SourceAppText(packageName, appNames[packageName] ?: packageName, color = Ink, style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.weight(1f))
                     MetadataText("${records.size} 条")
-                    TextButton(onClick = {
+                    PojianTextButton(onClick = {
                         expandedPackages = if (packageName in expandedPackages) expandedPackages - packageName else expandedPackages + packageName
                     }, modifier = Modifier.testTag("record-group-$packageName")) {
                         Text(if (packageName in expandedPackages) "收起 −" else "展开 ＋")
@@ -125,13 +120,18 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                 val fromAudio = event.sourceType.startsWith("audio_")
                 val durationKnown = ObservationWindow(0, Long.MAX_VALUE, zone).durationKnown(event)
                 WhiteCard(Modifier.padding(bottom = 12.dp)) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("#${sequence[event.id]} · ${appNames[event.packageName] ?: event.packageName}", color = Ink,
-                            style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f),
-                            maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(timeFormat.format(Instant.ofEpochMilli(event.timestamp).atZone(zone)),
-                            color = Muted, style = MaterialTheme.typography.labelMedium)
+                    val recordedAt = timeFormat.format(Instant.ofEpochMilli(event.timestamp).atZone(zone))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
+                                "#${sequence[event.id]} · ${appNames[event.packageName] ?: event.packageName}", color = Ink,
+                                appName = appNames[event.packageName] ?: event.packageName,
+                                style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f),
+                                maxLines = if (stackedRecordHeading) 2 else 1, overflow = TextOverflow.Ellipsis)
+                            if (!stackedRecordHeading) Text(recordedAt, color = Muted, style = MaterialTheme.typography.labelMedium)
+                        }
+                        if (stackedRecordHeading) Text(recordedAt, color = Muted, style = MaterialTheme.typography.labelMedium)
                     }
                     event.visualSourceLabel?.let { MetadataText(it) }
                     if (fromAudio) {
@@ -154,7 +154,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                             text = if (expanded) "收起原文" else "查看原文 ›",
                             onClick = { expanded = !expanded }
                         )
-                        TextButton(onClick = { onDelete(event) }, modifier = Modifier.heightIn(min = 48.dp)) {
+                        PojianTextButton(onClick = { onDelete(event) }, modifier = Modifier.heightIn(min = 48.dp)) {
                             Text("删除", color = MaterialTheme.colorScheme.error)
                         }
                     }
@@ -207,27 +207,29 @@ private fun RecordAppFilterSheet(packages: List<String>, counts: Map<String, Int
                 }
                 items(packages, key = { it }) { packageName ->
                     ApplicationFilterRow(appNames[packageName] ?: packageName, "${counts[packageName] ?: 0} 条 · $packageName",
-                        selected == packageName) { onSelect(packageName) }
+                        selected == packageName, packageName) { onSelect(packageName) }
                 }
             }
-            TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("取消") }
+            PojianTextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("取消") }
         }
     }
 }
 
 @Composable
-private fun ApplicationFilterRow(label: String, detail: String, selected: Boolean, onClick: () -> Unit) {
+private fun ApplicationFilterRow(label: String, detail: String, selected: Boolean, packageName: String? = null,
+    onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().selectable(selected = selected, onClick = onClick, role = Role.RadioButton)
         .heightIn(min = 64.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(label, style = MaterialTheme.typography.titleSmall, color = Ink)
+            SourceAppText(packageName, label, style = MaterialTheme.typography.titleSmall, color = Ink)
             MetadataText(detail, Modifier.padding(top = 4.dp))
         }
-        RadioButton(selected = selected, onClick = null)
+        PojianRadioButton(selected = selected, onClick = null)
     }
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture: (Boolean) -> Unit,
     onOpenSettings: () -> Unit, onClear: () -> Unit, message: String?, modifier: Modifier = Modifier,
@@ -270,7 +272,7 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                         Text(captureState, color = Muted,
                             style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                     }
-                    Switch(checked = enabled, onCheckedChange = onCapture, enabled = selectedApps.isNotEmpty(),
+                    PojianSwitch(checked = enabled, onCheckedChange = onCapture, enabled = selectedApps.isNotEmpty(),
                         modifier = Modifier.testTag("capture-toggle").semantics { contentDescription = "开启采集"; stateDescription = captureState })
                 }
                 message?.let { Text(it, color = MaterialTheme.colorScheme.error,
@@ -281,9 +283,13 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
             WhiteCard {
                 SectionTitle("采集范围", help = "仅记录所选应用的可见文字。调整范围后需重新开启采集，历史记录保留。")
                 MetadataText(if (selectedApps.isEmpty()) "尚未选择应用" else "已选择 ${selectedApps.size} 个应用")
-                if (selectedApps.isNotEmpty()) Text(selectedApps.joinToString("、") { it.label }, color = Muted,
-                    maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
-                OutlinedButton(onClick = onChooseApps, shape = MaterialTheme.shapes.small,
+                if (selectedApps.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    selectedApps.forEach { application ->
+                        SourceAppText(application.packageName, application.label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+                PojianSecondaryButton(onClick = onChooseApps, shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text("选择应用")
                 }
@@ -302,7 +308,7 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                     (if (audioContent != null) "录音请从录制页开始，画面采样需另行开启。" else "目前也无法识别视频画面和音频内容。"))
                 ControlStatusLine("辅助功能授权", if (permission) "已启用" else "未检测到")
                 ControlStatusLine("辅助服务连接", if (diagnostics.connected) "已连接" else "未连接")
-                OutlinedButton(onClick = onOpenSettings, shape = MaterialTheme.shapes.small,
+                PojianSecondaryButton(onClick = onOpenSettings, shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text(if (permission) "查看系统辅助功能授权" else "前往系统授权")
                 }
@@ -313,7 +319,7 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 SectionTitle("本地存储", help = "最多保留 5000 条，超出后删除最早记录。删除后分析同步更新，导出文件需自行删除。\n\n浏览目的会保留；浏览回顾重启后需重新生成。音频回顾随转写保存，修订后需重新分析。")
                 ControlStatusLine("已保存记录", "$count 条")
                 ControlStatusLine("保留上限", "5000 条")
-                TextButton(onClick = onClear, enabled = count > 0,
+                PojianTextButton(onClick = onClear, enabled = count > 0,
                     modifier = Modifier.heightIn(min = 48.dp).align(Alignment.Start)) {
                     Text("清空全部记录",
                         color = if (count > 0) MaterialTheme.colorScheme.error else Muted)
@@ -352,6 +358,7 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
     var query by rememberSaveable { mutableStateOf("") }
     var selectedOnly by rememberSaveable { mutableStateOf(false) }
     val compactHeight = LocalConfiguration.current.screenHeightDp < 600 && LocalDensity.current.fontScale > 1.3f
+    val stackedHeading = LocalConfiguration.current.screenWidthDp < 360 && LocalDensity.current.fontScale > 1.3f
     val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
     val listState = rememberLazyListState()
     // Keep row positions stable during selection; prioritize the saved scope when the picker opens.
@@ -373,19 +380,27 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
         Column(Modifier.fillMaxWidth().fillMaxHeight(if (compactHeight) 1f else 0.9f)
             .then(if (compactHeight) Modifier.statusBarsPadding() else Modifier).padding(horizontal = 16.dp)) {
             if (!keyboardVisible) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("选择要采集的应用", modifier = Modifier.weight(1f), color = Ink,
+                val title: @Composable () -> Unit = {
+                    Text("选择要采集的应用", color = Ink,
                         style = if (compactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
-                    MetadataText("已选 ${draft.size} 个", Modifier.padding(start = 8.dp))
+                }
+                val selectionCount: @Composable () -> Unit = { MetadataText("已选 ${draft.size} 个") }
+                if (stackedHeading) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) { title(); selectionCount() }
+                } else {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) { title() }
+                        Box(Modifier.padding(start = 8.dp)) { selectionCount() }
+                    }
                 }
             }
-            OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth()
+            PojianTextField(query, { query = it }, modifier = Modifier.fillMaxWidth()
                 .padding(vertical = if (compactHeight) 4.dp else 8.dp),
                 singleLine = true, label = { Text("搜索应用") }, shape = MaterialTheme.shapes.small,
-                trailingIcon = { if (query.isNotEmpty()) TextButton(onClick = { query = "" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除") } })
+                trailingIcon = { if (query.isNotEmpty()) PojianTextButton(onClick = { query = "" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除") } })
             if (!keyboardVisible) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !selectedOnly, onClick = { selectedOnly = false }, label = { Text("全部应用") })
-                FilterChip(selected = selectedOnly, onClick = { selectedOnly = true }, label = { Text("已选") })
+                PojianFilterChip(selected = !selectedOnly, onClick = { selectedOnly = false }, label = { Text("全部应用") })
+                PojianFilterChip(selected = selectedOnly, onClick = { selectedOnly = true }, label = { Text("已选") })
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
             LazyColumn(Modifier.testTag("capture-app-options").weight(1f), state = listState) {
@@ -400,16 +415,16 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
                         Row(Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Checkbox, onValueChange = { value ->
                             draft = if (value) draft + application.packageName else draft - application.packageName
                         }).heightIn(min = 64.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            CaptureApplicationIcon(application.packageName)
-                            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                                Text(application.label, color = Ink, style = MaterialTheme.typography.titleSmall)
+                            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                                SourceAppText(application.packageName, application.label, color = Ink,
+                                    style = MaterialTheme.typography.titleSmall)
                                 Text(application.packageName, color = Muted, style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
-                            Checkbox(checked = checked, onCheckedChange = null)
+                            PojianCheckbox(checked = checked, onCheckedChange = null)
                         }
-                        if (records > 0) TextButton(onClick = { onDeletePackage(application) },
-                            modifier = Modifier.padding(start = 36.dp).heightIn(min = 48.dp)) {
+                        if (records > 0) PojianTextButton(onClick = { onDeletePackage(application) },
+                            modifier = Modifier.heightIn(min = 48.dp)) {
                             Text("删除此应用的 $records 条记录", color = MaterialTheme.colorScheme.error,
                                 style = MaterialTheme.typography.labelMedium)
                         }
@@ -419,29 +434,14 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth().padding(vertical = if (compactHeight) 6.dp else 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = MaterialTheme.shapes.small) {
+                PojianSecondaryButton(onClick = onDismiss, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = MaterialTheme.shapes.small) {
                     Text("取消")
                 }
-                Button(onClick = { onApply(draft.toSet()) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = MaterialTheme.shapes.small) {
+                PojianButton(onClick = { onApply(draft.toSet()) }, modifier = Modifier.weight(1f).heightIn(min = 48.dp), shape = MaterialTheme.shapes.small) {
                     Text(if (compactHeight) "保存" else "保存范围")
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun CaptureApplicationIcon(packageName: String) {
-    val context = LocalContext.current
-    val icon by produceState<ImageBitmap?>(null, packageName, context) {
-        value = withContext(Dispatchers.IO) {
-            runCatching { context.packageManager.getApplicationIcon(packageName)
-                .toBitmap(width = 96, height = 96).asImageBitmap() }.getOrNull()
-        }
-    }
-    Box(Modifier.size(36.dp).clip(MaterialTheme.shapes.small)
-        .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
-        icon?.let { Image(it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
     }
 }
 

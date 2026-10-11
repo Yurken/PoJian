@@ -1,5 +1,12 @@
 package com.emerge.app.monitoring
 
+import com.emerge.app.ui.PojianSecondaryButton
+import com.emerge.app.ui.PojianTextButton
+import com.emerge.app.ui.PojianIconButton
+import com.emerge.app.ui.PojianDialog
+import com.emerge.app.ui.PojianSegmentedTabs
+import com.emerge.app.ui.SourceAppText
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -57,7 +64,7 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
                 modifier = Modifier.weight(1f).semantics { heading() })
             HelpButton("发现", "重复观点：找出你反复接触的说法，比较依据是否变化。\n\n事实核查：对照外部资料核查具体说法。证据不足与尚未核查会单独标明。")
             Box {
-                IconButton(onClick = { menu = true }) {
+                PojianIconButton(onClick = { menu = true }) {
                     Icon(Icons.Outlined.MoreVert, contentDescription = "发现更多操作")
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
@@ -66,16 +73,9 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
                 }
             }
         }
-        TabRow(selectedTabIndex = filter, containerColor = MaterialTheme.colorScheme.background) {
-            listOf("重复观点" to repetitions.size, "事实核查" to facts.size).forEachIndexed { index, (label, count) ->
-                Tab(selected = filter == index, onClick = { filter = index }, text = {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(label)
-                        if (count > 0) Text("$count", style = MaterialTheme.typography.labelSmall)
-                    }
-                })
-            }
-        }
+        PojianSegmentedTabs(listOf("重复观点", "事实核查"), filter, onSelect = { filter = it },
+            counts = listOf(repetitions.size, facts.size),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("monitor-discovery-list"),
             contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
             if (state.pending > 0) item { MetadataText("正在处理 ${state.pending} 项") }
@@ -86,18 +86,18 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
             items(displayed.sortedByDescending { it.capturedAt }, key = { it.id }) { finding ->
                 DiscoveryCard(finding) { selectedId = finding.id }
             }
-            item { TextButton(onClick = onRecords) { Text("全部记录") } }
+            item { PojianTextButton(onClick = onRecords) { Text("全部记录") } }
         }
     }
     selected?.let { finding ->
         DiscoveryDetail(finding, events, appNames, onDismiss = { selectedId = null },
             onRecords = { selectedId = null; onRecords() })
     }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("清空全部发现？") },
+    if (confirm) PojianDialog(onDismissRequest = { confirm = false }, title = { Text("清空全部发现？") },
         text = { Text("清空重复观点、核查结果与对比材料，保留浏览记录。无法撤销。") },
-        confirmButton = { TextButton(onClick = { onClear(); confirm = false },
+        confirmButton = { PojianTextButton(onClick = { onClear(); confirm = false },
             colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("清空") } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
+        dismissButton = { PojianTextButton(onClick = { confirm = false }) { Text("取消") } })
 }
 
 @Composable
@@ -158,7 +158,7 @@ private fun FactCheckCard(finding: MonitorFinding, onOpen: () -> Unit) {
             }
             HorizontalDivider(Modifier.padding(horizontal = 18.dp),
                 color = scheme.outlineVariant.copy(alpha = 0.6f))
-            TextButton(
+            PojianTextButton(
                 onClick = onOpen,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 shape = RoundedCornerShape(0.dp),
@@ -258,7 +258,7 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(if (repetition) "观点对比" else "事实核查", style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                PojianTextButton(onClick = onDismiss) { Text("关闭") }
             }
             LazyColumn(Modifier.weight(1f).testTag("discovery-detail"),
                 contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -269,7 +269,8 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
                         Text(if (repetition) "为什么提醒你" else discoveryVerdict(finding.verdict),
                             style = MaterialTheme.typography.titleMedium)
                         Text(finding.explanation, style = MaterialTheme.typography.bodyMedium)
-                        MetadataText("${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}")
+                        SourceAppText(finding.packageName,
+                            "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}")
                     }
                 }
                 if (finding.sources.isNotEmpty()) item {
@@ -279,7 +280,7 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(source.title, style = MaterialTheme.typography.titleSmall)
                         QuoteBlock(source.quote)
-                        TextButton(enabled = source.valid(), onClick = {
+                        PojianTextButton(enabled = source.valid(), onClick = {
                             linkError = runCatching { uri.openUri(source.url) }.isFailure
                         }) { Text("打开来源") }
                     }
@@ -293,13 +294,14 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
                 items(originals, key = { it.id }) { event ->
                     var expanded by rememberSaveable(finding.id, event.id) { mutableStateOf(false) }
                     Column(Modifier.testTag("discovery-original-${event.id}"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MetadataText("${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
+                        SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
+                            "${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
                         Text(event.visibleText, style = MaterialTheme.typography.bodyMedium,
                             maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
-                        TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原文" else "展开原文") }
+                        PojianTextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原文" else "展开原文") }
                     }
                 }
-                item { TextButton(onClick = onRecords) { Text("全部记录") } }
+                item { PojianTextButton(onClick = onRecords) { Text("全部记录") } }
             }
         }
     }
@@ -315,7 +317,7 @@ private fun FactCheckDetailContent(finding: MonitorFinding, originals: List<Brow
             verticalAlignment = Alignment.CenterVertically) {
             Text("事实核查", style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f).semantics { heading() })
-            TextButton(onClick = onDismiss, shape = RoundedCornerShape(12.dp)) { Text("关闭") }
+            PojianTextButton(onClick = onDismiss, shape = RoundedCornerShape(12.dp)) { Text("关闭") }
         }
         HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.6f))
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
@@ -329,7 +331,8 @@ private fun FactCheckDetailContent(finding: MonitorFinding, originals: List<Brow
                             Text(finding.claim, style = MaterialTheme.typography.titleMedium,
                                 fontSize = 17.sp, lineHeight = 26.sp)
                         }
-                        MetadataText("${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}")
+                        SourceAppText(finding.packageName,
+                            "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}")
                         HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.6f))
                         VerdictBadge(finding.verdict)
                         if (finding.explanation.isNotBlank()) {
@@ -367,7 +370,8 @@ private fun FactCheckDetailContent(finding: MonitorFinding, originals: List<Brow
                 var expanded by rememberSaveable(finding.id, event.id) { mutableStateOf(false) }
                 FactDetailCard(Modifier.testTag("discovery-original-${event.id}")) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        MetadataText("${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
+                        SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
+                            "${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
                         Text(event.visibleText, style = MaterialTheme.typography.bodyMedium,
                             maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
                     }
@@ -376,7 +380,7 @@ private fun FactCheckDetailContent(finding: MonitorFinding, originals: List<Brow
                 }
             }
             item {
-                OutlinedButton(onClick = onRecords, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                PojianSecondaryButton(onClick = onRecords, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                     shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, scheme.outlineVariant)) {
                     Text("全部记录", modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(12.dp))
@@ -401,7 +405,7 @@ private fun FactDetailCard(modifier: Modifier = Modifier, content: @Composable C
 private fun FactDetailAction(text: String, onClick: () -> Unit, enabled: Boolean = true, expanded: Boolean? = null) {
     HorizontalDivider(Modifier.padding(horizontal = 16.dp),
         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
-    TextButton(onClick = onClick, enabled = enabled,
+    PojianTextButton(onClick = onClick, enabled = enabled,
         modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), shape = RoundedCornerShape(0.dp),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
         Text(text, modifier = Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)

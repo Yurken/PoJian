@@ -9,6 +9,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -17,8 +18,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -131,22 +132,20 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val titles = listOf("概览", "发现", "设置")
     val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
     Scaffold(containerColor = PageBackground, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-        TopAppBar(title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(color = PageBackground) {
+            Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 52.dp).padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Image(painterResource(R.mipmap.ic_launcher_artwork), contentDescription = null,
-                    modifier = Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)))
+                    modifier = Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
+                        .background(colorResource(R.color.ic_launcher_background)))
                 Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleMedium)
             }
-        }, colors = TopAppBarDefaults.topAppBarColors(containerColor = PageBackground))
+        }
     }, bottomBar = {
-        NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {
-            titles.forEachIndexed { index, title ->
-                NavigationBarItem(selected = tab == index, onClick = {
-                    tab = index; showRecords = false; showCaptureTools = false; showAudioRecords = false
-                }, icon = { Icon(painterResource(icons[index]), contentDescription = null) }, label = { Text(title) },
-                    colors = NavigationBarItemDefaults.colors(selectedIconColor = Accent,
-                        selectedTextColor = Accent, indicatorColor = Color.Transparent))
-            }
+        PojianNavigationBar(titles, selectedIndex = tab, onSelect = { index ->
+            tab = index; showRecords = false; showCaptureTools = false; showAudioRecords = false
+        }) { index ->
+            Icon(painterResource(icons[index]), contentDescription = null, modifier = Modifier.size(23.dp))
         }
     }) { padding ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -156,13 +155,13 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     onImport = audioActions.onImport, onBack = { showAudioRecords = false }, modifier = contentModifier,
                     canImport = audioState.modelState.status == AudioModelStatus.READY && audioState.task == null)
                 showCaptureTools -> Column(contentModifier) {
-                    TextButton(onClick = { showCaptureTools = false }) { Text("返回设置") }
+                    PojianTextButton(onClick = { showCaptureTools = false }) { Text("返回设置") }
                     RecordingScreen(audioState.copy(cloudLabel = if (audioConfig.enabled) "云端已启用" else "云端关闭"), audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
                         audioModel::stopTask, { showAudioRecords = true }, modifier = Modifier.weight(1f),
                         onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio, isPaused = audioRuntime.isPaused)
                 }
                 showRecords -> Column(contentModifier) {
-                    TextButton(onClick = { showRecords = false }) { Text("返回发现") }
+                    PojianTextButton(onClick = { showRecords = false }) { Text("返回发现") }
                     RecordsScreen(all, count, appNames, Modifier.weight(1f), onDelete = { deleteEvent = it },
                         onSettings = { showRecords = false; tab = 2 },
                         audioContent = { AudioRecordsEntry(audioSessions.size, { showAudioRecords = true }) })
@@ -206,16 +205,18 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     if (showApps) AppPickerDialog(availableApps, allowed, appsLoading,
         remember(all) { all.groupingBy { it.packageName }.eachCount() }, onDismiss = { showApps = false },
         onApply = { model.setAllowedPackages(it); showApps = false }, onDeletePackage = { deletePackage = it })
-    if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("清空本地记录？") },
+    if (confirmClear) PojianDialog(onDismissRequest = { confirmClear = false }, title = { Text("清空本地记录？") },
         text = { Text("暂停采集并删除全部记录与分析，无法撤销。已导出文件保留。") },
-        confirmButton = { Button(onClick = { app.monitor.invalidate(); model.clearHistory(); confirmClear = false }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("清空全部") } },
-        dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } })
-    deleteEvent?.let { event -> AlertDialog(onDismissRequest = { deleteEvent = null }, title = { Text("删除这条记录？") },
+        confirmButton = { PojianButton(onClick = { app.monitor.invalidate(); model.clearHistory(); confirmClear = false }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("清空全部") } },
+        dismissButton = { PojianTextButton(onClick = { confirmClear = false }) { Text("取消") } })
+    deleteEvent?.let { event -> PojianDialog(onDismissRequest = { deleteEvent = null }, title = { Text("删除这条记录？") },
         text = { Text("删除记录 #${event.id} 并清除旧核查结果，无法撤销。") },
-        confirmButton = { Button(onClick = { app.monitor.invalidate(); model.deleteEvent(event.id); deleteEvent = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("删除") } },
-        dismissButton = { TextButton(onClick = { deleteEvent = null }) { Text("取消") } }) }
-    deletePackage?.let { application -> AlertDialog(onDismissRequest = { deletePackage = null }, title = { Text("删除此应用的记录？") },
-        text = { Text("暂停采集，删除「${application.label}」的历史记录与旧核查结果。无法撤销。") },
-        confirmButton = { Button(onClick = { app.monitor.invalidate(); model.deletePackage(application.packageName); deletePackage = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("删除历史") } },
-        dismissButton = { TextButton(onClick = { deletePackage = null }) { Text("取消") } }) }
+        confirmButton = { PojianButton(onClick = { app.monitor.invalidate(); model.deleteEvent(event.id); deleteEvent = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("删除") } },
+        dismissButton = { PojianTextButton(onClick = { deleteEvent = null }) { Text("取消") } }) }
+    deletePackage?.let { application -> PojianDialog(onDismissRequest = { deletePackage = null }, title = { Text("删除此应用的记录？") },
+        text = { SourceAppText(application.packageName,
+            "暂停采集，删除「${application.label}」的历史记录与旧核查结果。无法撤销。", appName = application.label,
+            style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current) },
+        confirmButton = { PojianButton(onClick = { app.monitor.invalidate(); model.deletePackage(application.packageName); deletePackage = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("删除历史") } },
+        dismissButton = { PojianTextButton(onClick = { deletePackage = null }) { Text("取消") } }) }
 }

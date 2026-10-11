@@ -27,7 +27,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
     WhiteCard(Modifier.testTag("cocoon-card")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("信息茧房", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            if (share != null && motionEnabled) TextButton(onClick = { playing = !playing }, modifier = Modifier.testTag("cocoon-play")) {
+            if (share != null && motionEnabled) PojianTextButton(onClick = { playing = !playing }, modifier = Modifier.testTag("cocoon-play")) {
                 Text(if (playing) "暂停" else "播放")
             }
         }

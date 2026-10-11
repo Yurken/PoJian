@@ -145,12 +145,13 @@ private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names:
         if (expanded) share.items.forEach { item ->
             var raw by rememberSaveable(key, item.record.id) { mutableStateOf(false) }
             Column(Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                MetadataText(names[item.record.packageName] ?: item.record.packageName)
+                SourceAppText(item.record.packageName.takeUnless { item.record.sourceType == "audio_import" },
+                    names[item.record.packageName] ?: item.record.packageName)
                 MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
                 val duration = ObservationWindow(start, end, ZoneId.systemDefault()).durationMillis(item.record)
                 MetadataText(duration?.let { "本时段预计停留 ${formatDuration(it)}" } ?: "时长未统计")
                 item.quote?.takeIf { it != share.label }?.let { QuoteBlock(it) }
-                TextButton(onClick = { raw = !raw }, modifier = Modifier.align(Alignment.End)) {
+                PojianTextButton(onClick = { raw = !raw }, modifier = Modifier.align(Alignment.End)) {
                     Text(if (raw) "收起原文" else "查看原文 ›")
                 }
                 if (raw) QuoteBlock(item.record.visibleText)

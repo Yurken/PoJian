@@ -298,6 +298,12 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
 
     private fun show() {
         if (rootView != null) { layoutOverlay(); return }
+        val dark = service.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+            android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val panelColor = if (dark) Color.rgb(23, 34, 53) else Color.WHITE
+        val actionColor = if (dark) Color.rgb(147, 197, 253) else Color.rgb(37, 99, 235)
+        val secondaryColor = if (dark) Color.rgb(38, 52, 73) else Color.rgb(241, 245, 249)
+        val textColor = if (dark) Color.rgb(241, 245, 249) else Color.rgb(15, 23, 42)
         val view = LinearLayout(service).apply { orientation = LinearLayout.VERTICAL }
         val ball = TextView(service).apply {
             textSize = 17f; gravity = Gravity.CENTER; setTextColor(Color.WHITE); alpha = 0.72f
@@ -306,22 +312,36 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         }
         view.addView(ball, LinearLayout.LayoutParams(dp(44), dp(44)))
         val box = LinearLayout(service).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(dp(12), dp(8), dp(12), dp(8))
-            background = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Color.WHITE) }
+            orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12))
+            background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(panelColor) }
         }
         val scroll = ScrollView(service).apply {
             visibility = View.GONE
             isFillViewport = false
             addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
-        val label = TextView(service).apply { textSize = 14f; setTextColor(Color.DKGRAY) }
+        val label = TextView(service).apply { textSize = 14f; setTextColor(textColor) }
         box.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        fun button(title: String, action: () -> Unit) {
-            val button = Button(service).apply { text = title; minHeight = dp(48); setOnClickListener { action() } }
+        fun button(title: String, primary: Boolean = false, action: () -> Unit) {
+            val button = Button(service).apply {
+                text = title; textSize = 14f; minHeight = dp(48); isAllCaps = false
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+                setTextColor(if (primary) { if (dark) Color.rgb(23, 37, 84) else Color.WHITE } else textColor)
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+                backgroundTintList = null; stateListAnimator = null; elevation = 0f
+                val fill = GradientDrawable().apply {
+                    cornerRadius = dp(12).toFloat(); setColor(if (primary) actionColor else secondaryColor)
+                }
+                val mask = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Color.WHITE) }
+                background = android.graphics.drawable.RippleDrawable(
+                    android.content.res.ColorStateList.valueOf(if (dark) 0x22FFFFFF else 0x140F172A), fill, mask)
+                setOnClickListener { action() }
+            }
             actions += button
-            box.addView(button, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+            box.addView(button, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
-        button("核查当前内容") {
+        button("核查当前内容", primary = true) {
             monitor.checkCurrent(); label.text = "已请求核查当前内容，结果可能稍后出现在发现页。"
             layoutOverlay()
         }

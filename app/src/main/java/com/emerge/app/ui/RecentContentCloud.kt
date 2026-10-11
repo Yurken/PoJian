@@ -215,7 +215,7 @@ private fun ContentWordDetails(word: String, events: List<BrowseEvent>, period: 
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(word, style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
-                TextButton(onClick = onDismiss) { Text("关闭") }
+                PojianTextButton(onClick = onDismiss) { Text("关闭") }
             }
             LazyColumn(Modifier.weight(1f).testTag("recent-content-details"),
                 contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -231,7 +231,8 @@ private fun ContentWordDetails(word: String, events: List<BrowseEvent>, period: 
                     Column(Modifier.testTag("recent-content-original-${event.id}"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         val time = Instant.ofEpochMilli(event.timestamp).atZone(ZoneId.systemDefault())
                             .format(DateTimeFormatter.ofPattern("M/d HH:mm"))
-                        MetadataText("${appNames[event.packageName] ?: event.packageName} · $time")
+                        SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
+                            "${appNames[event.packageName] ?: event.packageName} · $time")
                         QuoteBlock(event.visibleText)
                     }
                 }

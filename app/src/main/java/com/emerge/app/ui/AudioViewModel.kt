@@ -46,7 +46,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
                             val time = previous?.offsetStartMillis?.div(1000)?.let { "%02d:%02d".format(it / 60, it % 60) }.orEmpty()
                             "${if (claim.historyQuote != null) "重复依据原文" else "对照的历史材料（并非重复匹配）"} · ${previousSession?.title ?: "先前片段"} $time\n$quote"
                         }, source?.offsetStartMillis, source?.offsetEndMillis)
-                }, session.id in analyzing)
+                }, session.id in analyzing,
+                sourcePackage = session.packageName.takeIf { session.source == AudioSource.PLAYBACK })
         }
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     private val runtimeUi = combine(runtime.state, coordinator.preparing, coordinator.lastText) { state, preparing, text ->

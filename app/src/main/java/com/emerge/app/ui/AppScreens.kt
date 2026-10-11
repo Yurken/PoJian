@@ -5,21 +5,14 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
@@ -100,7 +93,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         if (rawEvents.isEmpty()) item(key = "start-guide") {
             WhiteCard {
                 SectionTitle("暂无记录", help = "选择应用，在系统辅助功能中启用「破茧浏览采集」，再打开采集开关。也可从采集工具导入音频。")
-                Button(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("设置采集范围") }
+                PojianButton(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("设置采集范围") }
             }
         } else item(key = "analysis") {
             AnalysisCards(analysis, period, rawEvents, onAnalyze, onExport, onPurposeChange, appNames)
@@ -109,14 +102,15 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             WhiteCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("平台分布", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { showSources = !showSources }) { Text(if (showSources) "收起" else "${stats.appCount} 个平台") }
+                    PojianTextButton(onClick = { showSources = !showSources }) { Text(if (showSources) "收起" else "${stats.appCount} 个平台") }
                 }
                 run {
                     val shares = if (showSources) stats.apps else stats.apps.take(3)
                     shares.forEach { share ->
                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (share.packageName == "__other__") "其他应用" else appNames[share.packageName] ?: share.packageName,
+                                SourceAppText(share.packageName,
+                                    if (share.packageName == "__other__") "其他应用" else appNames[share.packageName] ?: share.packageName, color = Ink,
                                     modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium,
                                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 MetadataText("${share.count} 个作品")
@@ -127,53 +121,22 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                         }
                     }
                 }
-                TextButton(onClick = onRecords, modifier = Modifier.align(Alignment.End)) { Text("全部记录 ›") }
+                PojianTextButton(onClick = onRecords, modifier = Modifier.align(Alignment.End)) { Text("全部记录 ›") }
             }
         }
     }
 }
 
-/**
- * 现代分段控制器（Segmented Control）
- */
 @Composable
 private fun PeriodSelector(period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(Modifier.padding(3.dp).selectableGroup()) {
-            StatisticsPeriod.entries.forEach { option ->
-                val selected = period == option
-                Surface(
-                    shape = RoundedCornerShape(9.dp),
-                    color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
-                    shadowElevation = if (selected) 2.dp else 0.dp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .semantics { role = Role.Tab }
-                        .heightIn(min = 48.dp),
-                    selected = selected,
-                    onClick = { onPeriod(option) }
-                ) {
-                    Box(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                        val label = when (option) {
-                            StatisticsPeriod.DAY -> "今天"
-                            StatisticsPeriod.HOURS24 -> "24 小时"
-                            StatisticsPeriod.WEEK -> "7 天"
-                        }
-                        Text(
-                            text = label,
-                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                        )
-                    }
-                }
-            }
+    PojianSegmentedTabs(StatisticsPeriod.entries.map { option ->
+        when (option) {
+            StatisticsPeriod.DAY -> "今天"
+            StatisticsPeriod.HOURS24 -> "24 小时"
+            StatisticsPeriod.WEEK -> "7 天"
         }
-    }
+    }, selectedIndex = StatisticsPeriod.entries.indexOf(period),
+        onSelect = { onPeriod(StatisticsPeriod.entries[it]) })
 }
 
 @Composable

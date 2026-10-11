@@ -53,18 +53,21 @@ fun rememberAudioActions(model: AudioViewModel, apps: List<CaptureApp>, onChoose
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) requestProjection()
         else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
-    if (chooseApp) AlertDialog(onDismissRequest = { chooseApp = false }, title = { Text("选择要录制的应用") },
+    if (chooseApp) PojianDialog(onDismissRequest = { chooseApp = false }, title = { Text("选择要录制的应用") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("录制应用声音，最长 5 分钟。")
-            apps.forEach { app -> OutlinedButton(onClick = {
+            apps.forEach { app -> PojianSecondaryButton(onClick = {
                 chooseApp = false; pendingPackage = app.packageName
                 if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
                     notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                 else if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED)
                     audioPermission.launch(Manifest.permission.RECORD_AUDIO)
                 else requestProjection()
-            }, modifier = Modifier.fillMaxWidth()) { Text(app.label) } }
-        } }, confirmButton = {}, dismissButton = { TextButton(onClick = { chooseApp = false }) { Text("取消") } })
+            }, modifier = Modifier.fillMaxWidth()) {
+                SourceAppText(app.packageName, app.label, style = MaterialTheme.typography.labelLarge,
+                    color = LocalContentColor.current)
+            } }
+        } }, confirmButton = {}, dismissButton = { PojianTextButton(onClick = { chooseApp = false }) { Text("取消") } })
     return AudioActions(onImport = { importer.launch(arrayOf("audio/*", "video/*")) }, onCapture = {
         if (apps.isEmpty()) { model.notify("请先在设置中选择要记录的应用"); onChooseScope() }
         else chooseApp = true
@@ -79,19 +82,19 @@ fun AudioCloudDialog(config: TextServiceConfig, onDismiss: () -> Unit,
     var token by remember { mutableStateOf(config.token) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("云端文字分析") },
+    PojianDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("云端文字分析") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("开启后发送转写与相关历史文字，不上传原声。")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("启用文字服务", modifier = Modifier.weight(1f)); Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !saving)
+                Text("启用文字服务", modifier = Modifier.weight(1f)); PojianSwitch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !saving)
             }
-            OutlinedTextField(endpoint, { endpoint = it }, label = { Text("服务地址") }, placeholder = { Text("https://your-service.example") },
+            PojianTextField(endpoint, { endpoint = it }, label = { Text("服务地址") }, placeholder = { Text("https://your-service.example") },
                 singleLine = true, enabled = !saving, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
-            OutlinedTextField(token, { token = it }, label = { Text("访问令牌") },
+            PojianTextField(token, { token = it }, label = { Text("访问令牌") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !saving)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        } }, confirmButton = { TextButton(enabled = !saving, onClick = {
+        } }, confirmButton = { PojianTextButton(enabled = !saving, onClick = {
             saving = true; error = null; onSave(TextServiceConfig(enabled, endpoint, token), onDismiss) { error = it; saving = false }
         }) { Text(if (saving) "保存中" else "保存") } },
-        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("取消") } })
+        dismissButton = { PojianTextButton(enabled = !saving, onClick = onDismiss) { Text("取消") } })
 }

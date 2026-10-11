@@ -1,13 +1,20 @@
 package com.emerge.app.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
+import androidx.compose.material3.RippleConfiguration
+import androidx.compose.material3.ripple
+import androidx.compose.material.ripple.RippleAlpha
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -129,6 +136,7 @@ private val EmergeShapes = Shapes(
 
 /** Uses fixed brand colors while following the phone's light or dark appearance. */
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun EmergeTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
@@ -136,7 +144,12 @@ fun EmergeTheme(
     MaterialTheme(
         colorScheme = if (darkTheme) FunctionalDarkColors else FunctionalLightColors,
         typography = EmergeTypography,
-        shapes = EmergeShapes,
-        content = content
-    )
+        shapes = EmergeShapes
+    ) {
+        CompositionLocalProvider(LocalIndication provides ripple(), LocalRippleConfiguration provides RippleConfiguration(
+            rippleAlpha = RippleAlpha(draggedAlpha = 0.08f, focusedAlpha = 0.08f,
+                hoveredAlpha = 0.04f, pressedAlpha = 0.06f))) {
+            content()
+        }
+    }
 }

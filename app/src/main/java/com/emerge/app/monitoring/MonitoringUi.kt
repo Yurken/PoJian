@@ -2,6 +2,12 @@
 
 package com.emerge.app.monitoring
 
+import com.emerge.app.ui.PojianTextButton
+import com.emerge.app.ui.PojianSwitch
+import com.emerge.app.ui.PojianTextField
+import com.emerge.app.ui.PojianSlider
+import com.emerge.app.ui.PojianDialog
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,7 +41,7 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         MonitorSlider("自动提示停留", config.displaySeconds, 2..8, "秒") { onChange(config.copy(displaySeconds = it)) }
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Text("今日云端请求 $requestCount 次（含画面 $frameCount 次）", style = MaterialTheme.typography.bodySmall)
-        TextButton(onClick = onCaptureTools) { Text("采集工具") }
+        PojianTextButton(onClick = onCaptureTools) { Text("采集工具") }
     }
 }
 
@@ -47,7 +53,7 @@ private fun MonitorSwitch(title: String, detail: String, checked: Boolean, onCha
             if (title == "云端分析" || title == "允许云端分析" || title == "夜间免打扰")
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag("monitor-switch-$title"))
+        PojianSwitch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag("monitor-switch-$title"))
     }
 }
 
@@ -58,7 +64,7 @@ private fun MonitorSlider(title: String, value: Int, range: IntRange, unit: Stri
         Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
         Text("${draft.toInt()} $unit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    Slider(value = draft, onValueChange = { draft = it }, onValueChangeFinished = { onChange(draft.toInt()) },
+    PojianSlider(value = draft, onValueChange = { draft = it }, onValueChangeFinished = { onChange(draft.toInt()) },
         valueRange = range.first.toFloat()..range.last.toFloat())
 }
 
@@ -70,16 +76,16 @@ fun MonitorGatewayDialog(config: TextServiceConfig, onDismiss: () -> Unit,
     var token by remember { mutableStateOf(config.token) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("分析与取证网关") },
+    PojianDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("分析与取证网关") },
         text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("填写已部署服务的地址与访问令牌。")
             MonitorSwitch("允许云端分析", "决定自动发送范围；关闭后只保留本地观察", enabled) { enabled = it }
-            OutlinedTextField(endpoint, { endpoint = it }, label = { Text("HTTPS 网关地址（不含 /monitor）") }, singleLine = true)
-            OutlinedTextField(token, { token = it }, label = { Text("访问令牌（非模型密钥）") },
+            PojianTextField(endpoint, { endpoint = it }, label = { Text("HTTPS 网关地址（不含 /monitor）") }, singleLine = true)
+            PojianTextField(token, { token = it }, label = { Text("访问令牌（非模型密钥）") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        } }, confirmButton = { TextButton(enabled = !saving, onClick = {
+        } }, confirmButton = { PojianTextButton(enabled = !saving, onClick = {
             saving = true; onSave(TextServiceConfig(enabled, endpoint, token), onDismiss) { error = it; saving = false }
         }) { Text(if (saving) "保存中" else "保存") } },
-        dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("取消") } })
+        dismissButton = { PojianTextButton(enabled = !saving, onClick = onDismiss) { Text("取消") } })
 }

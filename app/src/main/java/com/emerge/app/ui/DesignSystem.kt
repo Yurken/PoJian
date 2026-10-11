@@ -22,15 +22,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,11 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.heading
@@ -87,7 +78,7 @@ internal val ChartColors: List<Color>
 internal fun WhiteCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    elevation: Dp = 1.5.dp,
+    elevation: Dp = 0.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = RoundedCornerShape(16.dp)
@@ -117,7 +108,7 @@ internal fun WhiteCard(
     }
 }
 
-/** Keeps Material button semantics, disabled state and ripple with a subtle brand gradient. */
+/** Primary actions use the same solid fill and corner radius throughout the app. */
 @Composable
 internal fun PojianPrimaryButton(
     text: String,
@@ -126,25 +117,10 @@ internal fun PojianPrimaryButton(
     enabled: Boolean = true,
     icon: ImageVector? = null
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(12.dp)
-    val disabled = scheme.onSurface.copy(alpha = 0.12f).compositeOver(scheme.surface)
-    val gradient = Brush.horizontalGradient(
-        if (enabled) listOf(scheme.primary, lerp(scheme.primary, scheme.onBackground, 0.08f))
-        else listOf(disabled, disabled)
-    )
-    Button(
+    PojianButton(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.fillMaxWidth().heightIn(min = 48.dp)
-            .shadow(if (enabled) 2.dp else 0.dp, shape).background(gradient, shape),
-        shape = shape,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = Color.Transparent,
-            contentColor = scheme.onPrimary,
-            disabledContainerColor = Color.Transparent,
-            disabledContentColor = scheme.onSurface.copy(alpha = 0.38f)
-        )
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -155,14 +131,11 @@ internal fun PojianPrimaryButton(
 
 @Composable
 internal fun PojianActionChip(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    TextButton(
+    PojianSecondaryButton(
         onClick = onClick,
         modifier = modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(50),
-        colors = ButtonDefaults.textButtonColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f),
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-        )
+        shape = RoundedCornerShape(10.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(text, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
@@ -189,7 +162,7 @@ internal fun SectionTitle(title: String, subtitle: String? = null, help: String?
 internal fun HelpButton(title: String, body: String, modifier: Modifier = Modifier) {
     /*
     var open by rememberSaveable(title) { mutableStateOf(false) }
-    IconButton(onClick = { open = true }, modifier = modifier) {
+    PojianIconButton(onClick = { open = true }, modifier = modifier) {
         Icon(Icons.Outlined.Info, contentDescription = "${title}说明", tint = Muted)
     }
     if (open) HelpDialog(title, body) { open = false }
@@ -198,11 +171,11 @@ internal fun HelpButton(title: String, body: String, modifier: Modifier = Modifi
 
 @Composable
 private fun HelpDialog(title: String, body: String, onDismiss: () -> Unit) {
-    AlertDialog(onDismissRequest = onDismiss,
+    PojianDialog(onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(body, modifier = Modifier.heightIn(max = 420.dp)
             .verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyMedium) },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } })
+        confirmButton = { PojianTextButton(onClick = onDismiss) { Text("关闭") } })
 }
 
 /** Selectable source excerpt with a leading brand accent that grows with the text. */
@@ -232,7 +205,7 @@ internal fun QuoteBlock(text: String, modifier: Modifier = Modifier) {
 @Composable
 internal fun HelpLink(title: String, body: String, modifier: Modifier = Modifier) {
     var open by rememberSaveable(title) { mutableStateOf(false) }
-    TextButton(onClick = { open = true }, modifier = modifier) {
+    PojianTextButton(onClick = { open = true }, modifier = modifier) {
         Text(title, style = MaterialTheme.typography.labelMedium, color = Muted)
     }
     if (open) HelpDialog(title, body) { open = false }

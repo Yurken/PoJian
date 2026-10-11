@@ -77,7 +77,7 @@ internal fun AnalysisCards(
                 Text(state.purpose.ifBlank { "未填写" }, color = Ink, fontSize = 13.sp,
                     maxLines = 2, lineHeight = 20.sp)
             }
-            IconButton(onClick = { purposeDraft = state.purpose; editingPurpose = true },
+            PojianIconButton(onClick = { purposeDraft = state.purpose; editingPurpose = true },
                 modifier = Modifier.testTag("purpose-edit")) {
                 Icon(Icons.Outlined.Edit, contentDescription = "编辑浏览目的")
             }
@@ -90,7 +90,7 @@ internal fun AnalysisCards(
                 enabled = !state.running && !state.exporting && events.isNotEmpty(),
                 modifier = Modifier.weight(1f)
             )
-            if (report != null) TextButton(onClick = { showReport = true },
+            if (report != null) PojianTextButton(onClick = { showReport = true },
                 modifier = Modifier.testTag("report-open")) { Text("查看回顾") }
         }
         state.status?.let { MetadataText(it) }
@@ -102,11 +102,11 @@ internal fun AnalysisCards(
                 MetadataText("待分析 ${report.pendingAnalysisRecords} 条 · 未完成 ${report.failedAnalysisRecords} 条")
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { onExport(report, true) },
+                PojianSecondaryButton(onClick = { onExport(report, true) },
                     enabled = !state.exporting && !state.running && !state.stale,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.small) { Text("导出 PDF") }
-                OutlinedButton(onClick = { onExport(report, false) },
+                PojianSecondaryButton(onClick = { onExport(report, false) },
                     enabled = !state.exporting && !state.running && !state.stale,
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                     shape = MaterialTheme.shapes.small) { Text("导出文本") }
@@ -173,7 +173,7 @@ internal fun AnalysisCards(
                                 GroupRow(index + 1, group) { selectedClaims = group.observations }
                             }
                             if (report.groups.size > 3) {
-                                TextButton(onClick = {
+                                PojianTextButton(onClick = {
                                     groupLimit = if (groupLimit < report.groups.size) groupLimit + 3 else 3
                                 }) {
                                     Text(if (groupLimit < report.groups.size)
@@ -253,7 +253,7 @@ internal fun AnalysisCards(
                 .padding(horizontal = 24.dp).padding(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 SectionTitle("浏览目的")
-                OutlinedTextField(value = purposeDraft, onValueChange = { purposeDraft = it.take(120) },
+                PojianTextField(value = purposeDraft, onValueChange = { purposeDraft = it.take(120) },
                     label = { Text("浏览目的（选填）") },
                     placeholder = { Text("例如：比较求职资料、专题学习、休闲") },
                     supportingText = { Text("${purposeDraft.length}/120") },
@@ -261,7 +261,7 @@ internal fun AnalysisCards(
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf("专题学习", "核查资料", "比较选择", "休闲浏览").forEach { preset ->
-                        SuggestionChip(onClick = {
+                        PojianSuggestionChip(onClick = {
                             if (!purposeDraft.contains(preset)) {
                                 purposeDraft = if (purposeDraft.isBlank()) preset else
                                     "$purposeDraft；$preset".take(120)
@@ -270,9 +270,9 @@ internal fun AnalysisCards(
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { editingPurpose = false }, modifier = Modifier.weight(1f),
+                    PojianSecondaryButton(onClick = { editingPurpose = false }, modifier = Modifier.weight(1f),
                         shape = MaterialTheme.shapes.small) { Text("取消") }
-                    Button(onClick = { onPurposeChange(purposeDraft); editingPurpose = false },
+                    PojianButton(onClick = { onPurposeChange(purposeDraft); editingPurpose = false },
                         modifier = Modifier.weight(1f), shape = MaterialTheme.shapes.small) { Text("保存目的") }
                 }
             }
@@ -436,7 +436,9 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
     val current = events.firstOrNull { it.id == item.eventId }
     val fromAudio = current?.sourceType?.startsWith("audio_") == true
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        MetadataText("记录 #${item.eventId} · ${reportTime(item.timestamp, zone)} · ${appNames[item.packageName] ?: item.packageName}")
+        SourceAppText(item.packageName.takeUnless { current?.sourceType == "audio_import" },
+            "记录 #${item.eventId} · ${reportTime(item.timestamp, zone)} · ${appNames[item.packageName] ?: item.packageName}",
+            appName = appNames[item.packageName] ?: item.packageName)
         QuoteBlock(item.quote)
         Text(item.increment.label, color = incrementColor(item.increment), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -490,14 +492,16 @@ private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<Strin
     var expanded by remember(event.id, event.visibleText) { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-        MetadataText("事件 #${event.id} · ${reportTime(event.timestamp, zone)} · ${appNames[event.packageName] ?: event.packageName}")
+        SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
+            "事件 #${event.id} · ${reportTime(event.timestamp, zone)} · ${appNames[event.packageName] ?: event.packageName}",
+            appName = appNames[event.packageName] ?: event.packageName)
         event.visualSourceLabel?.let { MetadataText(it) }
         if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
         SelectionContainer {
             Text(event.visibleText, color = Ink, fontSize = 14.sp, lineHeight = 24.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 3)
         }
-        TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp)) {
+        PojianTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp)) {
             Text(if (expanded) "收起原文" else "展开完整原文")
         }
     }
@@ -510,7 +514,7 @@ private fun SheetHeading(title: String, subtitle: String, onClose: () -> Unit) {
             Text(title, color = Ink, fontSize = 23.sp, fontWeight = FontWeight.SemiBold, lineHeight = 31.sp)
             if (subtitle.isNotBlank()) MetadataText(subtitle)
         }
-        TextButton(onClick = onClose) { Text("关闭") }
+        PojianTextButton(onClick = onClose) { Text("关闭") }
     }
 }
 
