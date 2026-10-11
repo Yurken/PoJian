@@ -7,6 +7,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -113,6 +114,14 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
         compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("就业焦虑，2个作品，50.0%；女性独立，1个作品，25.0%；未识别，1个作品，25.0%")
         saveScreenshot("emerge-daily-viewpoint-pie.png")
+        saveScreenshot("pojian-distribution-card.png", "daily-viewpoint-card")
+        val distribution = hasAnyAncestor(hasTestTag("daily-viewpoint-pie"))
+        compose.onNode(hasText("女性独立") and distribution).performScrollTo().performClick()
+        compose.onNode(hasText("查看原文 ›") and distribution).performScrollTo().performClick()
+        compose.onNode(hasText("收起原文") and distribution).assertIsDisplayed()
+        compose.onAllNodes(hasText(records[2].visibleText) and distribution).assertCountEquals(2)
+        compose.onNode(hasText("女性独立") and distribution).performScrollTo().performClick()
+        compose.onNode(hasText("收起原文") and distribution).assertDoesNotExist()
     }
 
     @Test fun recordingStartsRemainGatedUntilTheUserDownloadsAModel() {
@@ -146,6 +155,7 @@ class FunctionalMinimalUiTest {
                 description.contains("未来 · 回升，1个作品，50.0%") && description.contains("未识别，1个作品，50.0%")
         })
         saveScreenshot("pojian-model-viewpoint-shares.png")
+        saveScreenshot("pojian-overlapping-distribution-card.png", "daily-viewpoint-card")
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details")))
         compose.onNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
@@ -162,11 +172,12 @@ class FunctionalMinimalUiTest {
         compose.runOnIdle { assertEquals(1, cloudCalls); assertEquals(0, monitorCalls) }
     }
 
-    private fun saveScreenshot(name: String) {
+    private fun saveScreenshot(name: String, tag: String? = null) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync(); android.os.SystemClock.sleep(350)
-        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        val bitmap = tag?.let { compose.onNodeWithTag(it).captureToImage().asAndroidBitmap() }
+            ?: instrumentation.uiAutomation.takeScreenshot()
         File(instrumentation.targetContext.cacheDir, name).outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }
