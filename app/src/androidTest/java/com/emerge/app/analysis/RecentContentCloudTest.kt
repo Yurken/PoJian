@@ -79,6 +79,7 @@ class RecentContentCloudTest {
         }
         render(events, mutableStateOf(StatisticsPeriod.DAY), semantics = semantics)
         awaitWord("求职竞争，12 条记录")
+        compose.onNodeWithTag("recent-content-cloud").performScrollTo()
         val bounds = counts.map { (word, count) ->
             compose.onNodeWithContentDescription("$word，$count 条记录")
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))

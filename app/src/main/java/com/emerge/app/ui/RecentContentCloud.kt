@@ -57,8 +57,8 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
         }
         val current = words
         when {
-            current == null -> Text("正在整理近期内容…", color = Muted, modifier = Modifier.padding(vertical = 32.dp))
-            current.isEmpty() -> Column(Modifier.fillMaxWidth().padding(vertical = 28.dp),
+            current == null -> Text("正在整理近期内容…", color = Muted, modifier = Modifier.padding(vertical = 12.dp))
+            current.isEmpty() -> Column(Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("暂无关键词", style = MaterialTheme.typography.bodyMedium, color = Ink)
             }
@@ -125,7 +125,7 @@ private fun ContentWordCloud(words: List<ContentWord>, onWord: (ContentWord) -> 
         val width = constraints.maxWidth
         val inset = 8.dp.roundToPx().coerceAtMost(width / 4)
         val placeables = measurables.map { it.measure(Constraints(maxWidth = (width - 2 * inset).coerceAtLeast(0))) }
-        val baseHeight = (if (words.size <= 3) 200.dp else 260.dp).roundToPx()
+        val baseHeight = (if (words.size <= 3) 120.dp else 180.dp).roundToPx()
         val contentArea = placeables.sumOf { it.width.toDouble() * it.height }
         var cloudHeight = maxOf(baseHeight, (contentArea / (width.coerceAtLeast(1) * .65)).toInt(),
             (placeables.maxOfOrNull { it.height } ?: 0) + 2 * inset)

@@ -58,9 +58,9 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     LazyColumn(modifier.fillMaxSize().testTag("overview-list"),
         state = listState,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item(key = "overview-header") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(when(period) { StatisticsPeriod.DAY -> "今日观察"; StatisticsPeriod.HOURS24 -> "24 小时观察"; StatisticsPeriod.WEEK -> "七日观察" },
                         style = MaterialTheme.typography.titleLarge, color = Ink, modifier = Modifier.weight(1f))
@@ -70,9 +70,10 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                 PeriodSelector(period, onPeriod)
             }
         }
+        item(key = "cocoon") { CocoonCard(analysis, period, visible = cocoonVisible) }
         item(key = "recent-content") { RecentContentCloud(rawEvents, period, now, semantics, appNames) }
         item(key = "overview-statistics") {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onSettings),
                     verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(6.dp).clip(CircleShape).background(if (active) Accent else Muted))
@@ -93,7 +94,6 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
         }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
-        item(key = "cocoon") { CocoonCard(analysis, period, visible = cocoonVisible) }
         if (rawEvents.isNotEmpty()) item(key = "viewpoint-timeline") {
             ViewpointTimelineCard(rawEvents, period, now, analysis.report?.takeUnless { analysis.stale }, appNames, semantics)
         }
@@ -145,7 +145,7 @@ private fun PeriodSelector(period: StatisticsPeriod, onPeriod: (StatisticsPeriod
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(Modifier.padding(3.dp).selectableGroup()) {
             StatisticsPeriod.entries.forEach { option ->

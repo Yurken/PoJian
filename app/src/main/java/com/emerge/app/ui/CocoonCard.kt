@@ -7,6 +7,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
@@ -30,17 +31,42 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                 Text(if (playing) "暂停" else "播放")
             }
         }
-        CocoonVisual(share?.fraction, MaterialTheme.colorScheme.background.luminance() < .5f,
-            playing && visible && share != null, Modifier.fillMaxWidth().height(240.dp))
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) {
+        val evidence: @Composable () -> Unit = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("重复依据", style = MaterialTheme.typography.bodyMedium)
                 Text(share?.let { "${it.repeated}/${it.total} 个观点" } ?: unavailable,
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+        val percentage: @Composable () -> Unit = {
             Text(share?.let { String.format(Locale.CHINA, "%.1f%%", it.fraction * 100) } ?: "—",
                 style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("cocoon-share"))
+        }
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val sideBySide = maxWidth / LocalDensity.current.fontScale >= 240.dp
+            val visual: @Composable (Modifier) -> Unit = { modifier ->
+                CocoonVisual(share?.fraction, MaterialTheme.colorScheme.background.luminance() < .5f,
+                    playing && visible && share != null, modifier.height(144.dp))
+            }
+            if (sideBySide) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    visual(Modifier.weight(1f))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        percentage()
+                        evidence()
+                    }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    visual(Modifier.fillMaxWidth())
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.weight(1f)) { evidence() }
+                        percentage()
+                    }
+                }
+            }
         }
     }
 }
