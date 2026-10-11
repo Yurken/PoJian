@@ -18,6 +18,21 @@ import java.nio.ByteOrder
 class AudioPipelineInstrumentedTest {
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
 
+    /** Explicit network smoke test; run only on a disposable QA device. */
+    @Test fun hostedModelDownloadsAndVerifies() = runBlocking {
+        assumeTrue(InstrumentationRegistry.getArguments().getString("downloadSpeechModel") == "true")
+        val models = SpeechModelStore(context)
+        var lastProgress = 0f
+        models.download { progress ->
+            assertTrue(progress in lastProgress..1f)
+            lastProgress = progress
+        }
+        assertEquals(1f, lastProgress, 0f)
+        assertTrue(models.isInstalled)
+        models.verifyInstalled()
+        assertFalse(File(context.filesDir, "speech-models/${SpeechModelStore.MODEL_ID}.part").exists())
+    }
+
     @Test fun wavTrackDecodesInBoundedBuffersWithSourceOffsets() = runBlocking {
         val rate = 16000
         val samples = 8000

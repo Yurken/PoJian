@@ -126,7 +126,7 @@ internal class SpeechModelStore(context: Context) {
     companion object {
         const val MODEL_ID = "zipformer-zh-14m-int8-v1"
         private const val MODEL_REVISION = "204ad334e2e683fd295359930cc16fc0432a23ac"
-        private const val MODEL_BASE = "https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23/resolve/$MODEL_REVISION"
+        private const val MODEL_BASE = "https://xiaoyan.net.cn/pojian/models/$MODEL_ID/$MODEL_REVISION"
         private val FILES = listOf(
             ModelFile("encoder-epoch-99-avg-1.int8.onnx", 21_621_684, "1c556ea57cec304e55ec4b72e52c1cc098bb01476ed7d90f3de939fe126487b1"),
             ModelFile("decoder-epoch-99-avg-1.onnx", 7_509_745, "5ee0f03a2768ff1d5c83ef3a493243c7935d316cd41280037b14783a3467cc78"),

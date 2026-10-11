@@ -48,3 +48,15 @@ bash scripts/configure-backend-nginx.sh YOUR_SSH_HOST YOUR_DOMAIN /etc/nginx/sit
 工具使用 [Nginx 路由模板](../deploy/linux/nginx-location.conf)，只更新本项目 snippet 与选定 HTTPS server 块的 include；先备份，再配置检查、重载与验证，失败恢复。域名解析和 TLS 证书须事先可用，保留其他站点路由。必要时可从本项目旧 `/zhiheng/` include 迁移。
 
 手机网关地址填写 `https://YOUR_DOMAIN/pojian`，不追加 `/monitor`，访问令牌填写服务器的 `EMERGE_SERVICE_TOKEN`。上线后验证 `/pojian/health`、`/pojian/capabilities`、未授权 `401`；未配置模式还应验证认证后 `503`，有真实 API 后再进行模型联调。
+
+## 语音模型静态文件
+
+Nginx 将 `/pojian/models/` 映射到 `/var/www/pojian-models/`，仅允许 GET/HEAD，不经过后端 API 或访问令牌认证。文件目录独立于后端发行版，更新后端不会删除模型。目录索引关闭，固定版本文件使用一年 immutable 缓存。
+
+发布时从 [上游模型仓库](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23) 的固定 revision 下载 `SpeechModelStore.kt` 所列四个文件，先在本地核对每个文件的大小与 SHA-256，再通过显式指定的 SSH 主机上传。远端再次校验后，原子移动到以下目录，目录权限 755、文件权限 644：
+
+```text
+/var/www/pojian-models/zipformer-zh-14m-int8-v1/204ad334e2e683fd295359930cc16fc0432a23ac/
+```
+
+同时保留上游 README、许可证、来源链接及 `SHA256SUMS`。同版本目录不可覆盖成不同内容；更换模型应使用新 revision 路径并同步客户端校验值。使用上面的 Nginx 配置脚本发布路由，然后通过公网 HTTPS 下载四个文件再次校验，并检查不存在的文件返回 404、API 健康和认证行为不变。APK 的固定下载域名在 `SpeechModelStore.kt` 中，变更托管域名需要重新构建 APK。设备下载验证见 [ASR 验证文档](ASR-VALIDATION.md)。
