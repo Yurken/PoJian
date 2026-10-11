@@ -151,7 +151,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     updated == null || (updated.visibleText != old.visibleText && !MonitorInputs.isAppend(old, updated))
                 }) invalidate(clearSemantics = false)
                 val added = rows.filter { row -> previous != null && row.visibleText != previous[row.id]?.visibleText &&
-                    MonitorInputs.observationTime(row) >= startedAt - 120_000 && row.sourceType != "visual_model" }
+                    MonitorInputs.observationTime(row) >= startedAt - 120_000 && row.sourceType !in setOf("visual_model", ScreenTextMaterial.SOURCE) }
                     .sortedBy { it.timestamp }
                 if (config.value.realtime && app.captureSettings.enabled.value) {
                     // A transcript batch is submitted with nearby stable context, not once per tiny segment.
@@ -216,7 +216,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         (manual || state.value.pending < MonitorTaskStore.CAPACITY)
 
     internal fun submitFrame(packageName: String, text: String, image: String, token: String, at: Long,
-        manual: Boolean = false, completed: (Boolean) -> Unit = {}): Boolean {
+        manual: Boolean = false, material: BrowseEvent? = null, completed: (Boolean) -> Unit = {}): Boolean {
         val permission = app.captureSettings.permissionToken(packageName) ?: return false
         if (!frameOutstanding.compareAndSet(false, true)) return false
         val inputEpoch = epoch.get()
@@ -226,8 +226,10 @@ class MonitorRuntime(private val app: EmergeApplication) {
         scope.launch {
             var enqueued = false
             try {
-                val targets = listOfNotNull(MonitorInputs.screenSnapshot(app.repository.allEvents.first(), packageName, text, at))
-                val input = MonitorInput(if (manual) "manual-frame:$at" else "frame:$at", packageName, text.take(6000), at,
+                if (material != null && (material.sourceType != ScreenTextMaterial.SOURCE || material.packageName != packageName ||
+                    app.repository.findEvent(material.id) != material)) return@launch
+                val targets = listOfNotNull(MonitorInputs.screenSnapshot(app.repository.allEvents.first(), packageName, text, at), material)
+                val input = MonitorInput(if (manual) "manual-frame:$at" else "frame:$at", packageName, ScreenTextMaterial.inputText(text, material), at,
                     "frame", token, inputEpoch, permission, generation, screen.encounter.ifBlank { "screen:$at" },
                     image, targets, checkFacts)
                 if (current(input)) enqueued = frames.trySend(MonitorFrameWork(input, completed)).isSuccess
@@ -240,8 +242,27 @@ class MonitorRuntime(private val app: EmergeApplication) {
 
     private suspend fun processFrame(work: MonitorFrameWork) {
         var success = false
-        try { success = process(work.input) == ProcessResult.DONE }
+        try {
+            val result = process(work.input)
+            success = result == ProcessResult.DONE
+            if (result is ProcessResult.FAILED && result.reason !in setOf("frame_budget", "request_budget")) {
+                enqueueScreenTextFallback(work.input)
+            }
+        }
         finally { frameOutstanding.set(false); work.completed(success) }
+    }
+
+    private suspend fun enqueueScreenTextFallback(input: MonitorInput) {
+        val material = input.snapshots.firstOrNull { it.sourceType == ScreenTextMaterial.SOURCE } ?: return
+        if (!current(input)) return
+        val request = MonitorTaskRequest("ocr:${material.id}:${input.checkFacts}", input.packageName, "text",
+            material.visibleText, material.timestamp, input.token, input.encounter, listOf(material),
+            serviceFingerprint(), authorizationKey(), input.checkFacts)
+        when (tasks.enqueue(request, System.currentTimeMillis()) { current(input) && authorized(request) }) {
+            EnqueueResult.ENQUEUED -> { wake.trySend(Unit); notice("网络或服务暂不可用，材料已保存，等待重试") }
+            EnqueueResult.FULL -> notice("待处理内容已满，本次未核查")
+            else -> Unit
+        }
     }
     fun submitCurrentText() {
         val current = state.value
@@ -376,7 +397,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
             }
             if (!current(input)) return ProcessResult.CANCELLED
             val targets = input.snapshots.toMutableList()
-            if (input.kind == "frame" && observed.isNotBlank()) {
+            if (input.kind == "frame" && observed.isNotBlank() && targets.none { observed in it.visibleText }) {
                 // A visual-model transcription is explicitly marked; it adds no measured viewing duration.
                 val visual = BrowseEvent(packageName = input.packageName, timestamp = input.at,
                     eventType = 0, visibleText = observed, sourceType = "visual_model")

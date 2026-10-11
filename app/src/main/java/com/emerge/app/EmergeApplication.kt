@@ -10,7 +10,7 @@ import com.emerge.app.data.AudioRepository
 
 class EmergeApplication : Application() {
     // Keep the existing database filename so a rebrand never strands local history.
-    val database by lazy { Room.databaseBuilder(this, BrowseDatabase::class.java, "zhiheng.db").addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6).build() }
+    val database by lazy { Room.databaseBuilder(this, BrowseDatabase::class.java, "zhiheng.db").addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7).build() }
     val repository by lazy { BrowseRepository(database) }
     val audioRepository by lazy { AudioRepository(database) }
     val audioCoordinator by lazy { com.emerge.app.audioanalysis.AudioCoordinator(this) }

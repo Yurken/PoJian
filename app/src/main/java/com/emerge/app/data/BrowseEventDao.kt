@@ -37,6 +37,8 @@ interface BrowseEventDao {
     suspend fun chronologicalEvents(): List<BrowseEvent>
     @Query("UPDATE browse_samples SET visitId = :target WHERE visitId = :source")
     suspend fun moveSamples(source: Long, target: Long)
+    @Query("UPDATE browse_events SET parentEventId = :target WHERE parentEventId = :source")
+    suspend fun moveMaterials(source: Long, target: Long)
     @Insert suspend fun insert(event: BrowseEvent): Long
     @Update suspend fun update(event: BrowseEvent): Int
     @Query("UPDATE browse_events SET visibleText = :text WHERE id = :id")

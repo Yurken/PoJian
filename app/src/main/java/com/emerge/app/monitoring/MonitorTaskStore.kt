@@ -229,7 +229,10 @@ class MonitorTaskStore(private val database: BrowseDatabase,
         .put("package", event.packageName).put("source", event.sourceType).put("text", event.visibleText)
         .put("timestamp", event.timestamp).put("audioSession", event.audioSessionId ?: JSONObject.NULL)
         .put("mediaStart", event.mediaStartMillis).put("mediaEnd", event.mediaEndMillis)
-        .put("work", event.workKey ?: JSONObject.NULL).toString())
+        .put("work", event.workKey ?: JSONObject.NULL).apply {
+            // Keep old task hashes stable for records without an OCR parent.
+            event.parentEventId?.let { put("parentEventId", it) }
+        }.toString())
     private fun taskKey(request: MonitorTaskRequest): String = MonitorPolicy.hash(JSONObject()
         .put("request", request.requestId).put("kind", request.kind).put("text", request.text)
         .put("service", request.serviceFingerprint).put("authorization", request.authorizationKey)
@@ -249,6 +252,7 @@ class MonitorTaskStore(private val database: BrowseDatabase,
             put("audioSessionId", event.audioSessionId ?: JSONObject.NULL)
             put("mediaStartMillis", event.mediaStartMillis); put("mediaEndMillis", event.mediaEndMillis)
             put("workKey", event.workKey ?: JSONObject.NULL); put("identityMethod", event.identityMethod)
+            put("parentEventId", event.parentEventId ?: JSONObject.NULL)
             // Visibility intervals affect dwell estimates and are deliberately outside this semantic snapshot.
         }) } })
     }.toString()
@@ -265,7 +269,8 @@ class MonitorTaskStore(private val database: BrowseDatabase,
                 endTimestamp = event.getLong("endTimestamp"), durationMillis = event.getLong("durationMillis"), sampleCount = event.getInt("sampleCount"),
                 audioSessionId = if (event.isNull("audioSessionId")) null else value("audioSessionId"),
                 mediaStartMillis = event.getLong("mediaStartMillis"), mediaEndMillis = event.getLong("mediaEndMillis"),
-                workKey = if (event.isNull("workKey")) null else value("workKey"), identityMethod = value("identityMethod"))
+                workKey = if (event.isNull("workKey")) null else value("workKey"), identityMethod = value("identityMethod"),
+                parentEventId = if (!event.has("parentEventId") || event.isNull("parentEventId")) null else event.getLong("parentEventId"))
         } }
         return MonitorTaskRequest(string("requestId"), string("packageName"), string("kind"), string("text"),
             json.getLong("capturedAt"), string("contextToken"), string("encounter"), snapshots,

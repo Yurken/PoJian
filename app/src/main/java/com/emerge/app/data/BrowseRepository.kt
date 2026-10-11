@@ -56,6 +56,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
                         sampleCount = old.sampleCount + event.sampleCount, visibilityIntervals = mergedIntervals)
                     dao.update(merged)
                     dao.moveSamples(event.id, old.id)
+                    dao.moveMaterials(event.id, old.id)
                     dao.deleteEvent(event.id)
                     dao.trimSamples(old.id)
                     audio.invalidateForEvent(event.id)
@@ -128,6 +129,11 @@ class BrowseRepository(private val database: BrowseDatabase) {
         if (!current()) return@withLock null
         val id = database.withTransaction {
             if (!current()) return@withTransaction null
+            event.parentEventId?.let { parentId ->
+                val parent = dao.event(parentId) ?: return@withTransaction null
+                if (parent.sourceType != "accessibility" || parent.packageName != event.packageName ||
+                    parent.timestamp > event.timestamp || parent.workKey != event.workKey) return@withTransaction null
+            }
             val savedId = if (continuing) {
                 // Updates are deliberately never upserts: a deleted session stays deleted.
                 event.id.takeIf { dao.update(event) > 0 }

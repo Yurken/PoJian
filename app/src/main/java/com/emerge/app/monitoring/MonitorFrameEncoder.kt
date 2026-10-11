@@ -22,9 +22,7 @@ internal object MonitorFrameEncoder {
 
     suspend fun encode(source: Bitmap, bounds: Rect?, previousFingerprint: String?): EncodedMonitorFrame {
         currentCoroutineContext().ensureActive()
-        val area = bounds?.let(::Rect) ?: Rect(0, 0, source.width, source.height)
-        require(area.intersect(0, 0, source.width, source.height) && !area.isEmpty)
-        val small = scaledRegion(source, area, MAX_SIDE)
+        val small = crop(source, bounds, MAX_SIDE)
         try {
             val fingerprint = fingerprint(small)
             if (fingerprint == previousFingerprint) return EncodedMonitorFrame(fingerprint, null)
@@ -47,6 +45,12 @@ internal object MonitorFrameEncoder {
             }
             error("画面尺寸超限，本次未上传")
         } finally { small.recycle() }
+    }
+
+    internal fun crop(source: Bitmap, bounds: Rect?, maxSide: Int): Bitmap {
+        val area = bounds?.let(::Rect) ?: Rect(0, 0, source.width, source.height)
+        require(maxSide > 0 && area.intersect(0, 0, source.width, source.height) && !area.isEmpty)
+        return scaledRegion(source, area, maxSide)
     }
 
     private fun scaledRegion(source: Bitmap, area: Rect, maxSide: Int): Bitmap {

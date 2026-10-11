@@ -22,8 +22,10 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.emerge.app.EmergeApplication
 import com.emerge.app.MainActivity
+import com.emerge.app.data.BrowseEvent
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -41,6 +43,9 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private var revision = 0L
     private val screenScope = MonitorScreenScope()
     private val sampling = FrameSamplingPolicy()
+    private val screenTextRecognizer = ScreenTextRecognizer()
+    private var lastMaterial: Pair<String, BrowseEvent>? = null
+    private var sensitiveInputVisible = false
     private var shotPending = false
     private var windowId = -1
     private var bounds = Rect()
@@ -94,6 +99,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private fun clearScreen() {
         monitor.clearScreen()
         sampling.observeContext("", SystemClock.elapsedRealtime())
+        lastMaterial = null
     }
     @Suppress("DEPRECATION")
     private fun refresh() {
@@ -123,9 +129,14 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     @Suppress("DEPRECATION")
     private fun visibleText(root: AccessibilityNodeInfo): String {
         val lines = linkedSetOf<String>(); var count = 0; var characters = 0
+        sensitiveInputVisible = false
         fun visit(node: AccessibilityNodeInfo, depth: Int) {
-            if (++count > 1500 || depth > 40 || characters >= 6000 || node.isPassword || node.isEditable) return
+            if (++count > 1500 || depth > 40 || characters >= 6000) return
             val rectangle = Rect(); node.getBoundsInScreen(rectangle)
+            if (node.isPassword || node.isEditable) {
+                if (node.isVisibleToUser && Rect.intersects(rectangle, bounds)) sensitiveInputVisible = true
+                return
+            }
             if (node.isVisibleToUser && Rect.intersects(rectangle, bounds)) {
                 listOf(node.text, node.contentDescription).forEach { value ->
                     val line = value?.toString()?.trim()?.take(2000)
@@ -144,6 +155,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private fun screenshot(manual: Boolean) {
         val state = monitor.state.value
         if (state.currentPackage.isBlank() || !app.captureSettings.enabled.value || !monitor.config.value.visual || shotPending) return
+        if (sensitiveInputVisible) { monitor.notice("输入区域可见，已跳过画面采样"); return }
         if (!monitor.canSampleFrame(manual)) {
             if (manual) monitor.notice("待处理内容已满，本次未核查")
             return
@@ -162,6 +174,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         val capturedBounds = Rect(bounds)
         val token = state.contextToken
         val sampleScope = samplingScope()
+        val generation = app.repository.captureGeneration
         val at = System.currentTimeMillis()
         // On Android 11–13 the API captures a display: avoid input methods and another focused window.
         if (Build.VERSION.SDK_INT < 34 && service.windows.any {
@@ -182,23 +195,50 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                     try {
                         ensureActive()
                         refresh()
-                        if (samplingScope() != sampleScope || windowId != capturedWindow ||
+                        if (sensitiveInputVisible || samplingScope() != sampleScope || windowId != capturedWindow ||
                             !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
+                        val parent = withContext(Dispatchers.IO) { MonitorInputs.screenSnapshot(
+                            app.repository.allEvents.first(), state.currentPackage, state.screenText, at) }
                         val previous = if (manual) null else sampling.previousFingerprint(SystemClock.elapsedRealtime())
-                        val encoded = withContext(Dispatchers.Default) {
+                        val prepared = withContext(Dispatchers.Default) {
                             val wrapped = Bitmap.wrapHardwareBuffer(hardware, result.colorSpace)
                             try {
                                 val bitmap = wrapped?.copy(Bitmap.Config.ARGB_8888, false) ?: return@withContext null
-                                try { MonitorFrameEncoder.encode(bitmap, if (Build.VERSION.SDK_INT >= 34) null else capturedBounds, previous) }
+                                try {
+                                    val region = if (Build.VERSION.SDK_INT >= 34) null else capturedBounds
+                                    val encoded = MonitorFrameEncoder.encode(bitmap, region, previous)
+                                    val recognized = if (encoded.image == null) "" else try {
+                                        screenTextRecognizer.recognize(bitmap, region)
+                                    } catch (error: Exception) {
+                                        currentCoroutineContext().ensureActive()
+                                        android.util.Log.w("EmergeCapture", "Screen OCR failed", error)
+                                        ""
+                                    }
+                                    encoded to recognized
+                                }
                                 finally { bitmap.recycle() }
                             } finally { wrapped?.recycle() }
                         }
                         refresh()
-                        if (encoded == null || samplingScope() != sampleScope || windowId != capturedWindow ||
+                        if (prepared == null || sensitiveInputVisible || samplingScope() != sampleScope || windowId != capturedWindow ||
                             !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
+                        val (encoded, recognized) = prepared
                         sampling.sampled(sampleScope, encoded.image == null)
                         val image = encoded.image ?: return@launch
-                        val accepted = monitor.submitFrame(state.currentPackage, state.screenText, image, token, at, manual) { success ->
+                        val extra = ScreenTextMaterial.additionalText(recognized, state.screenText)
+                        val material = if (extra.isBlank()) null else {
+                            val retained = lastMaterial?.takeIf { it.first == sampleScope && it.second.visibleText == extra &&
+                                at - it.second.timestamp in 0 until 300_000L }?.second
+                            if (retained != null && app.repository.findEvent(retained.id) == retained) retained else {
+                                val event = ScreenTextMaterial.event(state.currentPackage, extra, at, parent)
+                                app.repository.saveCapture(event, false, generation) {
+                                    samplingScope() == sampleScope && app.captureSettings.isPermissionCurrent(state.currentPackage, permission)
+                                }?.let { event.copy(id = it).also { saved -> lastMaterial = sampleScope to saved } }
+                            }
+                        }
+                        if (app.repository.captureGeneration != generation || samplingScope() != sampleScope ||
+                            !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
+                        val accepted = monitor.submitFrame(state.currentPackage, state.screenText, image, token, at, manual, material) { success ->
                             scope.launch { sampling.completed(sampleScope, encoded.fingerprint, success, SystemClock.elapsedRealtime()) }
                         }
                         if (!accepted) sampling.completed(sampleScope, encoded.fingerprint, false, SystemClock.elapsedRealtime())
@@ -285,5 +325,5 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         rootView = null; bubble = null; panel = null; detail = null; actions.clear()
     }
     fun interrupt() { clearScreen(); hide() }
-    fun stop() { monitor.bindManual(null); clearScreen(); scope.cancel(); hide() }
+    fun stop() { monitor.bindManual(null); clearScreen(); scope.cancel(); screenTextRecognizer.close(); hide() }
 }

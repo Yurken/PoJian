@@ -81,6 +81,8 @@ tasks.register<JavaExec>("evaluateHistoryQuality") {
     doFirst { classpath = tasks.named<Test>("testDebugUnitTest").get().classpath }
 }
 dependencies {
+    // Bundled Chinese OCR works without a first-run model download or Play Services.
+    implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     implementation(files(sherpaAar).builtBy(prepareSherpa))
     implementation(platform("androidx.compose:compose-bom:2024.10.01"))
     implementation("androidx.activity:activity-compose:1.9.3")

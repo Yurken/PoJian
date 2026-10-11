@@ -3,9 +3,16 @@ package com.emerge.app.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class], version = 6, exportSchema = true)
+@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class], version = 7, exportSchema = true)
 abstract class BrowseDatabase : RoomDatabase() {
     companion object {
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE browse_events ADD COLUMN parentEventId INTEGER REFERENCES browse_events(id) ON DELETE CASCADE DEFAULT NULL")
+                db.execSQL("CREATE INDEX index_browse_events_parentEventId ON browse_events(parentEventId)")
+                MonitorTaskSchema.installTriggers(db)
+            }
+        }
         val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE browse_events ADD COLUMN visibilityIntervals TEXT DEFAULT NULL")

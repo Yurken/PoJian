@@ -31,6 +31,7 @@ import com.emerge.app.capture.VisibilityRegion
 import com.emerge.app.analysis.ObservationWindow
 import com.emerge.app.R
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.data.visualSourceLabel
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -124,6 +125,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                         Text(timeFormat.format(Instant.ofEpochMilli(event.timestamp).atZone(zone)),
                             color = Muted, style = MaterialTheme.typography.labelMedium)
                     }
+                    event.visualSourceLabel?.let { MetadataText(it) }
                     if (fromAudio) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             MetadataText("音频转写")
@@ -315,7 +317,8 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 SectionTitle("关于")
                 HelpLink("采集与隐私", "开启后，破茧会读取所选应用当前页面上的文字、应用名称和时间，用于回顾浏览内容。页面文字可能包含个人信息，请按需开启。\n\n" +
                     "自动跳过密码框、输入框、系统设置与输入法。正文仍可能包含个人信息，可随时暂停或删除。\n\n" +
-                    "开启云端分析后发送文字与相关历史材料；开启画面分析后发送采样画面。音频只发送转写。")
+                    "开启云端分析后发送文字与相关历史材料；开启画面分析后发送采样画面。音频只发送转写。\n\n" +
+                    "ML Kit 端侧识别会向 Google 发送运行指标，不含画面和识别文字。")
                 HelpLink("关于${stringResource(R.string.brand_name)}", stringResource(R.string.brand_tagline) +
                     if (audioContent != null) "\n\n帮你回顾接触到的文字与声音，比较观点与依据的变化，再自主决定是否补充材料。"
                     else "\n\n帮你回顾接触到的信息，比较观点与依据的变化，再自主决定是否补充材料。")

@@ -210,6 +210,10 @@ class CognitiveAnalyzer {
             }
         }
         val usableSet = usableEvents.toSet()
+        val eventsById = ordered.associateBy { it.id }
+        fun contactId(id: Long): Long? = eventsById[id]?.let {
+            if (it.sourceType == "screen_ocr") it.parentEventId else it.id
+        }
         val current = observations.filter { it.first in usableSet }.map { it.second }
         val grouped = mutableListOf<MutableList<ClaimObservation>>()
         current.forEach { observation ->
@@ -221,7 +225,7 @@ class CognitiveAnalyzer {
             if (group == null) grouped += mutableListOf(observation) else group += observation
         }
         val groups = grouped.map { ClaimGroup(it.first().topic, it.first().quote, it.toList()) }
-            .sortedByDescending { it.observations.map { candidate -> candidate.eventId }.distinct().size }
+            .sortedByDescending { it.observations.mapNotNull { candidate -> contactId(candidate.eventId) }.distinct().size }
         val topicCounts = current.groupingBy { it.topic }.eachCount().map { TopicCount(it.key, it.value) }.sortedByDescending { it.count }
         val currentEventsById = usableEvents.associateBy { it.id }
         val slicesByEvent = usableEvents.associateWith { checkCancellation(); window.slices(it) }
@@ -238,9 +242,13 @@ class CognitiveAnalyzer {
                 .map { it.eventId }.distinct().size
             val truncatedComparisons = members.count { it.historyComparisonTruncated }
             val topicDays = dates(ids)
+            val contacts = ids.mapNotNull(::contactId).toSet()
+            val majorContacts = majorIds.mapNotNull(::contactId).toSet()
+            val repeatedContacts = major.observations.filter { it.increment == Increment.REPEATED }
+                .mapNotNull { contactId(it.eventId) }.toSet()
             val title = when {
-                ids.size < 8 || topicDays < 3 -> "观察不足，暂时无法判断是否收窄"
-                majorIds.size.toDouble() / ids.size >= 0.7 && majorRepeated.toDouble() / ids.size >= 0.6 -> "观察到持续低增量重复，建议回查来源"
+                contacts.size < 8 || topicDays < 3 -> "观察不足，暂时无法判断是否收窄"
+                majorContacts.size.toDouble() / contacts.size >= 0.7 && repeatedContacts.size.toDouble() / contacts.size >= 0.6 -> "观察到持续低增量重复，建议回查来源"
                 members.none { it.increment == Increment.NEW || it.increment == Increment.REPEATED } -> "依据或比较历史不足，暂时无法判断是否收窄"
                 members.any { it.increment == Increment.NEW } -> "观察到依据有补充，仍需核实内容"
                 else -> "暂未发现重复线索，不代表不存在信息同质化"

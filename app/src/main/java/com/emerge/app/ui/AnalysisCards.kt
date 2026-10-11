@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emerge.app.analysis.*
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.data.visualSourceLabel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -490,6 +491,7 @@ private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<Strin
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         MetadataText("事件 #${event.id} · ${reportTime(event.timestamp, zone)} · ${appNames[event.packageName] ?: event.packageName}")
+        event.visualSourceLabel?.let { MetadataText(it) }
         if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
         SelectionContainer {
             Text(event.visibleText, color = Ink, fontSize = 14.sp, lineHeight = 24.sp,

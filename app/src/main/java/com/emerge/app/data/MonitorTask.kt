@@ -54,11 +54,18 @@ object MonitorTaskSchema {
             FOREIGN KEY(taskId) REFERENCES monitor_tasks(id) ON UPDATE NO ACTION ON DELETE CASCADE,
             FOREIGN KEY(eventId) REFERENCES browse_events(id) ON UPDATE NO ACTION ON DELETE CASCADE)""")
         db.execSQL("CREATE INDEX IF NOT EXISTS index_monitor_task_inputs_eventId ON monitor_task_inputs(eventId)")
-        installTriggers(db)
+        // Version 5→6 predates the OCR parent column.
+        installTriggers(db, includeParent = false)
     }
 
     /** Trigger invalidation prevents an edited input becoming valid again if its old text is restored. */
-    fun installTriggers(db: SupportSQLiteDatabase) {
+    fun installTriggers(db: SupportSQLiteDatabase, includeParent: Boolean = true) {
+        if (includeParent) db.execSQL("""CREATE TRIGGER IF NOT EXISTS monitor_tasks_parent_changed
+            AFTER UPDATE OF parentEventId ON browse_events
+            WHEN OLD.parentEventId IS NOT NEW.parentEventId
+            BEGIN UPDATE monitor_tasks SET status='cancelled',payload='',leaseOwner='',leaseUntil=0,lastError='input_changed'
+            WHERE status IN ('queued','running') AND id IN
+                (SELECT taskId FROM monitor_task_inputs WHERE eventId=OLD.id); END""")
         db.execSQL("""CREATE TRIGGER IF NOT EXISTS monitor_tasks_input_changed
             AFTER UPDATE OF visibleText,packageName,sourceType,timestamp,audioSessionId,mediaStartMillis,mediaEndMillis,workKey ON browse_events
             WHEN OLD.visibleText IS NOT NEW.visibleText OR OLD.packageName IS NOT NEW.packageName

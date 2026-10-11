@@ -24,6 +24,42 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Real HTTP worker and Room, using only a loopback server and synthetic input. */
 @RunWith(AndroidJUnit4::class)
 class MonitorFramePipelineTest {
+    @Test fun failedVisionPreservesOcrAndCompletesItThroughThePersistentTextQueue() = runBlocking {
+        fixture { f ->
+            f.text(40)
+            f.received.receive()
+            withTimeout(5000) { f.app.monitor.state.first { it.pending == 0 } }
+            val parent = requireNotNull(f.app.repository.findEvent(f.ids.last()))
+            val at = System.currentTimeMillis()
+            val material = ScreenTextMaterial.event(PACKAGE, "招聘岗位正在减少，因为岗位同比减少20%", at, parent)
+            val saved = material.copy(id = requireNotNull(f.app.repository.saveCapture(material, false,
+                f.app.repository.captureGeneration) { true }))
+            f.ids += saved.id
+            f.response = { _, request ->
+                if (request.getString("kind") == "frame") reply(request).put("claims", JSONArray().apply {
+                    repeat(4) { put(JSONObject()) }
+                }) else reply(request).put("claims", JSONArray().put(JSONObject()
+                    .put("quote", "招聘岗位正在减少").put("topic", "就业").put("subject", "招聘岗位")
+                    .put("dimension", "数量").put("stance", "减少").put("evidence", "岗位同比减少20%")
+                    .put("conditions", "").put("uncertain", false).put("verdict", "not_checked")
+                    .put("explanation", "本地回归响应").put("sources", JSONArray())))
+            }
+            val completed = CompletableDeferred<Boolean>()
+            assertTrue(f.app.monitor.submitFrame(PACKAGE, parent.visibleText, "test-image", "screen", at,
+                material = saved) { completed.complete(it) })
+            assertFalse(completed.await())
+            assertEquals("frame", f.received.receive().getString("kind"))
+            val fallback = f.received.receive()
+            assertEquals("text", fallback.getString("kind"))
+            assertEquals(saved.visibleText, fallback.getString("text"))
+            assertFalse(fallback.has("image"))
+            withTimeout(5000) { f.app.monitorTasks.observeInputStates().first { it[saved.id] == "completed" } }
+            val semantics = f.app.repository.semantics.first().single { it.eventId == saved.id }
+            assertTrue(semantics.validFor(saved))
+            assertEquals(parent.id, f.app.repository.findEvent(saved.id)?.parentEventId)
+        }
+    }
+
     @Test fun invalidResponsesRetryAndManualChecksDoNotUseAnalysisOnlyCache() = runBlocking {
         fixture { f ->
             f.response = { index, request -> reply(request).apply {
