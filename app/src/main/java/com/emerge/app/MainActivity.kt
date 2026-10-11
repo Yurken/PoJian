@@ -185,7 +185,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     // Keep the optional slot's old name for source compatibility; it no longer hosts recording controls.
                     audioContent = { MonitorOverviewCard(monitor, monitorConfig, { tab = 1 }, { tab = 2 }) }, semantics = semantics)
                 tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
-                    onRecords = { showRecords = true }, onClear = { app.monitor.invalidate() })
+                    onRecords = { showRecords = true }, onClear = { app.monitor.invalidate() }, events = all)
                 else -> SettingsScreen(permission, enabled, count, { value ->
                     if (!value) app.audioCoordinator.stopAll()
                     model.setCapture(value)

@@ -3,8 +3,6 @@
 package com.emerge.app.monitoring
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -12,17 +10,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.emerge.app.ui.HelpButton
 import com.emerge.app.ui.SectionTitle
 import com.emerge.app.audioanalysis.TextServiceConfig
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 @Composable
 fun MonitorOverviewCard(state: MonitorState, config: MonitorConfig, onDiscover: () -> Unit, onSettings: () -> Unit) {
@@ -42,71 +35,6 @@ fun MonitorOverviewCard(state: MonitorState, config: MonitorConfig, onDiscover: 
             }
         }
     }
-}
-
-@Composable
-fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, modifier: Modifier = Modifier,
-    onRecords: () -> Unit, onClear: () -> Unit) {
-    var selected by remember { mutableStateOf<MonitorFinding?>(null) }
-    var filter by remember { mutableIntStateOf(0) }
-    var confirm by remember { mutableStateOf(false) }
-    val facts = state.findings.filter { it.kind == "fact" }
-    val completed = facts.count { it.verdict in setOf("supported", "contradicted", "conflicting", "insufficient") }
-    val displayed = state.findings.filter { filter == 0 || (filter == 1 && it.kind == "cocoon") || (filter == 2 && it.kind == "fact") }
-    LazyColumn(modifier.testTag("monitor-discovery-list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item { SectionTitle("发现", help = "观点观察比较观点与依据的重复出现；事实核查展示外部来源与结论。仅覆盖已采样的内容，转写与画面识别可能有误，可查看原文核对。") }
-        if (state.pending > 0) item {
-            Text("待分析 ${state.pending} 项",
-                style = MaterialTheme.typography.bodySmall)
-        }
-        item { Text("已核查 $completed 条 · 未核查 ${facts.count { it.verdict == "not_checked" }} 条",
-            style = MaterialTheme.typography.bodySmall) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("全部", "观点观察", "事实核查").forEachIndexed { i, label ->
-                    FilterChip(selected = filter == i, onClick = { filter = i }, label = { Text(label) })
-                }
-            }
-        }
-        if (displayed.isEmpty()) item {
-            Text("暂无发现")
-        }
-        items(displayed, key = { it.id }) { finding ->
-            OutlinedCard(onClick = { selected = finding }, modifier = Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(finding.label, style = MaterialTheme.typography.titleSmall)
-                    Text(finding.claim, maxLines = 4)
-                    Text("${appNames[finding.packageName] ?: finding.packageName} · ${SimpleDateFormat("M/d HH:mm", Locale.CHINA).format(Date(finding.capturedAt))} · " +
-                        when (finding.inputKind) { "frame" -> "画面采样"; "audio" -> "口播转写"; else -> "可见文字" },
-                        style = MaterialTheme.typography.labelSmall)
-                    Text(if (finding.sources.isEmpty()) "${finding.explanation.take(100)}" else "${finding.sources.size} 条来源 ›",
-                        style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-        item { Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(onClick = onRecords) { Text("查看原文材料") }
-            TextButton(onClick = { confirm = true }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("清除核查结果") }
-        } }
-    }
-    selected?.let { finding ->
-        // A revision/deletion must close a detail sheet containing a stale result.
-        LaunchedEffect(state.findings) { if (state.findings.none { it == finding }) selected = null }
-        val uri = LocalUriHandler.current
-        AlertDialog(onDismissRequest = { selected = null }, title = { Text(finding.label) },
-            text = { Column(Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(finding.claim, style = MaterialTheme.typography.titleSmall)
-                Text(finding.explanation)
-                finding.sources.forEach { source ->
-                    HorizontalDivider(); Text(source.title, style = MaterialTheme.typography.titleSmall); Text("引文：${source.quote}")
-                    TextButton(onClick = { if (source.valid()) runCatching { uri.openUri(source.url) } }) { Text("打开来源") }
-                }
-            } }, confirmButton = { TextButton(onClick = { selected = null }) { Text("关闭") } })
-    }
-    if (confirm) AlertDialog(onDismissRequest = { confirm = false }, title = { Text("清除全部核查结果？") },
-        text = { Text("清除核查结果与比较材料，保留原文记录。无法撤销。") },
-        confirmButton = { Button(onClick = { onClear(); confirm = false }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("清除结果") } },
-        dismissButton = { TextButton(onClick = { confirm = false }) { Text("取消") } })
 }
 
 @Composable
