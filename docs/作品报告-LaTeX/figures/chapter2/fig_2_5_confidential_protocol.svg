@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1060" viewBox="0 0 1600 1060">
+<title>面向持续认知分析的可验证机密计算框架</title>
+<desc>Deterministic compact reflow of fig_2_5_confidential_protocol.mmd after Pretty Mermaid rendering. Eight modules preserve the source relations and trust boundaries.</desc>
+<defs><marker id="arr" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto-start-reverse"><path d="M0 0 L10 4 L0 8 Z" fill="#566C80"/></marker></defs>
+<rect width="1600" height="1060" fill="#FFFFFF"/>
+<g font-family="Noto Sans CJK SC, Microsoft YaHei, sans-serif" fill="#273645">
+<rect x="30" y="190" width="370" height="500" rx="14" fill="#F0F5F9" stroke="#86A0B4" stroke-width="2.5"/>
+<text x="55" y="230" text-anchor="start" font-size="30" font-weight="600" fill="#273645">用户终端</text>
+<rect x="760" y="190" width="800" height="540" rx="14" fill="#F1F6F3" stroke="#8DA697" stroke-width="2.5"/>
+<text x="785" y="230" text-anchor="start" font-size="30" font-weight="600" fill="#273645">服务器 TEE 可信执行域</text>
+<rect x="440" y="460" width="280" height="225" rx="14" fill="#F7F6F8" stroke="#AAA5B4" stroke-width="2.5"/>
+<text x="465" y="500" text-anchor="start" font-size="30" font-weight="600" fill="#273645">外部服务域 · 中继</text>
+<rect x="1090" y="850" width="460" height="180" rx="14" fill="#F7F6F8" stroke="#AAA5B4" stroke-width="2.5"/>
+<text x="1115" y="890" text-anchor="start" font-size="30" font-weight="600" fill="#273645">外部服务域 · 存储</text>
+<path d="M220 135 L220 350" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="220,350 214,336 226,336" fill="#566C80"/>
+<path d="M360 385 L620 385 L620 340 L820 340" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="820,340 806,346 806,334" fill="#566C80"/>
+<polygon points="360,385 374,379 374,391" fill="#566C80"/>
+<path d="M360 460 L735 460 L735 380 L820 380" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="820,380 806,386 806,374" fill="#566C80"/>
+<path d="M970 410 L970 500" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="970,500 964,486 976,486" fill="#566C80"/>
+<path d="M360 530 L400 530 L400 565 L465 565" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="465,565 451,571 451,559" fill="#566C80"/>
+<polygon points="360,530 374,524 374,536" fill="#566C80"/>
+<path d="M695 565 L820 565" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="820,565 806,571 806,559" fill="#566C80"/>
+<polygon points="695,565 709,559 709,571" fill="#566C80"/>
+<path d="M1120 560 L1190 560" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="1190,560 1176,566 1176,554" fill="#566C80"/>
+<polygon points="1120,560 1134,554 1134,566" fill="#566C80"/>
+<path d="M1050 500 L1050 450 L1340 450 L1340 410" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round" stroke-dasharray="9 6"/>
+<polygon points="1340,410 1346,424 1334,424" fill="#566C80"/>
+<polygon points="1050,500 1044,486 1056,486" fill="#566C80"/>
+<path d="M1340 620 L1340 820 L1070 820 L1070 960 L1125 960" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="1125,960 1111,966 1111,954" fill="#566C80"/>
+<polygon points="1340,620 1346,634 1334,634" fill="#566C80"/>
+<path d="M1230 620 L1230 785 L215 785 L215 560" fill="none" stroke="#566C80" stroke-width="3" stroke-linejoin="round"/>
+<polygon points="215,560 221,574 209,574" fill="#566C80"/>
+<polygon points="1230,620 1236,634 1224,634" fill="#566C80"/>
+<rect x="70" y="35" width="300" height="100" rx="10" fill="#F3F3EF" stroke="#969887" stroke-width="2.3"/>
+<text x="220.0" y="77.0" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">证明信任根</text>
+<text x="220.0" y="111.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">证书与验证材料</text>
+<rect x="70" y="350" width="290" height="210" rx="10" fill="#EAF2F7" stroke="#6D8AA4" stroke-width="2.3"/>
+<text x="215.0" y="413.0" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">用户客户端</text>
+<text x="215.0" y="447.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">授权与证明验证</text>
+<text x="215.0" y="481.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">密钥管理</text>
+<text x="215.0" y="515.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">最新检查点</text>
+<rect x="820" y="290" width="300" height="120" rx="10" fill="#EAF1ED" stroke="#7A9687" stroke-width="2.3"/>
+<text x="970.0" y="342.0" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">证明与密钥模块</text>
+<text x="970.0" y="376.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">公钥与版本绑定</text>
+<rect x="1190" y="290" width="300" height="120" rx="10" fill="#EAF1ED" stroke="#7A9687" stroke-width="2.3" stroke-dasharray="9 6"/>
+<text x="1340.0" y="342.0" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">机密 GPU（可选）</text>
+<text x="1340.0" y="376.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">设备证明 / 保护通道</text>
+<rect x="820" y="500" width="300" height="120" rx="10" fill="#EAF1ED" stroke="#7A9687" stroke-width="2.3"/>
+<text x="970.0" y="552.0" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">认知分析引擎</text>
+<text x="970.0" y="586.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">内容理解 / 历史检索</text>
+<rect x="1190" y="500" width="300" height="120" rx="10" fill="#EAF1ED" stroke="#7A9687" stroke-width="2.3"/>
+<text x="1340.0" y="552.0" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">版本与提交管理</text>
+<text x="1340.0" y="586.0" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">状态准备 / 删除重放</text>
+<rect x="465" y="520" width="230" height="105" rx="10" fill="#F0EFF3" stroke="#8D899A" stroke-width="2.3"/>
+<text x="580.0" y="564.5" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">密文网关</text>
+<text x="580.0" y="598.5" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">应用层密文转发</text>
+<rect x="1125" y="910" width="390" height="95" rx="10" fill="#F0EFF3" stroke="#8D899A" stroke-width="2.3"/>
+<text x="1320.0" y="949.5" text-anchor="middle" font-size="28" font-weight="600" fill="#273645">加密状态存储</text>
+<text x="1320.0" y="983.5" text-anchor="middle" font-size="23" font-weight="400" fill="#273645">片段 / 向量 / 图 / 报告</text>
+<rect x="166.0" y="264" width="108" height="31" rx="4" fill="#FFFFFF"/>
+<text x="220" y="285" text-anchor="middle" font-size="22" font-weight="400" fill="#273645">验证材料</text>
+<rect x="451.0" y="344" width="218" height="31" rx="4" fill="#FFFFFF"/>
+<text x="560" y="365" text-anchor="middle" font-size="22" font-weight="400" fill="#273645">① 挑战与绑定证明</text>
+<rect x="451.0" y="417" width="218" height="31" rx="4" fill="#FFFFFF"/>
+<text x="560" y="438" text-anchor="middle" font-size="22" font-weight="400" fill="#273645">② 验证后释放密钥</text>
+<rect x="866.0" y="445" width="108" height="31" rx="4" fill="#FFFFFF"/>
+<text x="920" y="466" text-anchor="middle" font-size="22" font-weight="400" fill="#273645">获准会话</text>
+<rect x="362.0" y="535" width="100" height="29" rx="4" fill="#FFFFFF"/>
+<text x="412" y="554" text-anchor="middle" font-size="20" font-weight="400" fill="#273645">③ 密文</text>
+<rect x="703.0" y="528" width="110" height="27" rx="4" fill="#FFFFFF"/>
+<text x="758" y="545" text-anchor="middle" font-size="18" font-weight="400" fill="#273645">应用层密文</text>
+<rect x="1125.0" y="578" width="60" height="29" rx="4" fill="#FFFFFF"/>
+<text x="1155" y="597" text-anchor="middle" font-size="20" font-weight="400" fill="#273645">状态</text>
+<rect x="1197.5" y="453" width="125" height="30" rx="4" fill="#FFFFFF"/>
+<text x="1260" y="473" text-anchor="middle" font-size="21" font-weight="400" fill="#273645">受保护通道</text>
+<rect x="1234.0" y="789" width="152" height="31" rx="4" fill="#FFFFFF"/>
+<text x="1310" y="810" text-anchor="middle" font-size="22" font-weight="400" fill="#273645">④ 密文存储</text>
+<rect x="569.0" y="756" width="262" height="31" rx="4" fill="#FFFFFF"/>
+<text x="700" y="777" text-anchor="middle" font-size="22" font-weight="400" fill="#273645">⑤ 检查点与持久化确认</text>
+<text x="50" y="957" text-anchor="start" font-size="25" font-weight="400" fill="#536272">明文与密钥在用户终端及可信执行域内处理。</text>
+<text x="50" y="1001" text-anchor="start" font-size="25" font-weight="400" fill="#536272">外部服务域承担密文转发与持久化。</text>
+</g></svg>
