@@ -1,12 +1,19 @@
 package com.emerge.app.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -22,10 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 
 val Accent: Color
@@ -82,16 +87,32 @@ internal fun WhiteCard(
 }
 
 @Composable
-internal fun SectionTitle(title: String, subtitle: String? = null) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleLarge,
-        color = Ink,
-        modifier = Modifier.semantics { heading() }
-    )
-    if (!subtitle.isNullOrBlank()) {
-        Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = Muted)
+internal fun SectionTitle(title: String, subtitle: String? = null, help: String? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, style = MaterialTheme.typography.titleLarge, color = Ink,
+            modifier = Modifier.weight(1f).semantics { heading() })
+        if (!help.isNullOrBlank()) HelpButton(title, help)
     }
+    if (!subtitle.isNullOrBlank()) MetadataText(subtitle)
+}
+
+/** Contextual help stays out of the reading flow, with a full touch target and spoken label. */
+@Composable
+internal fun HelpButton(title: String, body: String, modifier: Modifier = Modifier) {
+    var open by rememberSaveable(title) { mutableStateOf(false) }
+    IconButton(onClick = { open = true }, modifier = modifier) {
+        Icon(Icons.Outlined.Info, contentDescription = "${title}说明", tint = Muted)
+    }
+    if (open) HelpDialog(title, body) { open = false }
+}
+
+@Composable
+private fun HelpDialog(title: String, body: String, onDismiss: () -> Unit) {
+    AlertDialog(onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(body, modifier = Modifier.heightIn(max = 420.dp)
+            .verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodyMedium) },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } })
 }
 
 /** An unclipped, selectable source excerpt rather than a chat bubble. */
@@ -115,41 +136,12 @@ internal fun QuoteBlock(text: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-internal fun ExpandableNote(title: String, body: String, modifier: Modifier = Modifier) {
-    var expanded by rememberSaveable(title) { mutableStateOf(false) }
-    Column(modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .defaultMinSize(minHeight = 48.dp)
-                .clickable(role = Role.Button, onClickLabel = if (expanded) "收起说明" else "展开说明") {
-                    expanded = !expanded
-                }
-                .semantics { stateDescription = if (expanded) "已展开" else "已收起" }
-                .padding(vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Muted,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = if (expanded) "收起 −" else "展开 ＋",
-                style = MaterialTheme.typography.labelSmall,
-                color = Accent
-            )
-        }
-        if (expanded) {
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = Muted,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-        }
+internal fun HelpLink(title: String, body: String, modifier: Modifier = Modifier) {
+    var open by rememberSaveable(title) { mutableStateOf(false) }
+    TextButton(onClick = { open = true }, modifier = modifier) {
+        Text(title, style = MaterialTheme.typography.labelMedium, color = Muted)
     }
+    if (open) HelpDialog(title, body) { open = false }
 }
 
 @Composable

@@ -16,7 +16,7 @@ class ViewpointLabelerTest {
             "虽然产品有很多质量问题，但相信会改善短板" to "质量改善期待",
             "两个时序变量只有在同一频率和同一尺度下才会相关吗" to "相关条件",
             "机器人终于学会用历史记忆了" to "机器人记忆",
-            "#留学上课日常 #美国 #搞笑" to "待归纳"
+            "#留学上课日常 #美国 #搞笑" to "未识别"
         )
         cases.forEach { (quote, expected) ->
             val label = ViewpointTimeline.label(quote)
@@ -28,7 +28,7 @@ class ViewpointLabelerTest {
     @Test fun oppositeAndUnknownStatementsAreNotForcedIntoTheSameViewpoint() {
         assertNotEquals(ViewpointTimeline.label("女性应该独立生活"), ViewpointTimeline.label("女性不应该独立生活"))
         assertNotEquals(ViewpointTimeline.label("求职焦虑"), ViewpointTimeline.label("求职不用焦虑"))
-        assertEquals("待归纳", ViewpointTimeline.label("需要讨论一个尚无明确含义的新问题"))
+        assertEquals("未识别", ViewpointTimeline.label("需要讨论一个尚无明确含义的新问题"))
         assertEquals(ViewpointTimeline.label("Zotero界面很丑，使用不方便"), ViewpointTimeline.label("软件界面繁琐，使用难用"))
     }
 }

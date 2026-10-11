@@ -10,6 +10,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -61,11 +63,13 @@ internal fun AnalysisCards(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     MetadataText("浏览目的")
-                    Text(state.purpose.ifBlank { "还未填写" }, color = Ink, fontSize = 13.sp,
+                    Text(state.purpose.ifBlank { "未填写" }, color = Ink, fontSize = 13.sp,
                         maxLines = 2, lineHeight = 20.sp)
                 }
-                TextButton(onClick = { purposeDraft = state.purpose; editingPurpose = true },
-                    modifier = Modifier.testTag("purpose-edit")) { Text("编辑") }
+                IconButton(onClick = { purposeDraft = state.purpose; editingPurpose = true },
+                    modifier = Modifier.testTag("purpose-edit")) {
+                    Icon(Icons.Outlined.Edit, contentDescription = "编辑浏览目的")
+                }
             }
             Button(
                 onClick = { onAnalyze(state.purpose) },
@@ -77,44 +81,38 @@ internal fun AnalysisCards(
             }
             state.status?.let { MetadataText(it) }
             if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
-            if (state.stale && report != null) MetadataText("有新记录，正在更新 · 以下为上次回顾")
+            if (state.stale && report != null) MetadataText("正在更新，以下为上次结果")
             state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
         }
 
-        if (report == null) {
+        if (report != null) {
             WhiteCard {
-                SectionTitle(if (events.isEmpty()) "还没有浏览记录" else "回顾已准备好")
-                MetadataText(if (events.isEmpty()) "开启采集后，可按小时回看原文。"
-                    else if (state.running) "正在整理小时索引与观点依据…"
-                    else "生成回顾，查看观点与依据的变化。")
-            }
-        } else {
-            WhiteCard {
-                SectionTitle("分析覆盖", "${report.usableSnapshots} 条有效记录")
-                MetadataText("云端结构结果 ${report.structuredAnalyzedRecords} 条 · 本地规则 ${report.localFallbackRecords} 条")
-                MetadataText("已记录待分析 ${report.pendingAnalysisRecords} 条 · 最近未完成 ${report.failedAnalysisRecords} 条（任务状态保留 24 小时）")
-                MetadataText("有效结构结果覆盖 ${ReportExporter.percent(report.structuredAnalyzedRecords, report.usableSnapshots)}，包含未提取出观点的记录；每次最多提取 3 个观点，采样不代表整条记录或全部设备浏览都已分析。")
-                if (report.rejectedSemanticsRecords > 0) MetadataText("${report.rejectedSemanticsRecords} 条云端结果与当前原文不匹配或未通过校验，使用本地规则。")
-                if (report.structuredAnalyzedRecords == 0) MetadataText("当前回顾没有有效云端结构结果，观点与依据来自本地规则候选。")
-            }
-            WhiteCard {
-                SectionTitle("24 小时信息回顾",
-                    if (period == StatisticsPeriod.WEEK) "最近 7 天按小时合计" else if (period == StatisticsPeriod.HOURS24) "过去24小时按钟点合计" else "今天 00:00—24:00")
+                SectionTitle(
+                    when (period) {
+                        StatisticsPeriod.WEEK -> "七日回顾"
+                        StatisticsPeriod.HOURS24 -> "24 小时回顾"
+                        StatisticsPeriod.DAY -> "今日回顾"
+                    },
+                    help = "${report.usableSnapshots} 条有效记录：云端分析 ${report.structuredAnalyzedRecords} 条，本地识别 ${report.localFallbackRecords} 条，待分析 ${report.pendingAnalysisRecords} 条，未完成 ${report.failedAnalysisRecords} 条。\n\n颜色越深，记录越多。点击小时查看原文。跨时段记录会重复出现，数量不能相加；时长按时段分摊。云端仅分析采样内容。")
+                if (report.pendingAnalysisRecords > 0 || report.failedAnalysisRecords > 0)
+                    MetadataText("待分析 ${report.pendingAnalysisRecords} 条 · 未完成 ${report.failedAnalysisRecords} 条")
                 HourlyRecordHeatmapContent(
                     counts = List(24) { hour -> report.hourlyReviews.firstOrNull { it.hour == hour }?.recordCount ?: 0 },
                     selectedHour = selectedHour,
                     onSelect = { selectedHour = it; detailHour = it },
-                    modifier = Modifier.testTag("hourly-hour-options"),
+                    modifier = Modifier.testTag("hourly-hour-options").semantics {
+                        contentDescription = "小时记录热力图，点击小时查看详情"
+                    },
                     countLabel = "数字为有效记录数"
                 ) { hour, records ->
                     val review = report.hourlyReviews.firstOrNull { it.hour == hour }
                     val duration = review?.durationMillis ?: 0L
                     val unknown = review?.unknownDurationRecords ?: 0
                     when {
-                        records == 0 -> "${hour}时，暂无记录，点击查看详情"
-                        unknown == records && duration == 0L -> "${hour}时，${records}条记录，未统计时长，点击查看详情"
-                        unknown > 0 -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，${unknown}条未统计时长，点击查看详情"
-                        else -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，点击查看详情"
+                        records == 0 -> "${hour}时，暂无记录"
+                        unknown == records && duration == 0L -> "${hour}时，${records}条记录，时长未统计"
+                        unknown > 0 -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，${unknown}条时长未统计"
+                        else -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}"
                     }
                 }
                 selectedHour?.let { value ->
@@ -122,23 +120,22 @@ internal fun AnalysisCards(
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             Text(hourRange(value), color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                            Text("${review?.recordCount ?: 0} 条可用记录 · ${hourDuration(review)}",
+                            Text("${review?.recordCount ?: 0} 条有效记录 · ${hourDuration(review)}",
                                 color = Muted, fontSize = 11.sp)
                             if (review != null && review.unknownDurationRecords > 0) {
-                                MetadataText("另有 ${review.unknownDurationRecords} 条未统计时长")
+                                MetadataText("另有 ${review.unknownDurationRecords} 条时长未统计")
                             }
                         }
-                        TextButton(onClick = { detailHour = value }) { Text("原文 ›") }
+                        TextButton(onClick = { detailHour = value }) { Text("查看原文 ›") }
                     }
                 }
-                ExpandableNote("分布说明",
-                    "颜色越深，该小时有效记录越多；数字是记录数，不是浏览时长。点任意小时可以回看原文。跨时段的记录会在每个覆盖时段出现，各时段数量不能相加作为总条数。预计停留时长按时间分摊，同一条记录的时长不会重复计算。空白不代表没有浏览。")
             }
 
             WhiteCard {
-                SectionTitle("观点依据比对", "${report.claims.size} 个观点 · ${report.groups.size} 组相似说法")
+                SectionTitle("观点对比", "${report.claims.size} 个观点 · ${report.groups.size} 组相似说法",
+                    help = "蓝色为新增依据，橙色为重复依据；首次出现、条件不同或依据不足单独统计。一条记录可含多个观点。对比仅针对已保存片段，不验证真伪。")
                 if (report.claims.isEmpty()) {
-                    MetadataText("暂未识别到明确观点，可按小时回看原文。")
+                    MetadataText("未识别到明确观点，可按小时查看原文。")
                 } else {
                     EvidenceRatioBar(report.claims)
                     var groupLimit by remember(report) { mutableIntStateOf(3) }
@@ -146,48 +143,44 @@ internal fun AnalysisCards(
                         GroupRow(index + 1, group) { selectedClaims = group.observations }
                     }
                     if (report.groups.size > 3) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            if (report.groups.size > groupLimit) TextButton(onClick = { groupLimit += 3 }) {
-                                Text("再看 ${minOf(3, report.groups.size - groupLimit)} 组")
-                            }
-                            if (groupLimit > 3) TextButton(onClick = { groupLimit = 3 }) { Text("收起") }
+                        TextButton(onClick = {
+                            groupLimit = if (groupLimit < report.groups.size) groupLimit + 3 else 3
+                        }) {
+                            Text(if (groupLimit < report.groups.size)
+                                "再看 ${minOf(3, report.groups.size - groupLimit)} 组" else "收起")
                         }
                     }
                 }
-                ExpandableNote("依据比例与判断方法",
-                    "比例分母为本卡标注的全部观点数，一条记录可能有多个观点。蓝色表示和此前同主题内容比较时依据有新增，橙色表示重复出现且依据未变；首次出现、时间或条件不同、出处或依据不足的观点单独保留，不并入新增或重复。新增片段可能是事实、条件、解释或建议，不代表学到了新东西，也未验证真伪。未识别到观点不代表没有浏览。")
             }
 
             if (report.topicExposure.isNotEmpty() || report.topics.isNotEmpty()) {
                 WhiteCard {
-                    CollapsibleReportSection("接触内容", "${report.coverageSessions} 条有效记录") {
+                    CollapsibleReportSection("内容分布", "${report.coverageSessions} 条有效记录") {
                         report.topicExposure.forEachIndexed { index, exposure ->
                             ProportionRow(
                                 label = exposure.topic,
                                 value = "${exposure.recordCount} 条 · ${ReportExporter.percent(exposure.recordCount, report.coverageSessions)}",
                                 fraction = fraction(exposure.recordCount, report.coverageSessions),
                                 color = ChartColors[index % ChartColors.size],
-                                note = if (exposure.durationMillis > 0) "停留约 ${formatDuration(exposure.durationMillis)}（估算）" else "暂无停留数据"
+                                note = if (exposure.durationMillis > 0) "预计停留 ${formatDuration(exposure.durationMillis)}" else null
                             )
                         }
-                        MetadataText("主题比例分母：${report.coverageSessions} 条有效记录，每条按主要内容归一类。")
                         if (report.topics.isNotEmpty()) {
-                            Text("观点概括", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                            Text("观点主题", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                             report.claims.groupBy { viewpointClaim(it).key }.entries.forEachIndexed { index, entry ->
                                 ProportionRow(viewpointClaim(entry.value.first()).label,
                                     "${entry.value.size} 个 · ${ReportExporter.percent(entry.value.size, report.claims.size)}",
                                     fraction(entry.value.size, report.claims.size), ChartColors[index % ChartColors.size])
                             }
-                            MetadataText("观点主题分母：${report.claims.size} 个观点，一条记录可能有多个观点。")
                         }
-                        ExpandableNote("比例范围",
-                            "有效记录包含未分类和娱乐内容。主题比例不代表阅读时长或价值；没统计到时长不代表没看。休闲浏览也可以是你的目的。")
+                        HelpLink("比例范围",
+                            "统计范围：${report.coverageSessions} 条有效记录，每条按主要内容归一类。观点主题统计范围：${report.claims.size} 个观点，一条记录可能有多个观点。有效记录包含未分类和娱乐内容。没统计到时长不代表没看。")
                     }
                 }
             }
 
             WhiteCard {
-                CollapsibleReportSection("持续观察", "${report.findings.size} 条观察") {
+                CollapsibleReportSection("长期观察", "${report.findings.size} 条观察") {
                     report.findings.forEach { finding ->
                         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             MetadataText(finding.topic)
@@ -197,19 +190,18 @@ internal fun AnalysisCards(
                                 it.eventId in finding.eventIds && (finding.topic == "全部" || it.topic == finding.topic)
                             }
                             if (referenced.isNotEmpty()) TextButton(onClick = { selectedClaims = referenced },
-                                contentPadding = PaddingValues(horizontal = 0.dp)) { Text("原文依据 ›") }
-                            ExpandableNote("依据与范围", finding.explanation)
+                                contentPadding = PaddingValues(horizontal = 0.dp)) { Text("查看原文 ›") }
+                            HelpLink("依据与范围", finding.explanation)
                         }
                     }
-                    ExpandableNote("结果说明",
-                        "主题集中、观点一致或负面情绪，都不会单独得出结论。云端结果对观点结构作出估计，本地规则提供候选；两者都需要核查表达者和材料源头。结果不会推断你的态度、情绪或认知状况，也不能证明你是否处于信息茧房。")
+                    HelpLink("结果说明",
+                        "主题集中、观点一致或负面情绪，都不会单独得出结论。云端结果对观点结构作出估计，本地识别提供候选；两者都需要核查表达者和材料源头。")
                 }
             }
 
             if (report.contentSignals.isNotEmpty()) {
                 WhiteCard {
-                    CollapsibleReportSection("文字表达线索", "${report.contentSignals.size} 条线索") {
-                        MetadataText("只描述原文的措辞，不能推断你的心理状态。")
+                    CollapsibleReportSection("表达特征", "${report.contentSignals.size} 条线索") {
                         report.contentSignals.take(8).forEach { signal ->
                             Text(signal.label, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                             QuoteBlock(signal.quote)
@@ -217,29 +209,26 @@ internal fun AnalysisCards(
                                 OriginalRecord(event, report.zone, appNames, "对应原文：")
                             }
                         }
-                        if (report.contentSignals.size > 8) MetadataText("显示前 8 条，完整列表可导出。")
+                        if (report.contentSignals.size > 8) MetadataText("显示前 8 条，完整内容见导出报告。")
                     }
                 }
             }
 
             WhiteCard {
-                SectionTitle("保存回顾", "${report.usableSnapshots} 条有效记录 · 原文可回查")
+                SectionTitle("导出回顾", help = "导出包含原文引用。PDF 附录最多 100 个观点，完整内容请导出文本。已导出文件需自行删除。")
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onExport(report, true) },
                         enabled = !state.exporting && !state.running && !state.stale,
                         modifier = Modifier.weight(1f).heightIn(min = 48.dp),
                         shape = MaterialTheme.shapes.small) { Text("导出 PDF") }
-                    OutlinedButton(onClick = { onExport(report, false) },
+                    TextButton(onClick = { onExport(report, false) },
                         enabled = !state.exporting && !state.running && !state.stale,
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp),
-                        shape = MaterialTheme.shapes.small) { Text("导出文本") }
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("导出文本") }
                 }
                 if (state.exporting) LinearProgressIndicator(Modifier.fillMaxWidth())
                 state.exportMessage?.let { MetadataText(it) }
-                ExpandableNote("导出说明",
-                    "报告包含生成时的原文引用。PDF 附录最多 100 个观点，完整列表请导出文本。清空应用不会删除已导出的文件。")
-                ExpandableNote("数据范围与方法",
-                    "${report.period}，统计至 ${reportTime(report.end, report.zone)}。共 ${report.rawRecords} 条原始记录，保留 ${report.usableSnapshots} 条有效记录，合并 ${report.mergedSnapshots} 条重复内容，跳过 ${report.skippedRecords} 条无正文的记录，${report.unknownDurationRecords} 条未统计时长。历史对比使用之前的 ${report.comparisonRecords} 条记录。\n\n${report.method}。覆盖已授权应用提供的可见文字、已保存的音频转写及视觉提取文字；视觉文字可能有误。未授权的页面文字、没获取到的正文、未转写的音频和未采样的视频画面不在统计范围内。音频转写与视觉文字不增加观看时长，媒体长度不计入浏览停留。停留时长不等于阅读、理解或认同。")
+                HelpLink("数据范围与方法",
+                    "${report.period}，统计至 ${reportTime(report.end, report.zone)}。共 ${report.rawRecords} 条原始记录，保留 ${report.usableSnapshots} 条有效记录，合并 ${report.mergedSnapshots} 条重复内容，跳过 ${report.skippedRecords} 条无正文的记录，${report.unknownDurationRecords} 条时长未统计。历史对比使用之前的 ${report.comparisonRecords} 条记录。\n\n${report.method}。覆盖已授权应用提供的可见文字、已保存的音频转写及视觉提取文字；视觉文字可能有误。未授权的页面文字、未获取的正文、未转写的音频和未采样的画面不在统计范围内。音频转写与视觉文字不增加作品数或停留时长。停留时长为估算，不代表阅读或认同。")
             }
         }
     }
@@ -251,11 +240,11 @@ internal fun AnalysisCards(
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).imePadding()
                 .padding(horizontal = 24.dp).padding(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                SectionTitle("这段浏览，你想看什么", "学习、核查或休闲，都可以是目的")
+                SectionTitle("浏览目的")
                 OutlinedTextField(value = purposeDraft, onValueChange = { purposeDraft = it.take(120) },
-                    label = { Text("我的浏览目的（选填）") },
+                    label = { Text("浏览目的（选填）") },
                     placeholder = { Text("例如：比较求职资料、专题学习、休闲") },
-                    supportingText = { Text("${purposeDraft.length}/120 · 仅用于生成回顾，不影响识别结果") },
+                    supportingText = { Text("${purposeDraft.length}/120") },
                     modifier = Modifier.fillMaxWidth().testTag("purpose-input"), minLines = 2, maxLines = 4)
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -268,7 +257,6 @@ internal fun AnalysisCards(
                         }, label = { Text(preset) })
                     }
                 }
-                MetadataText("点击标签会自动填入，不会覆盖你已写的内容。")
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = { editingPurpose = false }, modifier = Modifier.weight(1f),
                         shape = MaterialTheme.shapes.small) { Text("取消") }
@@ -288,7 +276,7 @@ internal fun AnalysisCards(
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp)) {
                     item {
-                        SheetHeading("查看观点和依据", "${candidates.size} 个观点 · 以采集原文为准") {
+                        SheetHeading("查看观点和依据", "${candidates.size} 个观点") {
                             selectedClaims = null
                         }
                     }
@@ -311,17 +299,16 @@ internal fun AnalysisCards(
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             SheetHeading(hourRange(value),
-                                if (period == StatisticsPeriod.WEEK) "最近 7 天同一小时合计" else if (period == StatisticsPeriod.HOURS24) "过去24小时该钟点合计" else "今天该时段") {
+                                if (period == StatisticsPeriod.WEEK) "最近 7 天同一小时合计" else if (period == StatisticsPeriod.HOURS24) "过去 24 小时该小时合计" else "今天该时段") {
                                 detailHour = null
                             }
                             Text("${review?.recordCount ?: 0} 条有效记录 · ${hourDuration(review)}",
                                 color = Ink, fontWeight = FontWeight.SemiBold)
-                            MetadataText("${review?.unknownDurationRecords ?: 0} 条未统计时长 · ${candidates.size} 个观点")
+                            MetadataText("${review?.unknownDurationRecords ?: 0} 条时长未统计 · ${candidates.size} 个观点")
                             review?.topics?.forEach {
                                 ProportionRow(it.topic, "${it.count} 条", fraction(it.count, review.recordCount), Accent)
                             }
-                            MetadataText("主题比例的分母是 ${review?.recordCount ?: 0} 条有效记录。")
-                            if (candidates.isEmpty()) Text("这个时段没有识别到明确的观点。没有识别到不代表没有浏览。",
+                            if (candidates.isEmpty()) Text("该时段暂无明确观点。",
                                 color = Muted, fontSize = 13.sp, lineHeight = 22.sp)
                         }
                     }
@@ -335,15 +322,14 @@ internal fun AnalysisCards(
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            SectionTitle("回看这个时段的采集原文", "${hourRecords.size} 条原始记录，包含被自动跳过的内容")
-                            MetadataText("跨小时的记录可以在两个时段分别回看，停留时长按时段分摊。")
+                            SectionTitle("时段原文", "${hourRecords.size} 条原始记录")
                         }
                     }
                     itemsIndexed(hourRecords) { _, event ->
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             val duration = window.slices(event).filter { it.hour == value }.sumOf { it.durationMillis }
-                            MetadataText(if (event.sourceType.startsWith("audio_")) "音频转写 · 未统计观看时长"
-                                else if (window.durationKnown(event)) "本时段预计停留 ${formatDuration(duration)}" else "未统计时长")
+                            MetadataText(if (event.sourceType.startsWith("audio_")) "音频转写 · 时长未统计"
+                                else if (window.durationKnown(event)) "本时段预计停留 ${formatDuration(duration)}" else "时长未统计")
                             if (event.sourceType == "accessibility") CaptureVisibilityBreakdown(event, window, value)
                             OriginalRecord(event, report.zone, appNames, "采集原文：")
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -396,7 +382,7 @@ private fun EvidenceRatioBar(observations: List<ClaimObservation>) {
             Text("重复 $repeated · ${ReportExporter.percent(repeated, total)}", color = Amber, fontSize = 11.sp)
             Text("新增 $added · ${ReportExporter.percent(added, total)}", color = Accent, fontSize = 11.sp)
         }
-        MetadataText("分母 $total 个观点" + if (remainder > 0)
+        MetadataText("统计范围：$total 个观点" + if (remainder > 0)
             " · " + listOfNotNull(if (first > 0) "首次 $first" else null,
                 if (conditions > 0) "条件不同 $conditions" else null,
                 if (unknown > 0) "未知 $unknown" else null).joinToString(" · ") else "")
@@ -431,14 +417,14 @@ private fun GroupRow(index: Int, group: ClaimGroup, onClick: () -> Unit) {
         Text(group.quote, color = Ink, fontSize = 13.sp, lineHeight = 21.sp,
             maxLines = 2, overflow = TextOverflow.Ellipsis)
         EvidenceRatioBar(group.observations)
-        Text("原文与依据 ›", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Text("查看原文 ›", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
     }
 }
 
 @Composable
 private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone: String,
     appNames: Map<String, String>, durationMillis: Long? = item.durationMillis,
-    durationLabel: String = "本次回顾范围内的预计停留") {
+    durationLabel: String = "本次预计停留") {
     val current = events.firstOrNull { it.id == item.eventId }
     val fromAudio = current?.sourceType?.startsWith("audio_") == true
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -446,16 +432,16 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
         QuoteBlock(item.quote)
         Text(item.increment.label, color = incrementColor(item.increment), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            MetadataText(if (item.analysisSource == "structured_model") "观点来源：云端结构结果 · 仍需核对" else "观点来源：本地规则候选")
-            Text("讨论对象：${item.subject.ifBlank { "未识别，请查看原文" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
+            MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
+            Text("讨论对象：${item.subject.ifBlank { "未识别" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
             if (item.analysisSource == "structured_model") {
                 Text("判断维度：${item.dimension.ifBlank { "待确认" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
                 Text("立场：${item.stance.ifBlank { "待确认" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
             }
-            Text("适用条件：${item.conditions.ifBlank { "未识别到适用条件" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
-            MetadataText("出处：${if (item.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表你的看法"}")
-            MetadataText(if (fromAudio) "音频转写 · 未统计观看时长，媒体长度不计入浏览停留。"
-                else "$durationLabel：${durationMillis?.let(::formatDuration) ?: "未统计"} · 同一条记录里的多个观点共用时长，不能相加")
+            Text("适用条件：${item.conditions.ifBlank { "未识别" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
+            MetadataText("出处：${if (item.uncertainAttribution) "可能引用他人" else "待核实"}")
+            MetadataText(if (fromAudio) "音频转写"
+                else "$durationLabel：${durationMillis?.let(::formatDuration) ?: "未统计"}")
         }
         if (item.evidenceDetails.isNotEmpty()) {
             Text(if (fromAudio) "依据片段（来自音频转写）" else "依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
@@ -466,23 +452,23 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
                     QuoteBlock(fragment.text)
                     if (fragment.identity.actors.isNotEmpty()) MetadataText("案例当事对象：${fragment.identity.actors.joinToString("、")}")
                     if (fragment.identity.origins.isNotEmpty()) MetadataText("原材料线索：${fragment.identity.origins.joinToString("、")}")
-                    if (fragment.identityUnresolved) MetadataText("案例身份或材料关系不清楚，暂不确认新增或重复。")
+                    if (fragment.identityUnresolved) MetadataText("材料关系待确认")
                 }
             }
         } else if (item.evidence.isNotEmpty()) {
             Text(if (fromAudio) "依据片段（来自音频转写）" else "依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             item.evidence.forEach { QuoteBlock(it) }
-        } else MetadataText("没有识别到相关依据片段。")
+        } else MetadataText("未识别到相关依据。")
         if (current != null) OriginalRecord(current, zone, appNames, "本条采集原文：")
         else {
             Text("本条采集原文：", color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            MetadataText("这条记录已不在本机（可能已删除或超出 5000 条上限）")
+            MetadataText("记录已删除或超出保存上限")
         }
         item.previousEventId?.let { previous ->
             val previousEvent = events.firstOrNull { it.id == previous }
             Text("用于对比的早期记录 #$previous", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             if (previousEvent != null) OriginalRecord(previousEvent, zone, appNames, "早期采集原文：")
-            else MetadataText("这条记录已不在本机，无法回看原文。")
+            else MetadataText("记录已不在本机，无法查看原文。")
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
@@ -497,7 +483,7 @@ private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<Strin
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         MetadataText("事件 #${event.id} · ${reportTime(event.timestamp, zone)} · ${appNames[event.packageName] ?: event.packageName}")
-        if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 媒体偏移 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
+        if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
         SelectionContainer {
             Text(event.visibleText, color = Ink, fontSize = 14.sp, lineHeight = 24.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 3)
@@ -529,7 +515,7 @@ private fun incrementColor(increment: Increment): Color = when (increment) {
 
 private fun hourDuration(review: HourlyReview?): String = when {
     review == null || review.recordCount == 0 -> "暂无记录"
-    review.durationMillis == 0L && review.unknownDurationRecords == review.recordCount -> "未统计时长"
+    review.durationMillis == 0L && review.unknownDurationRecords == review.recordCount -> "时长未统计"
     else -> formatDuration(review.durationMillis)
 }
 

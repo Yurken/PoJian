@@ -30,11 +30,11 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         sessions.map { session ->
             val report = session.analysisJson?.let(AudioInsightCodec::decode)
             AudioSessionUi(session.id, session.title,
-                if (session.source == AudioSource.IMPORT) "导入音频" else "应用声音",
+                if (session.source == AudioSource.IMPORT) "导入音频" else "应用录音",
                 session.startedAt, session.durationMillis,
                 grouped[session.id].orEmpty().map { AudioSegmentUi(it.id, it.offsetStartMillis, it.offsetEndMillis, it.originalText, it.correctedText) },
                 when (session.status) {
-                    "created" -> "正在准备"; "recording" -> "正在记录"; "transcribing" -> "正在转写"
+                    "created" -> "正在准备"; "recording" -> "正在录音"; "transcribing" -> "正在转写"
                     "completed" -> "已完成"; "failed" -> "处理失败"; else -> "已停止"
                 }, session.errorMessage, report?.method, report?.summary,
                 report?.claims.orEmpty().map { claim ->
@@ -56,7 +56,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             state.error != null -> AudioModelStatus.ERROR
             else -> AudioModelStatus.MISSING
         }, if (state.isDownloading) state.modelDownloadProgress else null,
-            if (state.isDownloading) "中文语音模型约 31 MB，下载后离线使用" else state.error ?: "中文语音模型约 31 MB，下载后在本机转写")
+            if (state.isDownloading) "中文语音模型约 31 MB，下载后离线转写" else state.error ?: "中文语音模型约 31 MB，下载后离线转写")
         val task = when {
             preparing -> AudioTaskUiState(AudioTaskPhase.PREPARING, "正在准备")
             state.isCapturing -> AudioTaskUiState(AudioTaskPhase.CAPTURING, state.status, partialText = text, elapsedMillis = state.elapsedMillis)
@@ -67,7 +67,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     val ui = combine(runtimeUi, sessions, config, coordinator.message, localMessage) { state, sessions, config, message, local ->
         state.copy(sessionCount = sessions.size, message = local ?: message ?: state.message,
-            cloudLabel = if (config.enabled) "已启用 · 每天最多 ${config.dailyLimit} 次 · 只在你手动分析时发送文字" else "未启用 · 使用本地规则分析")
+            cloudLabel = if (config.enabled) "已启用 · 每日最多 ${config.dailyLimit} 次" else "未启用 · 使用本地识别")
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AudioUiState())
 
     fun notify(value: String) { localMessage.value = value }
@@ -76,7 +76,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             try { block() } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                localMessage.value = error.message?.take(200) ?: "操作没有完成，请重试"
+                localMessage.value = error.message?.take(200) ?: "操作未完成，请重试"
             }
         }
     }
@@ -91,7 +91,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     fun editSegment(id: Long, text: String) = action {
         val row = app.audioRepository.getTranscript(id) ?: return@action
         coordinator.cancelAnalysis(row.sessionId)
-        check(app.audioRepository.editTranscript(id, text)) { "这条转写已删除" }
+        check(app.audioRepository.editTranscript(id, text)) { "该转写不存在或已删除" }
     }
     fun deleteSession(id: String) = action { coordinator.deleteSession(id) }
     fun saveConfig(value: TextServiceConfig, onSaved: () -> Unit, onError: (String) -> Unit) {

@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -126,16 +127,18 @@ fun AudioEntryCard(
     WhiteCard(modifier.testTag("audio-entry")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("播放声音", style = MaterialTheme.typography.titleSmall,
+            Text("应用录音", style = MaterialTheme.typography.titleSmall,
                 fontFamily = FontFamily.SansSerif, color = Ink, modifier = Modifier.weight(1f))
+            HelpButton("应用录音", "录制所选应用播放的声音，最长 5 分钟，每次需系统授权。本机转写，只保存文字与时间。部分应用不允许录制，可改用导入音频。")
             AudioStatusLabel(when {
                 state.task?.phase == AudioTaskPhase.CAPTURING && isPaused -> "已暂停"
                 state.task?.phase == AudioTaskPhase.CAPTURING -> "记录中"
                 state.task?.phase == AudioTaskPhase.TRANSCRIBING -> "转写中"
                 state.task != null -> "准备中"
-                state.modelState.status == AudioModelStatus.READY -> "本地转写"
+                state.modelState.status == AudioModelStatus.READY -> "就绪"
                 state.modelState.status == AudioModelStatus.DOWNLOADING -> "下载中"
-                else -> "待准备"
+                state.modelState.status == AudioModelStatus.ERROR -> "下载失败"
+                else -> "待下载"
             })
         }
         if (state.task == null || state.modelState.status != AudioModelStatus.READY) {
@@ -145,17 +148,10 @@ fun AudioEntryCard(
             AudioTaskProgress(it, onCancelTask, compact, onPauseResume, isPaused)
         }
         if (state.task == null) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onCapture, enabled = canStart, shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-capture"),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
-                    Text("记录播放声音")
-                }
-                OutlinedButton(onClick = onImport, enabled = canStart, shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-import"),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
-                    Text("导入音频")
-                }
+            Button(onClick = onCapture, enabled = canStart, shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("audio-capture"),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)) {
+                Text("开始录音")
             }
         }
         state.message?.takeIf { it.isNotBlank() }?.let {
@@ -164,7 +160,13 @@ fun AudioEntryCard(
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetadataText("不保留原声", Modifier.weight(1f))
+            if (state.task == null) {
+                TextButton(onClick = onImport, enabled = canStart,
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("audio-import"),
+                    contentPadding = PaddingValues(horizontal = 0.dp)) {
+                    Text("导入音频")
+                }
+            }
             TextButton(onClick = onOpenRecords, modifier = Modifier.heightIn(min = 48.dp),
                 contentPadding = PaddingValues(horizontal = 0.dp)) {
                 Text(if (state.sessionCount > 0) "音频记录 ${state.sessionCount} ›" else "音频记录 ›")
@@ -191,7 +193,7 @@ fun RecordingScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("声音记录", style = MaterialTheme.typography.headlineSmall,
+            Text("录制音频", style = MaterialTheme.typography.headlineSmall,
                 fontFamily = FontFamily.SansSerif, color = Ink,
                 modifier = Modifier.padding(vertical = 8.dp))
         }
@@ -199,11 +201,6 @@ fun RecordingScreen(
             AudioEntryCard(state, onImport, onCapture, onDownloadModel, onCancelTask,
                 onOpenRecords, onCancelDownload = onCancelDownload,
                 onPauseResume = onPauseResume, isPaused = isPaused)
-        }
-        item {
-            ExpandableNote("录制与导入说明",
-                "记录所选应用播放的声音，单次最长 5 分钟；也可以导入音频或视频音轨。" +
-                    "每次录制需要系统授权，部分应用不允许录制。转写在本机完成，只保存文字和时间。")
         }
     }
 }
@@ -260,7 +257,7 @@ private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compac
             Text(task.title.ifBlank {
                 when (task.phase) {
                     AudioTaskPhase.PREPARING -> "正在准备"
-                    AudioTaskPhase.CAPTURING -> "正在记录播放声音"
+                    AudioTaskPhase.CAPTURING -> "正在录音"
                     AudioTaskPhase.TRANSCRIBING -> "正在转写音频"
                 }
             }, style = MaterialTheme.typography.bodyMedium, color = Ink,
@@ -276,19 +273,27 @@ private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compac
             // Capture has no amplitude measurements. Show elapsed time against its actual limit.
             LinearProgressIndicator(progress = { (task.elapsedMillis / 300_000f).coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth().semantics {
-                    contentDescription = "录制进度，已记录 ${audioTimestamp(task.elapsedMillis)}，最长 5 分钟"
+                    contentDescription = "录制进度，已录制 ${audioTimestamp(task.elapsedMillis)}，最长 5 分钟"
                 })
         } else AudioProgress(task.progress, "音频处理进度")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (task.phase == AudioTaskPhase.CAPTURING && onPauseResume != null) {
-                Button(onClick = onPauseResume, shape = RoundedCornerShape(12.dp),
+                OutlinedButton(onClick = onPauseResume, shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-pause-resume")) {
-                    Text(if (isPaused) "继续记录" else "暂停记录")
+                    Text(if (isPaused) "继续录音" else "暂停录音")
                 }
             }
-            OutlinedButton(onClick = onStop, shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-stop-task")) {
-                Text(if (task.phase == AudioTaskPhase.CAPTURING) "停止记录" else "停止处理")
+            if (task.phase == AudioTaskPhase.CAPTURING) {
+                Button(onClick = onStop, shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-stop-task")) {
+                    Text("停止录音")
+                }
+            } else {
+                OutlinedButton(onClick = onStop, shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).testTag("audio-stop-task")) {
+                    Text("停止处理")
+                }
             }
         }
         if (task.partialText.isNotBlank()) {
@@ -302,7 +307,7 @@ private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compac
                 QuoteBlock(task.partialText, Modifier.testTag("audio-live-transcript"))
             }
         } else MetadataText(if (task.phase == AudioTaskPhase.CAPTURING)
-            "等待播放声音…" else "等待识别结果…")
+            "等待音频输入…" else "等待识别结果…")
     }
 }
 
@@ -327,7 +332,7 @@ fun AudioRecordsEntry(count: Int, onOpen: () -> Unit, modifier: Modifier = Modif
         .heightIn(min = 64.dp).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("音频记录", color = Ink, style = MaterialTheme.typography.titleMedium)
-            MetadataText(if (count > 0) "$count 段转写 · 查看与修订" else "导入音频或记录播放声音",
+            MetadataText(if (count > 0) "$count 段转写" else "导入音频或开始录音",
                 Modifier.padding(top = 4.dp))
         }
         Text("查看 ›", color = Accent, style = MaterialTheme.typography.labelLarge)
@@ -352,15 +357,14 @@ fun AudioRecordsScreen(
             Text("音频记录", style = MaterialTheme.typography.headlineSmall,
                 fontFamily = FontFamily.SansSerif, color = Ink)
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                MetadataText("本机已保存 ${sessions.size} 段转写", Modifier.weight(1f))
+                MetadataText("${sessions.size} 段转写", Modifier.weight(1f))
                 TextButton(onClick = onImport, enabled = canImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入音频") }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
         if (sessions.isEmpty()) item {
             WhiteCard {
-                SectionTitle("还没有音频记录")
-                MetadataText("导入音频，或从录制页开始记录播放声音。")
+                SectionTitle("暂无音频记录")
                 OutlinedButton(onClick = onImport, enabled = canImport,
                     shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("导入音频")
@@ -411,7 +415,6 @@ fun AudioSessionDetailSheet(
                         Text(session.title, style = MaterialTheme.typography.headlineSmall, color = Ink)
                         MetadataText("${session.sourceLabel} · ${audioDate(session.createdAt)}")
                         MetadataText("音频时长 ${audioTimestamp(session.durationMillis)} · ${session.segments.size} 段转写 · ${session.statusLabel}")
-                        ExpandableNote("转写说明", "音频长度不代表实际观看或收听时长。识别可能有误，可以对照语境修订文字。")
                         session.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodyMedium) }
                         session.analysisLabel?.let { MetadataText(it) }
@@ -445,7 +448,7 @@ fun AudioSessionDetailSheet(
                                         "依据出处 · 音频 ${audioTimestamp(claim.startMillis)} — ${audioTimestamp(claim.endMillis)}"
                                         else "来自转写的依据")
                                     QuoteBlock(claim.evidence)
-                                } else MetadataText("没有识别到可回查的依据")
+                                } else MetadataText("未识别到依据")
                                 val comparison = listOf(claim.relation, claim.novelty).filter { it.isNotBlank() }.joinToString(" · ")
                                 if (comparison.isNotBlank()) MetadataText(comparison)
                                 claim.historyLabel?.takeIf { it.isNotBlank() }?.let { MetadataText(it) }
@@ -454,11 +457,12 @@ fun AudioSessionDetailSheet(
                         }
                     }
                 }
-                if (session.segments.isEmpty()) item { MetadataText("这段音频还没有识别到文字。") }
+                if (session.segments.isEmpty()) item { MetadataText("该音频未识别到文字。") }
                 else item(key = "segments-heading") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        SectionTitle("转写片段", "${session.segments.size} 段 · 识别可能有误，点时间段可以修订")
+                        SectionTitle("转写片段", "${session.segments.size} 段",
+                            help = "点击时间段修订文字。仅保存转写与时间，不保留原声；音频长度不计入浏览停留。")
                     }
                 }
                 items(session.segments, key = { it.id }) { segment ->
@@ -480,7 +484,7 @@ fun AudioSessionDetailSheet(
                         MetadataText("原始转写")
                         QuoteBlock(segment.originalText)
                         if (!segment.correctedText.isNullOrBlank() && segment.correctedText != segment.originalText) {
-                            MetadataText("修订后（回顾时使用）")
+                            MetadataText("修订后（用于回顾）")
                             QuoteBlock(segment.correctedText)
                         }
                         if (editingId == segment.id) {
@@ -508,7 +512,6 @@ fun AudioSessionDetailSheet(
                         .testTag("audio-delete-session")) {
                         Text("删除这条音频记录", color = MaterialTheme.colorScheme.error)
                     }
-                    MetadataText("破茧只保存转写文字和时间，不保留原声。")
                 }
             }
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("关闭") }
@@ -517,8 +520,9 @@ fun AudioSessionDetailSheet(
     if (confirmDelete) AlertDialog(onDismissRequest = { confirmDelete = false },
         title = { Text("删除这条音频记录？") },
         text = { Text("这条记录的转写和修订文字将被删除。") },
-        confirmButton = { TextButton(onClick = { confirmDelete = false; onDelete() }) {
-            Text("删除", color = MaterialTheme.colorScheme.error)
+        confirmButton = { Button(onClick = { confirmDelete = false; onDelete() },
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
+            Text("删除")
         } }, dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("取消") } })
 }
 
@@ -533,7 +537,6 @@ fun AudioSettingsSection(
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         SectionTitle("语音与分析")
         ModelPreparation(state.modelState, onDownloadModel, onCancelDownload)
-        MetadataText("本机转写 · 只保存文字和时间")
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
@@ -542,8 +545,7 @@ fun AudioSettingsSection(
             }
             TextButton(onClick = onConfigureCloud, modifier = Modifier.heightIn(min = 48.dp)) { Text("配置 ›") }
         }
-        ExpandableNote("记录播放声音的授权与边界", "每次记录播放声音都需要系统授权。部分应用不允许录制，耳机、设备和系统版本也可能影响效果；录不到声音时可以改用导入音频。\n\n" +
-            "语音转写可能漏字或识别错误，音乐和环境声不一定能识别。识别出的观点和依据，请回到原内容核实。")
+        HelpLink("录音授权与边界", "每次录音需系统授权，部分应用不允许录制；识别可能有误，请核对原内容；录不到声音时可改用导入音频。")
     }
 }
 

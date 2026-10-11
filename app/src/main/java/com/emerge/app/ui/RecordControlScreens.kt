@@ -65,7 +65,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
     LazyColumn(modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp)) {
         item {
-            SectionTitle("信息足迹", "本机保存 $count 条")
+            SectionTitle("浏览记录", "本机保存 $count 条")
             OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                 label = { Text("搜索原文或应用") }, singleLine = true, shape = MaterialTheme.shapes.small,
                 trailingIcon = {
@@ -85,15 +85,11 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
         audioContent?.let { content -> item(key = "audio-record-entry") { content() } }
         if (filtered.isEmpty()) item {
             WhiteCard {
-                SectionTitle(if (hasFilter) "没有找到相关记录" else "还没有任何记录")
-                Text(if (hasFilter) "换个关键词或应用名再试试。"
-                    else if (audioContent != null) "导入音频，或选择应用开始记录。"
-                    else "选择应用并授权后，即可开始记录。",
-                    color = Muted, style = MaterialTheme.typography.bodyMedium)
+                SectionTitle(if (hasFilter) "无匹配记录" else "暂无记录")
                 if (hasFilter) TextButton(onClick = { query = ""; selectedPackage = null }, modifier = Modifier.heightIn(min = 48.dp)) {
                     Text("查看全部记录")
                 } else Button(onClick = onSettings, modifier = Modifier.heightIn(min = 48.dp), shape = MaterialTheme.shapes.small) {
-                    Text("去设置采集")
+                    Text("设置采集范围")
                 }
             }
         }
@@ -126,16 +122,14 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                     if (fromAudio) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             MetadataText("音频转写")
-                            MetadataText("媒体偏移 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
+                            MetadataText("音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
                         }
-                    } else MetadataText(if (durationKnown) "停留约 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品身份待确认"}"
-                        else "未统计时长")
+                    } else MetadataText(if (durationKnown) "预计停留 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品未识别"}"
+                        else "时长未统计")
                     if (expanded) {
                         QuoteBlock(event.visibleText)
                         MetadataText("记录 #${event.id} · ${event.packageName}")
-                        if (fromAudio) MetadataText("媒体偏移用于定位转写，不计入浏览停留时长。")
-                        else {
-                            if (event.sampleCount > 0) MetadataText("已检查 ${event.sampleCount} 次 · 屏幕停留不等于实际注视、阅读或认同")
+                        if (!fromAudio) {
                             CaptureVisibilityBreakdown(event, ObservationWindow(0, Long.MAX_VALUE, zone))
                         }
                     } else Text(event.visibleText, maxLines = 2, overflow = TextOverflow.Ellipsis,
@@ -160,11 +154,14 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
 @Composable
 internal fun CaptureVisibilityBreakdown(event: BrowseEvent, window: ObservationWindow, hour: Int? = null) {
     if (event.visibilityIntervals == null) {
-        if (event.sampleCount > 0) MetadataText("旧记录只有整次访问的时长估计，未区分正文和评论区。")
+        if (event.sampleCount > 0) {
+            HelpLink("时长统计口径", "仅统计已记录的可见区间，暂停和缺失窗口不计时。未定位时段单独统计，评论区时长未分配到单条评论。旧记录仅有整次访问的时长估计。")
+        }
         return
     }
     if (!window.durationKnown(event)) {
-        MetadataText("可见区间记录无法核对，停留时间待确认。")
+        MetadataText("停留时间待确认")
+        HelpLink("时长统计口径", "仅统计已记录的可见区间，暂停和缺失窗口不计时。未定位时段单独统计，评论区时长未分配到单条评论。旧记录仅有整次访问的时长估计。")
         return
     }
     val slices = window.slices(event).filter { hour == null || it.hour == hour }
@@ -173,7 +170,7 @@ internal fun CaptureVisibilityBreakdown(event: BrowseEvent, window: ObservationW
             val duration = slices.filter { it.region == region }.sumOf { it.durationMillis }
             MetadataText("${region.label}：${formatDuration(duration)}")
         }
-        MetadataText("只统计实际记录的可见区间；页面切换时段归为未定位，暂停和缺失窗口不计时。评论区停留尚未分配到单条评论。")
+        HelpLink("时长统计口径", "仅统计已记录的可见区间，暂停和缺失窗口不计时。未定位时段单独统计，评论区时长未分配到单条评论。旧记录仅有整次访问的时长估计。")
     }
 }
 
@@ -187,8 +184,7 @@ private fun RecordAppFilterSheet(packages: List<String>, counts: Map<String, Int
             LazyColumn(Modifier.testTag("record-app-options").weight(1f)) {
                 item(key = "filter-heading") {
                     Column {
-                        SectionTitle("按应用回看")
-                        MetadataText("关键词筛选继续生效", Modifier.padding(top = 4.dp, bottom = 12.dp))
+                        SectionTitle("按应用筛选")
                     }
                 }
                 item {
@@ -248,10 +244,6 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                         Switch(checked = enabled, onCheckedChange = onCapture, enabled = selectedApps.isNotEmpty(),
                             modifier = Modifier.testTag("capture-toggle").semantics { contentDescription = "开启采集"; stateDescription = captureState })
                     }
-                    Text(if (selectedApps.isEmpty()) "先选择应用，再授权开启。"
-                        else "仅记录所选应用的可见文字",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                     message?.let { Text(it, color = MaterialTheme.colorScheme.onPrimaryContainer,
                         style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
                 }
@@ -259,68 +251,58 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
         }
         item {
             WhiteCard {
-                SectionTitle("采集范围")
+                SectionTitle("采集范围", help = "仅记录所选应用的可见文字。调整范围后需重新开启采集，历史记录保留。")
                 MetadataText(if (selectedApps.isEmpty()) "尚未选择应用" else "已选择 ${selectedApps.size} 个应用")
                 if (selectedApps.isNotEmpty()) Text(selectedApps.joinToString("、") { it.label }, color = Muted,
                     maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
                 OutlinedButton(onClick = onChooseApps, shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                    Text("选择应用（已选 ${selectedApps.size} 个）")
+                    Text("选择应用")
                 }
-                ExpandableNote("范围调整说明", "默认不记录任何应用，由你主动选择。调整应用后采集会暂时停止，历史记录不受影响；保存范围后需要重新开启采集。")
             }
         }
         audioContent?.let { content -> item(key = "audio-settings") { content() } }
         item {
             WhiteCard {
-                SectionTitle("系统授权")
+                SectionTitle("系统授权", help = "在系统设置中开启「破茧浏览采集」，然后打开采集开关。\n\n" +
+                    "本次运行已接收事件 ${diagnostics.eventsReceived} 次\n" +
+                    "最近应用：${diagnostics.lastPackage}\n" +
+                    "最近检查：${diagnosticTime(diagnostics.lastCheck)}\n" +
+                    "最近保存：${diagnosticTime(diagnostics.lastSaved)}\n" +
+                    "最近结果：${diagnostics.result}\n\n" +
+                    "已授权但未连接时，可关闭再开启系统辅助服务。部分应用不提供正文；" +
+                    (if (audioContent != null) "录音请从录制页开始，画面采样需另行开启。" else "目前也无法识别视频画面和音频内容。"))
                 ControlStatusLine("辅助功能授权", if (permission) "已启用" else "未检测到")
                 ControlStatusLine("辅助服务连接", if (diagnostics.connected) "已连接" else "未连接")
                 OutlinedButton(onClick = onOpenSettings, shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text(if (permission) "查看系统辅助功能授权" else "前往系统授权")
                 }
-                ExpandableNote("授权方法与采集诊断", "在系统设置中开启「破茧浏览采集」，然后回到这里打开采集开关。\n\n" +
-                    "本次运行已接收事件 ${diagnostics.eventsReceived} 次\n" +
-                    "最近应用：${diagnostics.lastPackage}\n" +
-                    "最近检查：${diagnosticTime(diagnostics.lastCheck)}\n" +
-                    "最近保存：${diagnosticTime(diagnostics.lastSaved)}\n" +
-                    "最近结果：${diagnostics.result}\n\n" +
-                    "如果已授权但仍未连接，可以试试在系统中关闭再重新开启辅助服务。部分应用不会提供正文；" +
-                    (if (audioContent != null) "记录声音请从录制页开始；视频画面暂不分析。" else "目前也无法识别视频画面和音频内容。"))
+
             }
         }
         item {
             WhiteCard {
-                SectionTitle("本地存储")
+                SectionTitle("本地存储", help = "最多保留 5000 条，超出后删除最早记录。删除后分析同步更新，导出文件需自行删除。\n\n浏览目的会保留；浏览回顾重启后需重新生成。音频回顾随转写保存，修订后需重新分析。")
                 ControlStatusLine("已保存记录", "$count 条")
                 ControlStatusLine("保留上限", "5000 条")
                 TextButton(onClick = onClear, enabled = count > 0,
                     modifier = Modifier.heightIn(min = 48.dp).align(Alignment.Start)) {
-                    Text("暂停并清空全部记录",
+                    Text("清空全部记录",
                         color = if (count > 0) MaterialTheme.colorScheme.error else Muted)
                 }
-                ExpandableNote("存储、删除与云端发送", (if (audioContent != null)
-                    "数据只保存在这台设备上。只有主动配置并使用云端文字分析时，当前转写和少量相关历史文字才会发送到你指定的服务。"
-                    else "数据只保存在这台设备上，不会上传。") +
-                    "最多保留 5000 条，超出后自动删除最早的记录。目前数据库未做额外加密。\n\n" +
-                    "删除后分析结果会同步更新；已导出的文件需要自行删除。")
-                ExpandableNote("浏览目的与报告的保存方式", if (audioContent != null)
-                    "浏览目的会一直保留。分析页的回顾不会长期保存，重启应用后需要重新生成；音频记录里的回顾随转写保存在本机，修订文字后需要重新分析。导出的 PDF 或文本是当时内容的存档。"
-                    else "浏览目的会一直保留。报告不会长期保存，重启应用后需要重新生成；导出的 PDF 或文本是当时内容的存档。")
+
             }
         }
         item {
             WhiteCard {
-                SectionTitle("隐私说明")
-                MetadataText("采集由你开启，可随时暂停。")
-                ExpandableNote("查看采集说明与边界", "开启后，破茧会读取所选应用当前页面上的文字、应用名称和时间，帮你回顾自己的浏览内容。页面文字可能包含个人信息，请按需开启，不用时记得暂停。\n\n" +
-                    "采集会自动跳过密码框和输入框，也不会记录破茧本身、系统设置和输入法，但无法保证排除正文中的所有个人信息。\n\n" +
-                    "停留时长不代表真实阅读、理解或认同。没有记录到的内容就是未知，内容中的情绪表达也不代表你的心理状态。")
-                ExpandableNote("关于${stringResource(R.string.brand_name)}", stringResource(R.string.brand_tagline) +
-                    if (audioContent != null) "\n\n帮你回顾接触到的文字与声音，比较观点和依据的变化，再自己决定要不要补充材料。语音转写在本机完成，文字分析可以用本地规则，也可以连接自行配置的云端服务；识别结果请回到原内容核实。"
-                    else "\n\n帮你回顾接触到的信息，拓宽判断依据 · 离线文字分析原型。\n\n" +
-                        "回顾接触到的观点，比较依据的变化，再自己决定要不要补充材料。目前仅支持本地文字分析，识别出的观点和依据请务必回到原文核实。")
+                SectionTitle("关于")
+                HelpLink("采集与隐私", "开启后，破茧会读取所选应用当前页面上的文字、应用名称和时间，用于回顾浏览内容。页面文字可能包含个人信息，请按需开启。\n\n" +
+                    "自动跳过密码框、输入框、系统设置与输入法。正文仍可能包含个人信息，可随时暂停或删除。\n\n" +
+                    "开启云端分析后发送文字与相关历史材料；开启画面分析后发送采样画面。音频只发送转写。")
+                HelpLink("关于${stringResource(R.string.brand_name)}", stringResource(R.string.brand_tagline) +
+                    if (audioContent != null) "\n\n帮你回顾接触到的文字与声音，比较观点与依据的变化，再自主决定是否补充材料。"
+                    else "\n\n帮你回顾接触到的信息，比较观点与依据的变化，再自主决定是否补充材料。")
             }
         }
     }
@@ -354,7 +336,7 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
                 item(key = "capture-heading") {
                     Column {
                         SectionTitle("选择要采集的应用")
-                        MetadataText("已选 ${draft.size} 个 · 保存后需重新开启采集。", Modifier.padding(top = 6.dp))
+                        MetadataText("已选 ${draft.size} 个 · 保存后需开启采集", Modifier.padding(top = 6.dp))
                         OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth()
                             .padding(vertical = if (compactHeight) 4.dp else 12.dp),
                             singleLine = true, label = { Text("搜索应用") }, shape = MaterialTheme.shapes.small,
@@ -363,7 +345,7 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
                     }
                 }
                 if (filtered.isEmpty() && !loading) item {
-                    Text("没有找到应用。已安装的可启动应用、已选应用和有历史记录的应用会显示在这里。", color = Muted,
+                    Text("未找到应用", color = Muted,
                         style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 20.dp))
                 }
                 items(filtered, key = { it.packageName }) { application ->

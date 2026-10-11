@@ -34,8 +34,8 @@ class ProjectionAudioService : Service() {
     override fun onCreate() {
         super.onCreate()
         val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel(CHANNEL, "应用声音转写", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "显示应用声音转写状态，并提供暂停和停止控制"
+        manager.createNotificationChannel(NotificationChannel(CHANNEL, "应用录音", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "显示录音状态，可暂停或停止"
         })
     }
 
@@ -54,15 +54,15 @@ class ProjectionAudioService : Service() {
                     startProjectionForeground()
                     val data = if (Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(EXTRA_RESULT_DATA, Intent::class.java) else {
                         @Suppress("DEPRECATION") intent.getParcelableExtra(EXTRA_RESULT_DATA)
-                    } ?: error("缺少系统的声音记录授权，请重新开始")
+                    } ?: error("未获得系统录音授权，请重新开始")
                     val resultCode = intent.getIntExtra(EXTRA_RESULT_CODE, 0)
                     val manager = getSystemService(MediaProjectionManager::class.java)
-                    val created = manager.getMediaProjection(resultCode, data) ?: error("系统的声音记录授权已失效")
+                    val created = manager.getMediaProjection(resultCode, data) ?: error("录音授权已失效，请重新开始")
                     projection = created
                     created.registerCallback(callback, handler)
                     runtime.attachPlayback(id, packageName, created) { handler.post { finishService() } }
                 } catch (error: Throwable) {
-                    runtime.failPlayback(id, error.message?.take(200) ?: "无法开始记录声音，请重新授权")
+                    runtime.failPlayback(id, error.message?.take(200) ?: "无法开始录音，请重新授权")
                     finishService()
                 }
             }
@@ -79,7 +79,7 @@ class ProjectionAudioService : Service() {
         val declared = packageManager.getServiceInfo(
             android.content.ComponentName(this, ProjectionAudioService::class.java), 0).foregroundServiceType
         check(declared and ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION != 0) {
-            "声音采集服务缺少 mediaProjection 类型声明"
+            "应用未正确配置录音服务，请更新应用后重试"
         }
         androidx.core.app.ServiceCompat.startForeground(this, NOTIFICATION, notification(),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
@@ -98,8 +98,8 @@ class ProjectionAudioService : Service() {
             Intent(this, ProjectionAudioService::class.java).setAction(actionName), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-            .setContentTitle(if (paused) "破茧 · 声音转写已暂停" else "破茧 · 正在转写应用声音")
-            .setContentText("仅处理所选应用的声音，最长 5 分钟")
+            .setContentTitle(if (paused) "破茧 · 录音已暂停" else "破茧 · 正在录音")
+            .setContentText("仅录制所选应用播放的声音，最长 5 分钟")
             .setContentIntent(content)
             .setOngoing(true)
             .setCategory(Notification.CATEGORY_SERVICE)

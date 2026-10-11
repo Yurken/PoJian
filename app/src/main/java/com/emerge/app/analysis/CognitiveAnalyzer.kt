@@ -41,7 +41,7 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val claims: List<ClaimObservation>, val groups: List<ClaimGroup>, val topics: List<TopicCount>,
     val findings: List<ObservationFinding>, val observedDays: Int, val sourceCounts: Map<String, Int>,
     val purpose: String, val hourlyClaims: List<Int>, val zone: String,
-    val method: String = "本地文字识别规则 v0.4（联合历史片段对照；未经模型训练，结果需核实）",
+    val method: String = "本地识别与历史片段对照（未经模型训练，结果需核实）",
     val hourlyReviews: List<HourlyReview> = emptyList(), val coverageSessions: Int = 0,
     val observedDurationMillis: Long = 0, val unknownDurationRecords: Int = 0,
     val topicExposure: List<TopicExposure> = emptyList(), val contentSignals: List<ContentSignal> = emptyList(),
@@ -243,18 +243,18 @@ class CognitiveAnalyzer {
                 majorIds.size.toDouble() / ids.size >= 0.7 && majorRepeated.toDouble() / ids.size >= 0.6 -> "观察到持续低增量重复，建议回查来源"
                 members.none { it.increment == Increment.NEW || it.increment == Increment.REPEATED } -> "依据或比较历史不足，暂时无法判断是否收窄"
                 members.any { it.increment == Increment.NEW } -> "观察到依据有补充，仍需核实内容"
-                else -> "暂未发现重复线索，不代表不存在信息茧房"
+                else -> "暂未发现重复线索，不代表不存在信息同质化"
             }
             val knownDuration = ids.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
             val majorDuration = majorIds.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
             val unknown = ids.count { currentEventsById[it]?.let { event -> !window.durationKnown(event) } == true }
             ObservationFinding(topic.topic, title,
-                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条，该组依据重复 $majorRepeated 条；全主题依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录预计停留共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条未统计时长。停留按记录去重；没有时长数据时无法判断是否阅读集中。有 $truncatedComparisons 个观点达到历史候选上限，未匹配部分保留为待定。片段新增只相对于本次可比历史，不证明事实真实或来源独立。" +
+                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条，该组依据重复 $majorRepeated 条；全主题依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录预计停留共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条时长未统计。停留按记录去重；没有时长数据时无法判断是否阅读集中。有 $truncatedComparisons 个观点达到历史候选上限，未匹配部分保留为待定。片段新增只相对于本次可比历史，不证明事实真实或来源独立。" +
                     if (members.any { it.analysisSource == "structured_model" })
-                        "部分观点来自云端结构化结果，原句与论据已和保留文本逐字核对；对象、维度、立场和归属仍需人工核实。历史论据比较使用本地规则，尚未训练或校准。"
+                        "部分观点来自云端分析，引用已通过原文校验；对象、维度、立场和归属仍需核实。历史对照使用本地识别，未经模型训练或校准。"
                     else "内容的作者、立场和材料来源尚未做模型验证。",
                 majorIds.take(8))
-        }.ifEmpty { listOf(ObservationFinding("全部", "没有识别到可分析的观点", "当前内容可能只有界面按钮、娱乐内容、短评，或缺少明确的判断句。娱乐内容仍计入接触统计；这不能用来推断信息茧房。", emptyList())) }
+        }.ifEmpty { listOf(ObservationFinding("全部", "没有识别到可分析的观点", "当前内容可能只有界面按钮、娱乐内容、短评，或缺少明确的判断句。娱乐内容仍计入接触统计；这不能用来推断信息同质化。", emptyList())) }
         val exposures = usableEvents.groupBy { eventTopics[it] ?: "未分类" }.map { (topic, entries) ->
             TopicExposure(topic, entries.size, entries.sumOf { window.durationMillis(it) ?: 0 })
         }.sortedWith(compareByDescending<TopicExposure> { it.durationMillis }.thenByDescending { it.recordCount }.thenBy { it.topic })
@@ -274,8 +274,8 @@ class CognitiveAnalyzer {
             groups, topicCounts, findings, dates(usableEvents.map { it.id }.toSet()), selected.groupingBy { it.packageName }.eachCount(),
             purpose, hours.toList(), zone.id, hourlyReviews = reviews, coverageSessions = usableEvents.size,
             method = if (structuredAnalyzed > 0)
-                "云端结构化观点与本地历史对照 v0.5（原文校验；本地文字规则兜底，历史比较未经模型训练或校准）"
-                else "本地文字识别规则 v0.4（联合历史片段对照；未经模型训练，结果需核实）",
+                "云端分析与本地历史对照（原文校验；无有效结果时用本地识别，历史比较未经模型训练或校准）"
+                else "本地识别与历史片段对照（未经模型训练，结果需核实）",
             observedDurationMillis = usableEvents.sumOf { window.durationMillis(it) ?: 0 },
             unknownDurationRecords = usableEvents.count { !window.durationKnown(it) }, topicExposure = exposures,
             contentSignals = signals, comparisonStart = prior.firstOrNull()?.timestamp, comparisonRecords = prior.size,

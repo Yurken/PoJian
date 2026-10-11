@@ -42,8 +42,6 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     semantics: List<EventSemantics> = emptyList()) {
     val zone = ZoneId.systemDefault()
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    val window = ObservationWindow.forPeriod(period, now, zone)
-    val audioCount = rawEvents.count { it.sourceType.startsWith("audio_") && window.contains(it) }
     val browsingCount = stats.visitCount
     val browsingUnknown = stats.unknownDurationRecords
     val date = when (period) {
@@ -61,42 +59,36 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                     Text(when(period) { StatisticsPeriod.DAY -> "今日观察"; StatisticsPeriod.HOURS24 -> "24 小时观察"; StatisticsPeriod.WEEK -> "七日观察" },
                         style = MaterialTheme.typography.titleLarge, color = Ink, modifier = Modifier.weight(1f))
                     MetadataText(date)
+                    HelpButton("浏览统计", "作品按采集记录估算，重复打开只增加观看次数。当前有 ${stats.unidentifiedWorks} 个作品未识别。\n\n停留时长按可见区间估算，${stats.unknownDurationRecords} 条时长未统计；音频与画面文字不单独计入作品数和停留。")
                 }
                 PeriodSelector(period, onPeriod)
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onSettings),
                     verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(6.dp).clip(CircleShape).background(if (active) Accent else Muted))
-                    Text("文字采集 · $statusLabel · $selectedAppCount 个应用", color = Muted,
+                    Text("采集 · $statusLabel · $selectedAppCount 个应用", color = Muted,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
-                    Text("管理 ›", color = Accent, style = MaterialTheme.typography.labelMedium)
+                    Text("设置 ›", color = Accent, style = MaterialTheme.typography.labelMedium)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    CompactFact("${stats.total} 个", "作品接触（估计）", "${stats.visitCount} 次观看 · ${stats.appCount} 个应用", Modifier.weight(1f))
+                    CompactFact("${stats.total} 个", "浏览作品 · 估算", "${stats.visitCount} 次观看 · ${stats.appCount} 个应用", Modifier.weight(1f))
                     val duration = when {
                         browsingCount == 0 -> "—"
                         browsingUnknown == browsingCount -> "未知"
                         else -> compactDuration(stats.observedDurationMillis)
                     }
-                    CompactFact(duration, "预计停留时长", when {
-                        browsingUnknown > 0 -> "$browsingUnknown 条未统计时长"
-                        audioCount > 0 -> "音频不计入停留"
-                        else -> "根据采集记录估算"
-                    }, Modifier.weight(1f))
+                    CompactFact(duration, "预计停留", modifier = Modifier.weight(1f))
                 }
-                MetadataText("同作品再次打开只增加观看次数；${stats.unidentifiedWorks} 个作品身份未确认。音频和画面文字不单独计数。")
             }
         }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
-        item(key = "viewpoint-timeline") {
+        if (rawEvents.isNotEmpty()) item(key = "viewpoint-timeline") {
             ViewpointTimelineCard(rawEvents, period, now, analysis.report?.takeUnless { analysis.stale }, appNames, semantics)
         }
         if (rawEvents.isEmpty()) item(key = "start-guide") {
             WhiteCard {
-                SectionTitle("从一条记录开始")
-                Text("导入音频，或选择应用开启文字采集。", style = MaterialTheme.typography.bodyMedium, color = Muted)
-                OutlinedButton(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("设置采集范围") }
-                ExpandableNote("如何开始文字采集", "1. 选择要记录的应用。\n2. 在系统辅助功能中启用「破茧浏览采集」。\n3. 打开采集开关，浏览后返回查看记录。内容保存在本机，云端文字分析需主动开启；你可以随时暂停或删除。")
+                SectionTitle("暂无记录", help = "选择应用，在系统辅助功能中启用「破茧浏览采集」，再打开采集开关。也可从采集工具导入音频。")
+                Button(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("设置采集范围") }
             }
         } else item(key = "analysis") {
             AnalysisCards(analysis, period, rawEvents, onAnalyze, onExport, onPurposeChange, appNames)
@@ -104,7 +96,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         if (stats.total > 0) item(key = "source-distribution") {
             WhiteCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("各平台作品与时长", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text("平台分布", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     TextButton(onClick = { showSources = !showSources }) { Text(if (showSources) "收起 −" else "${stats.appCount} 个来源 ＋") }
                 }
                 run {
@@ -117,16 +109,17 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 MetadataText("${share.count} 个作品")
                             }
-                            MetadataText("${share.visitCount} 次观看 · 停留约 ${formatDuration(share.durationMillis)} · ${share.unidentifiedWorks} 个身份未确认")
+                            MetadataText("${share.visitCount} 次观看 · " +
+                                if (share.unknownDurationRecords == share.visitCount) "时长未统计" else
+                                    "预计停留 ${formatDuration(share.durationMillis)}" +
+                                        if (share.unknownDurationRecords > 0) " · ${share.unknownDurationRecords} 次时长未统计" else "")
                             LinearProgressIndicator(progress = { share.count.toFloat() / stats.total },
                                 modifier = Modifier.fillMaxWidth().height(5.dp), color = Accent,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant)
                         }
                     }
-                    MetadataText(if (audioCount > 0) "$audioCount 条音频转写不计入作品数和停留。应用数量不等于独立信息源数量。"
-                        else "应用数量不等于独立信息源数量。")
                 }
-                TextButton(onClick = onRecords, modifier = Modifier.align(Alignment.End)) { Text("管理本地记录 ›") }
+                TextButton(onClick = onRecords, modifier = Modifier.align(Alignment.End)) { Text("全部记录 ›") }
             }
         }
     }
@@ -143,7 +136,12 @@ private fun PeriodSelector(period: StatisticsPeriod, onPeriod: (StatisticsPeriod
                 .background(if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant)
                 .selectable(selected = selected, role = Role.Tab, onClick = { onPeriod(option) })
                 .heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                Text(option.label, color = if (selected) Accent else Muted, style = MaterialTheme.typography.labelLarge,
+                val label = when (option) {
+                    StatisticsPeriod.DAY -> "今天"
+                    StatisticsPeriod.HOURS24 -> "24 小时"
+                    StatisticsPeriod.WEEK -> "7 天"
+                }
+                Text(label, color = if (selected) Accent else Muted, style = MaterialTheme.typography.labelLarge,
                     fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
             }
         }
@@ -151,11 +149,11 @@ private fun PeriodSelector(period: StatisticsPeriod, onPeriod: (StatisticsPeriod
 }
 
 @Composable
-private fun CompactFact(value: String, label: String, note: String, modifier: Modifier = Modifier) {
+private fun CompactFact(value: String, label: String, note: String? = null, modifier: Modifier = Modifier) {
     Column(modifier.padding(end = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         MetadataText(label)
         Text(value, style = MaterialTheme.typography.titleMedium, color = Ink)
-        MetadataText(note)
+        note?.let { MetadataText(it) }
     }
 }
 

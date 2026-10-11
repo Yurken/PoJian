@@ -41,7 +41,7 @@ class AudioRuntime private constructor(context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val models = SpeechModelStore(this.context)
     private val mutableState = MutableStateFlow(AudioRuntimeState(modelInstalled = models.isInstalled,
-        status = if (models.isInstalled) "中文语音模型已就绪" else "下载中文语音模型后，可导入音频或转写应用声音"))
+        status = if (models.isInstalled) "语音模型已就绪" else "下载语音模型后，可导入音频或录制应用声音"))
     val state: StateFlow<AudioRuntimeState> = mutableState.asStateFlow()
     private val mutableTranscripts = MutableSharedFlow<AudioTranscriptBatch>(extraBufferCapacity = 32)
     val transcripts: SharedFlow<AudioTranscriptBatch> = mutableTranscripts.asSharedFlow()
@@ -61,11 +61,11 @@ class AudioRuntime private constructor(context: Context) {
 
     fun downloadModel() {
         if (state.value.isDownloading || downloadJob?.let { !it.isCompleted } == true || state.value.isImporting || state.value.isCapturing) return
-        mutableState.update { it.copy(isDownloading = true, modelDownloadProgress = 0f, error = null, status = "正在下载中文语音模型（约 31 MB）") }
+        mutableState.update { it.copy(isDownloading = true, modelDownloadProgress = 0f, error = null, status = "正在下载语音模型（约 31 MB）") }
         downloadJob = scope.launch {
             try {
                 models.download { progress -> mutableState.update { it.copy(modelDownloadProgress = progress) } }
-                mutableState.update { it.copy(modelInstalled = true, status = "中文语音模型已就绪") }
+                mutableState.update { it.copy(modelInstalled = true, status = "语音模型已就绪") }
             } catch (cancelled: CancellationException) {
                 mutableState.update { it.copy(status = "已取消模型下载") }
                 throw cancelled
@@ -87,7 +87,7 @@ class AudioRuntime private constructor(context: Context) {
         checkReady()
         check(!state.value.isImporting && !state.value.isCapturing) { "请先结束当前音频任务" }
         val startedAt = System.currentTimeMillis()
-        mutableState.update { it.copy(isImporting = true, sessionId = sessionId, elapsedMillis = 0, error = null, status = "正在本机转写，只处理前 5 分钟") }
+        mutableState.update { it.copy(isImporting = true, sessionId = sessionId, elapsedMillis = 0, error = null, status = "正在转写音频，仅处理前 5 分钟") }
         importJob = scope.launch {
             var duration = 0L
             var terminal = "completed"
@@ -128,14 +128,14 @@ class AudioRuntime private constructor(context: Context) {
     fun startPlayback(sessionId: String, resultCode: Int, data: Intent, selectedPackageName: String) {
         checkReady()
         check(!state.value.isImporting && !state.value.isCapturing) { "请先结束当前音频任务" }
-        require(selectedPackageName != context.packageName) { "请选择要转写的应用" }
+        require(selectedPackageName != context.packageName) { "请选择要录制的应用" }
         // Resolve the chosen package before requesting a foreground service. Never capture all UIDs.
         context.packageManager.getApplicationInfo(selectedPackageName, 0)
         captureSession = sessionId
         capturePaused.set(false)
         captureStopRequested.set(false)
         captureFailure.set(null)
-        mutableState.update { it.copy(sessionId = sessionId, isCapturing = true, isPaused = false, elapsedMillis = 0, error = null, status = "正在启动应用声音转写") }
+        mutableState.update { it.copy(sessionId = sessionId, isCapturing = true, isPaused = false, elapsedMillis = 0, error = null, status = "正在准备录音") }
         try {
             context.startForegroundService(Intent(context, ProjectionAudioService::class.java).apply {
                 action = ProjectionAudioService.ACTION_START
@@ -154,14 +154,14 @@ class AudioRuntime private constructor(context: Context) {
         capturePaused.set(true)
         // stop() releases an in-flight blocking AudioRecord.read immediately.
         try { record?.stop() } catch (_: Exception) { }
-        mutableState.update { it.copy(isPaused = true, status = "已暂停声音转写") }
+        mutableState.update { it.copy(isPaused = true, status = "录音已暂停") }
         ProjectionAudioService.refreshNotification(context)
     }
 
     fun resumePlayback() {
         if (!state.value.isCapturing || !capturePaused.get()) return
         capturePaused.set(false)
-        mutableState.update { it.copy(isPaused = false, status = "正在本地转写应用声音") }
+        mutableState.update { it.copy(isPaused = false, status = "正在录音") }
         ProjectionAudioService.refreshNotification(context)
     }
 
@@ -210,7 +210,7 @@ class AudioRuntime private constructor(context: Context) {
                     .build()
                 val sampleRate = 16000
                 val minimum = AudioRecord.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
-                check(minimum > 0) { "这台设备无法开始记录应用声音" }
+                check(minimum > 0) { "此设备无法录制应用声音，可改用导入音频" }
                 val audioRecord = AudioRecord.Builder()
                     .setAudioFormat(AudioFormat.Builder().setSampleRate(sampleRate).setEncoding(AudioFormat.ENCODING_PCM_16BIT).setChannelMask(AudioFormat.CHANNEL_IN_MONO).build())
                     .setBufferSizeInBytes(maxOf(minimum * 2, 16_000))
@@ -218,8 +218,8 @@ class AudioRuntime private constructor(context: Context) {
                     .build()
                 localRecord = audioRecord
                 record = audioRecord
-                check(audioRecord.state == AudioRecord.STATE_INITIALIZED) { "应用声音记录初始化失败" }
-                mutableState.update { if (it.sessionId == sessionId) it.copy(status = "正在本地转写应用声音") else it }
+                check(audioRecord.state == AudioRecord.STATE_INITIALIZED) { "录音启动失败，请重试或导入音频" }
+                mutableState.update { if (it.sessionId == sessionId) it.copy(status = "正在录音") else it }
                 LocalSpeechTranscriber(models.directory) { segment ->
                     emitTranscript(AudioTranscriptBatch(sessionId, name, packageName, "playback", startedAt, duration, listOf(segment)))
                 }.use { transcriber ->
@@ -248,7 +248,7 @@ class AudioRuntime private constructor(context: Context) {
                                     if (count <= 0) {
                                         if (captureStopRequested.get()) break
                                         if (capturePaused.get()) { running = false; continue }
-                                        error("应用声音记录中断，请重新授权后再试")
+                                        error("录音中断，请重新授权后重试")
                                     }
                                     if (capturePaused.get()) { running = false; continue }
                                     val offset = pendingOffset
@@ -256,7 +256,7 @@ class AudioRuntime private constructor(context: Context) {
                                     val limited = AudioPcm.limitedSamples(count, sampleRate, offset, MediaAudioDecoder.MAX_DURATION_MILLIS)
                                     if (limited > 0) {
                                         val samples = FloatArray(limited) { buffer[it] / 32768f }
-                                        check(chunks.trySend(PcmChunk(samples, offset)).isSuccess) { "设备转写速度不足，已停止以避免遗漏声音。可改为导入文件转写" }
+                                        check(chunks.trySend(PcmChunk(samples, offset)).isSuccess) { "设备转写速度不足，录音已停止。请改用导入音频。" }
                                     }
                                     if (limited < count) break
                                 }
@@ -301,7 +301,7 @@ class AudioRuntime private constructor(context: Context) {
 
     internal fun projectionEnded(sessionId: String) {
         if (captureSession != sessionId) return
-        captureFailure.set("系统的声音记录授权已结束，请重新开始")
+        captureFailure.set("录音授权已结束，请重新开始")
         if (captureJob == null) failPlayback(sessionId, captureFailure.get())
         captureJob?.cancel()
         try { record?.stop() } catch (_: Exception) { }
@@ -346,13 +346,13 @@ class AudioRuntime private constructor(context: Context) {
         @Volatile private var instance: AudioRuntime? = null
         fun get(context: Context): AudioRuntime = instance ?: synchronized(this) { instance ?: AudioRuntime(context).also { instance = it } }
         private fun friendly(error: Throwable): String = when (error) {
-            is SecurityException -> "声音记录授权不可用，请重新授权；也可能是来源应用禁止了录制"
+            is SecurityException -> "录音授权不可用，请重新授权；来源应用也可能禁止录制"
             is PackageManager.NameNotFoundException -> "所选应用已不可用，请重新选择"
-            is UnsatisfiedLinkError -> "这台设备不支持本地语音引擎"
+            is UnsatisfiedLinkError -> "此设备不支持本机转写"
             else -> error.message?.take(200) ?: "处理失败，请重试"
         }
         private fun terminalText(status: String) = when (status) {
-            "completed" -> "转写完成；没有识别到人声时不会生成文字"
+            "completed" -> "转写完成；未识别到人声时不生成文字"
             "cancelled" -> "已停止转写"
             else -> "转写未完成"
         }

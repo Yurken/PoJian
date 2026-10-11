@@ -43,9 +43,8 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
         if (selected == null && buckets.size > 7) scroll.scrollTo((latest * step - step * 3).coerceIn(0, scroll.maxValue))
     }
     WhiteCard {
-        SectionTitle("浏览作品数量", "${period.label} · 每柱一个时段")
+        SectionTitle("浏览趋势", help = "点击柱子查看时段观点，小时图可左右滑动。各时段独立去重，同一作品可能跨时段出现，数量不能直接相加。")
         Text("${bucket.label} · ${bucket.items.size} 个作品", style = MaterialTheme.typography.titleLarge)
-        MetadataText("柱高和颜色表示作品数量。点击柱子，下方展示这个时段的观点。小时图可左右滑动。")
         Row(Modifier.fillMaxWidth().height(230.dp)) {
             Column(Modifier.width(32.dp).height(190.dp), verticalArrangement = Arrangement.SpaceBetween) {
                 MetadataText("$maximum"); MetadataText("${maximum / 2}"); MetadataText("0")
@@ -74,15 +73,13 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
                 }
             }
         }
-        MetadataText("各时段分别对作品去重，同一作品跨时段会再次出现；柱子数量不能直接相加作为全天作品总数。")
     }
     val format = DateTimeFormatter.ofPattern("M/d HH:mm").withZone(zone)
     WhiteCard {
         Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionTitle("这个时段看了哪些观点", "${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
-            if (bucket.items.isEmpty()) MetadataText("这个时段没有保存的作品。")
-            val modeled = bucket.items.count { it.analysisSource == "structured_model" }
-            if (bucket.items.isNotEmpty()) MetadataText("$modeled/${bucket.items.size} 个作品至少有一条有效云端采样结果，其余使用本地规则；采样不代表整部作品已分析。未识别的作品保留在分母中。")
+            SectionTitle("时段观点", "${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}",
+                help = "${bucket.items.count { it.analysisSource == "structured_model" }}/${bucket.items.size} 个作品有云端采样结果，其余使用本地识别。采样仅覆盖部分内容，可查看原文核对。")
+            if (bucket.items.isEmpty()) MetadataText("该时段暂无作品。")
             ViewpointTimeline.groups(bucket.items).forEachIndexed { i, share ->
                 ViewpointGroup(share, bucket.start, bucket.end, appNames, "bucket-$index", i == 0 && share.items.size <= 3)
             }
@@ -114,11 +111,11 @@ private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names:
             var raw by rememberSaveable(key, item.record.id) { mutableStateOf(false) }
             Column(Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 MetadataText(names[item.record.packageName] ?: item.record.packageName)
-                MetadataText(if (item.analysisSource == "structured_model") "云端结构结果 · 仍需核对原文" else "本地规则候选 · 未经语义模型确认")
+                MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
                 val duration = ObservationWindow(start, end, ZoneId.systemDefault()).durationMillis(item.record)
-                MetadataText(duration?.let { "本时段预计停留：${formatDuration(it)}" } ?: "未统计时长")
+                MetadataText(duration?.let { "本时段预计停留 ${formatDuration(it)}" } ?: "时长未统计")
                 item.quote?.takeIf { it != share.label }?.let { QuoteBlock(it) }
-                TextButton(onClick = { raw = !raw }) { Text(if (raw) "收起原文" else "查看作品原文 ›") }
+                TextButton(onClick = { raw = !raw }) { Text(if (raw) "收起原文" else "查看原文 ›") }
                 if (raw) QuoteBlock(item.record.visibleText)
             }
         }
@@ -131,11 +128,10 @@ private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names:
     val overlaps = groups.sumOf { it.items.size } > total
     val works = groups.flatMap { it.items }.distinctBy { it.record.packageName + "|" +
         (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }
-    val modeled = works.count { it.analysisSource == "structured_model" }
     val colors = listOf(Color(0xFF3298F4), Color(0xFF42C587), Color(0xFFFFAA45), Color(0xFFB678DC), Color(0xFFEF729D), Color(0xFF35B9C9))
     WhiteCard {
-        SectionTitle("一天接触的观点占比", "$date · $total 个作品（估计）")
-        MetadataText("$modeled/$total 个作品至少有一条有效云端采样结果，其余使用本地规则，采样不代表整部作品已分析。比例分母为当天全部去重作品，包含未识别部分；一个作品可表达多个观点，各组比例之和可能超过 100%。接触不代表认同。")
+        SectionTitle("观点分布", "$date · $total 个作品（估算）",
+            help = "统计范围为当天 $total 个去重作品，含未识别部分；一部作品可含多个观点，各组比例之和可能超过 100%。${works.count { it.analysisSource == "structured_model" }}/$total 个作品有有效云端采样结果，其余使用本地识别。云端分析按主题、对象、维度、条件和立场归组；信息不明确时标为待确认，未提取观点时标为未识别。多观点用比例条表示。采样不代表整部作品已分析，音频和视觉文字不单独增加作品数或停留时长。")
         val chartSemantics = Modifier.fillMaxWidth().testTag("daily-viewpoint-pie").semantics {
             contentDescription = groups.joinToString("；") { "${it.label}，${it.items.size}个作品，${String.format(Locale.CHINA, "%.1f", it.percent)}%" }
                 .ifBlank { "暂无作品" }
@@ -146,7 +142,7 @@ private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names:
                     Text(group.label, style = MaterialTheme.typography.bodySmall)
                     LinearProgressIndicator(progress = { (group.percent / 100.0).toFloat() },
                         modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = if (group.label in listOf("暂未识别观点", "待归纳")) Muted else colors[i % colors.size],
+                        color = if (group.label == "未识别") Muted else colors[i % colors.size],
                         trackColor = MaterialTheme.colorScheme.surfaceVariant)
                 }
             }
@@ -157,16 +153,15 @@ private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names:
             var angle = -90f
             groups.forEachIndexed { i, group ->
                 val sweep = group.items.size * 360f / total
-                drawArc(if (group.label in listOf("暂未识别观点", "待归纳")) Color.LightGray else colors[i % colors.size],
+                drawArc(if (group.label == "未识别") Color.LightGray else colors[i % colors.size],
                     angle, sweep, true, origin, Size(diameter, diameter))
                 angle += sweep
             }
         }
         groups.forEachIndexed { i, group ->
             ViewpointGroup(group, start, end, names, "pie-$date", headerColor =
-                if (group.label in listOf("暂未识别观点", "待归纳")) Muted else colors[i % colors.size], showPercent = true)
+                if (group.label == "未识别") Muted else colors[i % colors.size], showPercent = true)
         }
         if (total == 0) MetadataText("当天没有保存的浏览作品。")
-        ExpandableNote("观点归组说明", "有效云端结果优先，按主题、讨论对象、判断维度、适用条件和立场归组，保留同一作品的多个观点。有效结果未提取观点时仍保留为暂未识别；对象、维度或立场不明确的结果标为待确认。没有有效云端结果时使用本地规则候选；待归纳和暂未识别只是未知状态。每组同作品计一次，多观点使用独立比例条，避免把重叠占比画成完整饼图。音频片段和视觉转录文字不单独增加作品数或观看时长。")
     }
 }

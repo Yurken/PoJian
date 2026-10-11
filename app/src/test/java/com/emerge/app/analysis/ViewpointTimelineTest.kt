@@ -14,7 +14,7 @@ class ViewpointTimelineTest {
         val groups = ViewpointTimeline.groups(ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone).flatMap { it.items })
         assertEquals(2, groups.first { it.label == "就业焦虑" }.items.size)
         assertEquals(50.0, groups.first { it.label == "就业焦虑" }.percent, .001)
-        assertEquals(25.0, groups.first { it.label == "暂未识别观点" }.percent, .001)
+        assertEquals(25.0, groups.first { it.label == "未识别" }.percent, .001)
         assertEquals(100.0, groups.sumOf { it.percent }, .001)
     }
 
@@ -109,8 +109,8 @@ class ViewpointTimelineTest {
         val groups = ViewpointTimeline.groups(ViewpointTimeline.build(listOf(first, second), StatisticsPeriod.DAY,
             now, zone, semantics = results).flatMap { it.items })
         assertEquals(2, groups.size)
-        assertEquals(1, groups.first { it.label == "暂未识别观点" }.items.size)
-        assertEquals("structured_model", groups.first { it.label == "暂未识别观点" }.items.single().analysisSource)
+        assertEquals(1, groups.first { it.label == "未识别" }.items.size)
+        assertEquals("structured_model", groups.first { it.label == "未识别" }.items.single().analysisSource)
         assertEquals("local_rules", groups.first { it.label == "就业焦虑" }.analysisSource)
         assertTrue(groups.all { it.total == 2 })
     }

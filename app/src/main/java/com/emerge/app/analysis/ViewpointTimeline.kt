@@ -63,7 +63,7 @@ object ViewpointTimeline {
             if (candidates.isEmpty()) {
                 val key = "unknown"
                 grouped.getOrPut(key) { mutableListOf() } += item
-                descriptions[key] = "暂未识别观点" to "unknown"
+                descriptions[key] = "未识别" to "unknown"
             } else candidates.forEach { claim ->
                 grouped.getOrPut(claim.key) { mutableListOf() } += item.copy(record = claim.record ?: item.record,
                     label = claim.label, quote = claim.quote, claims = listOf(claim))
@@ -125,9 +125,9 @@ object ViewpointTimeline {
                     it.start == end && end == now && now < localEnd.toInstant().toEpochMilli() && it.start >= start
             } }.map { candidates.getValue(it) })
             val recognized = items.filter { item -> claims(item).any {
-                if (it.analysisSource == "structured_model") it.confirmed else it.label != "待归纳"
+                if (it.analysisSource == "structured_model") it.confirmed else it.label != "未识别"
             } }
-            val repeated = groups(recognized).filter { it.label != "待归纳" && !it.label.endsWith("待确认") }
+            val repeated = groups(recognized).filter { it.label != "未识别" && !it.label.endsWith("待确认") }
                 .sumOf { (it.items.size - 1).coerceAtLeast(0) }.coerceAtMost((recognized.size - 1).coerceAtLeast(0))
             val emotional = recognized.count { it.emotional }
             val score = if (recognized.size < 3) null else

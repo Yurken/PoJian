@@ -111,8 +111,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
                         ProcessResult.CANCELLED -> tasks.cancel(lease)
                         is ProcessResult.RETRY -> {
                             val retried = tasks.retry(lease, result.reason, System.currentTimeMillis()) { current(input) && authorized(r) }
-                            if (retried) notice("网络或服务暂不可用，已保存材料并等待重试")
-                            else unchecked(input, "重试后仍未完成核查，请稍后重新核查")
+                            if (retried) notice("网络或服务暂不可用，材料已保存，等待重试")
+                            else unchecked(input, "核查未完成，请稍后重试")
                         }
                         is ProcessResult.FAILED -> {
                             tasks.fail(lease, result.reason, System.currentTimeMillis()) { current(input) && authorized(r) }
@@ -207,7 +207,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     }
     fun submitCurrentText() {
         val current = state.value
-        if (current.screenText.isBlank()) { notice("当前无可见文字，请开启关键画面分析"); return }
+        if (current.screenText.isBlank()) { notice("未获取到页面文字，可开启关键画面分析"); return }
         val now = System.currentTimeMillis()
         submit("manual:$now", current.currentPackage, current.screenText, now, "text", current.contextToken, current.encounter.ifBlank { "screen:$now" })
     }
@@ -226,15 +226,15 @@ class MonitorRuntime(private val app: EmergeApplication) {
             if (kind != "frame") {
                 val request = MonitorTaskRequest(id, packageName, kind, text, at, token, encounter, targets,
                     serviceFingerprint(), authorizationKey(), input.checkFacts)
-                if (!authorized(request)) { unchecked(input, "尚未启用并配置云端服务；本地重复观察不等于事实核查"); return@launch }
+                if (!authorized(request)) { unchecked(input, "云端分析未开启或服务未配置，本次未核查"); return@launch }
                 when (tasks.enqueue(request, System.currentTimeMillis()) { current(input) && authorized(request) }) {
                     EnqueueResult.ENQUEUED -> wake.trySend(Unit)
-                    EnqueueResult.DUPLICATE -> notice("这份采样已进入分析流程")
-                    EnqueueResult.FULL -> mutableState.update { it.copy(skipped = it.skipped + 1, notice = "处理队列已满，部分内容未核查") }
-                    EnqueueResult.INVALID -> unchecked(input, "当前采样无法与已保存的原文对应，请稍后重试")
+                    EnqueueResult.DUPLICATE -> notice("此内容已提交分析")
+                    EnqueueResult.FULL -> mutableState.update { it.copy(skipped = it.skipped + 1, notice = "待处理内容已满，本次未核查") }
+                    EnqueueResult.INVALID -> unchecked(input, "此内容未能提交分析，请稍后重试")
                 }
             } else if (!frames.trySend(input).isSuccess) {
-                mutableState.update { it.copy(skipped = it.skipped + 1, notice = "处理队列已满，部分内容未核查") }
+                mutableState.update { it.copy(skipped = it.skipped + 1, notice = "待处理内容已满，本次未核查") }
             } else wake.trySend(Unit)
         }
     }
@@ -268,24 +268,24 @@ class MonitorRuntime(private val app: EmergeApplication) {
         if (!current(input)) return ProcessResult.CANCELLED
         val maxAge = if (input.lease == null) 120_000L else 24 * 60 * 60 * 1000L
         if (System.currentTimeMillis() - input.at !in 0..maxAge) {
-            unchecked(input, "处理队列中的材料已经过时，本次未核查")
+            unchecked(input, "采样内容已过期，本次未核查")
             return ProcessResult.FAILED("expired")
         }
         input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
         val service = app.audioCoordinator.settings.config.value
         val policy = config.value
-        if (!service.enabled || service.endpoint.isBlank()) { unchecked(input, "尚未启用并配置云端服务；本地重复观察不等于事实核查"); return ProcessResult.CANCELLED }
+        if (!service.enabled || service.endpoint.isBlank()) { unchecked(input, "云端分析未开启或服务未配置，本次未核查"); return ProcessResult.CANCELLED }
         if (input.kind == "frame" && !policy.visual) return ProcessResult.CANCELLED
-        mutableState.update { it.copy(busy = true, notice = "正在分析已采样内容并查找依据") }
+        mutableState.update { it.copy(busy = true, notice = "正在云端分析采样内容") }
         try {
             val now = System.currentTimeMillis()
             val checkFacts = input.checkFacts
             val cacheKey = input.key + ":" + checkFacts + ":" + MonitorPolicy.hash(service.endpoint + "|" + service.token)
             val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now >= it.first && now - it.first <= 300_000 }?.second }
             val json = if (cached != null) JSONObject(cached.toString()).put("id", input.id) else {
-                if (input.kind == "frame" && frameCount() >= policy.dailyFrames) { unchecked(input, "今日关键画面额度已用完，此画面未核查"); return ProcessResult.FAILED("frame_budget") }
+                if (input.kind == "frame" && frameCount() >= policy.dailyFrames) { unchecked(input, "今日画面分析额度已用完，此画面未核查"); return ProcessResult.FAILED("frame_budget") }
                 if (!current(input)) return ProcessResult.CANCELLED
-                if (!app.audioCoordinator.settings.reserveRequest()) { unchecked(input, "今日云端请求额度已用完；未处理内容不能视为真实"); return ProcessResult.FAILED("request_budget") }
+                if (!app.audioCoordinator.settings.reserveRequest()) { unchecked(input, "今日云端分析额度已用完，此内容未核查"); return ProcessResult.FAILED("request_budget") }
                 if (input.kind == "frame") reserveFrame()
                 mutableState.update { it.copy(requestsToday = app.audioCoordinator.settings.requestsToday(), framesToday = frameCount()) }
                 request(input, service.endpoint, service.token, checkFacts).also { value ->
@@ -372,8 +372,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
             if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
             input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
             commit(input, outputs, claims, units, observed, policy, service)
-            notice(if (outputs.isEmpty()) "当前采样未提取到可核查声明，不代表内容已被证明真实" else
-                "已处理 ${outputs.size} 个候选；未显示、未采样和超出候选上限的部分不在核查范围内")
+            notice(if (outputs.isEmpty()) "未提取到可核查陈述，不代表内容真实" else
+                "已分析 ${outputs.size} 个观点候选，结果仅覆盖已提取的采样内容")
             return ProcessResult.DONE
         } catch (error: Exception) {
             if (error is CancellationException || error is MonitorInputInvalidated) throw error
@@ -381,7 +381,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
             val retryable = if (error is HttpFailure) error.status in setOf(408, 429) || error.status in 500..599
                 else error is java.io.IOException
             if (input.lease != null && retryable) return ProcessResult.RETRY(if (error is HttpFailure) "http_${error.status}" else "network")
-            unchecked(input, if (retryable) "核查未完成：网络或服务暂不可用" else "核查未完成：服务返回内容无效或不支持当前请求")
+            unchecked(input, if (retryable) "网络或服务暂不可用，核查未完成，请稍后重试" else "云端结果无法使用，核查未完成，请稍后重试")
             return ProcessResult.FAILED(if (error is HttpFailure) "http_${error.status}" else "invalid_response")
         } finally { connection = null; mutableState.update { it.copy(busy = false) } }
     }
@@ -413,7 +413,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
             repeated?.let { a ->
                     publish(MonitorFinding("repeat:" + MonitorPolicy.hash(a.topic + a.subject + a.dimension), input.key,
                         input.packageName, input.at, "cocoon", "repetition", a.stance,
-                        "已观察到同议题、对象和条件下的持续观点与论据重复；仅代表采样内容，不证明你的认同或平台推荐意图。",
+                        "同一议题、对象和条件下的观点与依据持续重复。仅反映采样内容，不代表你的认同或平台推荐意图。",
                         topic = a.topic + " · " + a.subject + " · " + a.dimension, contextToken = input.token, inputKind = input.kind))
             }
     }
@@ -459,7 +459,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     @Synchronized fun invalidate(clearSemantics: Boolean = true) {
         epoch.incrementAndGet(); connection?.disconnect()
         synchronized(cache) { cache.clear() }; synchronized(arguments) { arguments.clear() }
-        mutableState.update { it.copy(findings = emptyList(), busy = false, notice = "材料已变更，旧核查与比较结果已清除") }
+        mutableState.update { it.copy(findings = emptyList(), busy = false, notice = "材料已更新，旧核查与比对结果已清除") }
         prefs.edit().remove("findings").remove("arguments").apply()
         if (clearSemantics) {
             val next = Math.addExact(authorizationRevision, 1L)

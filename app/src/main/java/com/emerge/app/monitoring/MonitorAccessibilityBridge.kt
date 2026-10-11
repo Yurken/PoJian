@@ -229,8 +229,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             val button = Button(service).apply { text = title; setOnClickListener { action() } }
             actions += button; box.addView(button)
         }
-        button("核查当前内容") { monitor.checkCurrent(); label.text = "已请求核查当前采样；结果可能在划走后进入发现页。" }
-        button("查看证据与统计") {
+        button("核查当前内容") { monitor.checkCurrent(); label.text = "已请求核查当前内容，结果可能稍后出现在发现页。" }
+        button("查看发现") {
             service.startActivity(Intent(service, MainActivity::class.java).putExtra("monitor_discover", true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)); box.visibility = View.GONE
         }
@@ -264,7 +264,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     }
     private fun expand(finding: MonitorFinding?, automatic: Boolean) {
         val text = finding?.let { "${it.label}\n${it.claim}\n${it.explanation.take(160)}" }
-            ?: "当前内容尚未完成核查。点击下方按钮发起；没有提醒不等于内容真实。"
+            ?: "当前内容暂无核查结果。可点击“核查当前内容”；没有提醒不表示内容真实。"
         detail?.text = text; detail?.maxLines = if (automatic) 3 else 8
         actions.forEach { it.visibility = if (automatic) View.GONE else View.VISIBLE }
         panel?.visibility = View.VISIBLE

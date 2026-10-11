@@ -118,10 +118,11 @@ class AudioUiTest {
 
         compose.onNodeWithTag("record-group-imported-material").performClick()
         compose.onNodeWithText("音频转写").assertIsDisplayed()
-        compose.onNodeWithText("媒体偏移 00:03 — 00:11").assertIsDisplayed()
+        compose.onNodeWithText("音频位置 00:03 — 00:11").assertIsDisplayed()
         compose.onNodeWithText("旧版本").assertDoesNotExist()
         compose.onNodeWithText("查看原文 ›").performClick()
-        compose.onNodeWithText("媒体偏移用于定位转写，不计入浏览停留时长。").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(event.visibleText).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("预计停留", substring = true).assertDoesNotExist()
     }
 
     @Test fun analysisFailureIsVisibleWithinTheDetailSheetAndAllowsRetry() {

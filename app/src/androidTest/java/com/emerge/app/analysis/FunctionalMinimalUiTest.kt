@@ -40,10 +40,10 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithText("观点观察").assertIsDisplayed()
         compose.onNodeWithText("事实核查").assertIsDisplayed()
         compose.onNodeWithText("查看原文材料").performScrollTo().performClick()
-        compose.onNodeWithText("信息足迹").assertIsDisplayed()
+        compose.onNodeWithText("浏览记录").assertIsDisplayed()
         tab("设置").performClick().assertIsSelected()
         compose.onNodeWithTag("capture-toggle").assertExists()
-        compose.onNodeWithText("采集工具：播放音频、模型与材料导入").performScrollTo().performClick()
+        compose.onNodeWithText("采集工具").performScrollTo().performClick()
         compose.onNodeWithTag("recording-screen").assertIsDisplayed()
         compose.onNodeWithText("返回设置").performClick()
         tab("概览").performClick().assertIsSelected()
@@ -68,8 +68,8 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details")))
         compose.onNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
-        compose.onNode(hasText("本时段预计停留：1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
-        compose.onNode(hasText("本时段预计停留：2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
+        compose.onNode(hasText("本时段预计停留 1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
+        compose.onNode(hasText("本时段预计停留 2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
         saveScreenshot("emerge-viewpoint-details.png")
         compose.runOnIdle { assertEquals(0, analysisCalls) }
     }
@@ -85,9 +85,9 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithText("00:24").assertIsDisplayed()
         saveScreenshot("pojian-minimal-active-recording.png")
         compose.onNodeWithTag("audio-pause-resume").assertIsEnabled().performClick()
-        compose.onNodeWithTag("audio-pause-resume").assertTextContains("继续记录")
+        compose.onNodeWithTag("audio-pause-resume").assertTextContains("继续录音")
         compose.runOnIdle { assertEquals(1, pauseCalls); assertEquals(true, paused.value); assertEquals(0, startCalls); assertEquals(0, downloadCalls) }
-        compose.onNodeWithTag("audio-pause-resume").performClick().assertTextContains("暂停记录")
+        compose.onNodeWithTag("audio-pause-resume").performClick().assertTextContains("暂停录音")
         compose.onNodeWithTag("audio-stop-task").performClick()
         compose.runOnIdle { assertEquals(2, pauseCalls); assertEquals(false, paused.value); assertEquals(1, stopCalls) }
         compose.onNodeWithTag("audio-import").assertDoesNotExist()
@@ -110,7 +110,7 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onAllNodesWithText("就业焦虑").onFirst().assertIsDisplayed()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
-        compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("就业焦虑，2个作品，50.0%；女性独立，1个作品，25.0%；暂未识别观点，1个作品，25.0%")
+        compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("就业焦虑，2个作品，50.0%；女性独立，1个作品，25.0%；未识别，1个作品，25.0%")
         saveScreenshot("emerge-daily-viewpoint-pie.png")
     }
 
@@ -142,7 +142,7 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("daily-viewpoint-pie").assert(SemanticsMatcher("multi-viewpoint work denominator") { node ->
             val description = node.config[SemanticsProperties.ContentDescription].joinToString()
             description.contains("今年 · 减少，1个作品，50.0%") &&
-                description.contains("未来 · 回升，1个作品，50.0%") && description.contains("暂未识别观点，1个作品，50.0%")
+                description.contains("未来 · 回升，1个作品，50.0%") && description.contains("未识别，1个作品，50.0%")
         })
         saveScreenshot("pojian-model-viewpoint-shares.png")
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))

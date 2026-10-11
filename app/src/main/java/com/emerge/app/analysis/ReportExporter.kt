@@ -15,7 +15,7 @@ object ReportExporter {
         fun time(value: Long) = Instant.ofEpochMilli(value).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         fun duration(value: Long) = String.format(java.util.Locale.CHINA, "%.1f 秒", value / 1000.0)
         appendLine("# 破茧 · 信息环境回顾报告")
-        appendLine("看见信息边界，拓宽判断依据。")
+        appendLine("基于保留的浏览记录，回顾内容与依据。")
         appendLine("生成时间：${time(report.generatedAt)}（${report.zone}）")
         appendLine("统计范围：${time(report.start)} 至 ${time(report.end)}（${report.period}）")
         appendLine("“今天”从当天 00:00 开始，“过去24小时”为生成时刻向前24小时，“最近 7 天”从六天前 00:00 开始。")
@@ -24,47 +24,47 @@ object ReportExporter {
         appendLine()
         appendLine("## 1. 覆盖范围与数据质量")
         report.workStatistics?.let { stats ->
-            appendLine("作品接触（估计）：${stats.total} 个；观看 ${stats.visitCount} 次；预计停留 ${duration(stats.observedDurationMillis)}。${stats.unidentifiedWorks} 个作品身份未确认。")
-            stats.apps.forEach { app -> appendLine("平台 ${app.packageName}：${app.count} 个作品，${app.visitCount} 次观看，停留 ${duration(app.durationMillis)}；${app.unidentifiedWorks} 个身份未确认，${app.unknownDurationRecords} 次时长未知。") }
+            appendLine("浏览作品（估算）：${stats.total} 个；观看 ${stats.visitCount} 次；预计停留 ${duration(stats.observedDurationMillis)}。${stats.unidentifiedWorks} 个作品未识别。")
+            stats.apps.forEach { app -> appendLine("平台 ${app.packageName}：${app.count} 个作品，${app.visitCount} 次观看，预计停留 ${duration(app.durationMillis)}；${app.unidentifiedWorks} 个作品未识别，${app.unknownDurationRecords} 次时长未统计。") }
             appendLine("作品身份按平台提供的标识或作者与标题估计，无法确认时按连续观看计数。再次打开已识别作品增加观看次数，音频片段和视觉文字不单独计为作品。下文的分析记录数和观点数不是作品数。")
         }
         appendLine("范围内共 ${report.rawRecords} 条原始记录；合并内容相同的连续记录 ${report.mergedSnapshots} 条；跳过桌面和无正文的记录 ${report.skippedRecords} 条；保留有效记录 ${report.usableSnapshots} 条。跨越范围边界的记录按重叠部分计入。")
-        appendLine("语义覆盖：${report.structuredAnalyzedRecords}/${report.usableSnapshots} 条有效记录具有通过原文校验的云端结构结果（${percent(report.structuredAnalyzedRecords, report.usableSnapshots)}）；${report.localFallbackRecords} 条使用本地规则；${report.rejectedSemanticsRecords} 条云端结构结果未通过校验并回退。覆盖包含模型未提取观点的记录，只表示该记录有采样结果，每次最多提取 3 个观点，不代表整条记录或全部设备浏览都已分析。")
-        appendLine("处理状态：范围内 ${report.pendingAnalysisRecords} 条记录已保存、等待或正在分析；${report.failedAnalysisRecords} 条最近未完成。任务状态保留 24 小时，原文记录独立保留；规则回顾不代表云端分析已经完成。")
-        if (report.structuredAnalyzedRecords == 0) appendLine("当前没有有效云端结构结果；本报告中的观点和依据均为本地规则候选。")
-        appendLine("有效记录共 ${report.coverageSessions} 条；范围内预计停留合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条未统计时长。显示为零只表示还没采集到连续的检查间隔。")
+        appendLine("分析进度：${report.structuredAnalyzedRecords}/${report.usableSnapshots} 条有效记录有通过原文校验的云端分析（${percent(report.structuredAnalyzedRecords, report.usableSnapshots)}）；${report.localFallbackRecords} 条使用本地识别；${report.rejectedSemanticsRecords} 条云端分析未通过校验，已回退到本地识别。覆盖包括未提取到观点的记录，每次最多提取 3 个观点，不能代表整条记录或全部浏览内容。")
+        appendLine("处理状态：${report.pendingAnalysisRecords} 条记录已保存、等待或正在分析；${report.failedAnalysisRecords} 条最近未完成。任务状态保留 24 小时，原文独立保留；本地识别不表示云端分析已完成。")
+        if (report.structuredAnalyzedRecords == 0) appendLine("当前没有通过校验的云端分析；观点和依据均来自本地识别，需核对原文。")
+        appendLine("有效记录共 ${report.coverageSessions} 条；范围内预计停留合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条时长未统计。时长为零表示尚未采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")
-        appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒视为一段浏览结束。每条记录只算一次，按与统计范围、日期和小时的交叠分摊。它不等于实际阅读、理解或看视频的时间；旧版本记录不补算时长，音频转写未统计观看时长，媒体长度不计入浏览停留。")
-        appendLine("数据来自本机保留的最近 5000 条记录，覆盖可见页面文字、已保存的音频转写及视觉模型提取文字；不包括完整视频画面、未转写的音频、获取不到的页面文字和已删除的历史。视觉提取文字可能有误。显示为零可能是没采集、没权限或页面限制，不代表没有浏览。")
-        appendLine("范围之前还保留 ${report.comparisonRecords} 条历史记录${report.comparisonStart?.let { "，最早一条是 ${time(it)}" } ?: ""}；对比只使用这些记录，并按浏览发生的先后顺序进行。“首次出现”只是没有匹配到可比的历史，不代表你从没看过这类内容。")
+        appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒结束一段浏览。每条记录只计一次，按统计范围、日期和小时分摊。预计停留不能代表实际阅读、理解或观看时间；旧版本记录不补算时长，音频转写和媒体长度不计入观看时长。")
+        appendLine("数据来自本机保留的最近 5000 条记录，包括可见页面文字、已保存的音频转写及视觉提取文字，后者可能有误。未获取的页面文字、未转写的音频、完整视频画面和已删除历史均不在范围内。记录为零可能源于未采集、权限或页面限制。")
+        appendLine("范围之前还保留 ${report.comparisonRecords} 条历史记录${report.comparisonStart?.let { "，最早一条是 ${time(it)}" } ?: ""}；对比按浏览先后顺序，仅使用这些记录。“首次出现”表示未匹配到可比历史。")
         appendLine()
-        appendLine("## 2. 主题分布与观点")
+        appendLine("## 2. 内容分布与观点主题")
         report.topicExposure.forEach {
             val durationShare = if (report.observedDurationMillis > 0) percent(it.durationMillis, report.observedDurationMillis)
                 else "暂不可计算"
             appendLine("${it.topic}：${it.recordCount}/${report.coverageSessions} 条（${percent(it.recordCount, report.coverageSessions)}）；预计停留 ${duration(it.durationMillis)}；时长占比 $durationShare")
         }
-        appendLine("主题按每条有效记录的主要内容归类，一条只归一个主题，含未分类和娱乐。条数比例的分母是全部有效记录，时长比例的分母是范围内预计停留总量。没有时长数据不按零阅读处理。")
+        appendLine("每条有效记录按主要内容归入一个主题，包括未分类和娱乐。条数比例的统计范围为全部 ${report.coverageSessions} 条有效记录；时长比例的统计范围为预计停留合计 ${duration(report.observedDurationMillis)}。时长未统计不表示没有阅读。")
         appendLine("娱乐与休闲单独统计，不会因为缺少论据或反复观看而被评价为“低价值”。专题内容占比高，也可能正符合你的浏览目的。")
         report.topics.forEach { appendLine("${it.topic}：${it.count}/${report.claims.size} 个观点（${percent(it.count, report.claims.size)}）") }
-        if (report.claims.isEmpty()) appendLine("没有识别到可回查的观点，这不代表没有浏览，也不代表不存在信息茧房。")
-        appendLine("观点比例的分母是识别出的观点数，不是全部内容或停留时间。云端结果采用模型提取的主题和立场，仍需核对；本地规则候选只覆盖预设词表，内容立场未经语义模型确认。")
+        if (report.claims.isEmpty()) appendLine("未识别到可回查的观点，无法据此判断是否存在信息同质化。")
+        appendLine("观点比例的统计范围为识别出的 ${report.claims.size} 个观点，不代表全部内容或停留时间。云端分析的主题和立场需核对；本地识别只覆盖预设词表，立场未经语义模型确认。")
         appendLine()
-        appendLine("## 3. 信息茧房线索与内容情绪")
+        appendLine("## 3. 长期观察与表达特征")
         report.findings.forEach {
             appendLine("${it.topic}：${it.title}")
             appendLine(it.explanation)
             appendLine("核查事件：${it.eventIds.joinToString().ifBlank { "无" }}")
         }
         appendLine("判定规则：同一主题至少 8 条不同记录、覆盖至少 3 天；最大的一组相似说法占比至少 70%，且依据重复的记录占比至少 60%。同一条记录里的多个观点不增加次数或时长权重。这是未经校准的工程阈值，不是科学诊断，也不是认知风险评分。")
-        appendLine("不满足上述规则不代表没有信息茧房；应用数量、主题集中、情绪倾向和观点一致都不能单独得出结论。时长不足或缺失时，也不能凭次数判断主要精力花在了哪里。")
+        appendLine("不满足上述规则不代表没有信息同质化；应用数量、主题集中、情绪倾向和观点一致都不能单独得出结论。时长不足或缺失时，也不能凭次数判断主要精力花在了哪里。")
         val signalLimit = if (appendixLimit == Int.MAX_VALUE) Int.MAX_VALUE else 20
         report.contentSignals.take(signalLimit).forEach {
             appendLine("事件 #${it.eventId} · ${it.label}：${it.quote}")
         }
         if (report.contentSignals.isEmpty()) appendLine("没有匹配到预设的焦虑或紧迫表达词。")
         if (report.contentSignals.size > signalLimit) appendLine("PDF 只列出前 $signalLimit 条，完整内容见文本报告。")
-        appendLine("上述线索只描述原文的措辞，不推断你的情绪、心理状态、立场或认知状况。即使含有焦虑表达，内容也可能有实质价值，请结合原文和依据核实。")
+        appendLine("表达特征只描述原文措辞，不推断你的情绪、心理状态、立场或认知状况。内容价值需结合原文和依据判断。")
         appendLine()
         appendLine("## 4. 记录来源与 24 小时分布")
         report.sourceCounts.entries.sortedByDescending { it.value }.forEach { appendLine("${it.key}：${it.value} 条原始记录") }
@@ -76,7 +76,7 @@ object ReportExporter {
             if (review == null) {
                 appendLine("$label：${report.hourlyClaims.getOrElse(hour) { 0 }} 个观点；旧版本报告没有逐小时统计。")
             } else {
-                appendLine("$label：${review.recordCount} 条记录；预计停留 ${duration(review.durationMillis)}；${review.unknownDurationRecords} 条未统计时长；主题 ${review.topics.joinToString { "${it.topic} ${it.count}条" }.ifBlank { "无" }}；相关观点见记录 ${review.claimEventIds.joinToString { "#$it" }.ifBlank { "无" }}")
+                appendLine("$label：${review.recordCount} 条记录；预计停留 ${duration(review.durationMillis)}；${review.unknownDurationRecords} 条时长未统计；主题 ${review.topics.joinToString { "${it.topic} ${it.count}条" }.ifBlank { "无" }}；相关观点见记录 ${review.claimEventIds.joinToString { "#$it" }.ifBlank { "无" }}")
             }
         }
         appendLine("一条记录如果跨越多个小时（或跨天），会在每个接触到的小时里分别列出，所以各时段的条数不能直接相加；停留时长已切分，总时长不会重复。观点可通过记录编号到附录中回看原文。")
@@ -96,13 +96,13 @@ object ReportExporter {
             remaining -= shown.size
             shown.forEach { observation ->
                 appendLine("记录 #${observation.eventId} | 开始时间 ${time(observation.timestamp)} | ${observation.packageName}")
-                appendLine("该记录在本次范围内的预计停留：${observation.durationMillis?.let { duration(it) } ?: "未统计"}（同一记录里的多个观点共用时长，不能相加）")
+                appendLine("该记录在本次范围内的预计停留：${observation.durationMillis?.let { duration(it) } ?: "时长未统计"}（同一记录里的多个观点共用时长，不能相加）")
                 appendLine("观点原文：${observation.quote}")
-                appendLine("观点来源：${if (observation.analysisSource == "structured_model") "云端结构结果（仍需核对）" else "本地规则候选"}")
-                appendLine("讨论对象：${observation.subject.ifBlank { "未识别到，暂不与历史对比" }}")
-                if (observation.analysisSource == "structured_model") appendLine("判断维度：${observation.dimension.ifBlank { "待确认" }}；立场：${observation.stance.ifBlank { "待确认" }}")
-                appendLine("适用条件：${observation.conditions.ifBlank { "未识别到" }}；出处：${if (observation.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表作者或你的看法"}")
-                appendLine("与历史对比：${observation.increment.label}；用于对比的早期记录：${observation.previousEventId ?: "无"}")
+                appendLine("观点来源：${if (observation.analysisSource == "structured_model") "云端分析（需核对）" else "本地识别"}")
+                appendLine("讨论对象：${observation.subject.ifBlank { "未识别，暂不与历史对比" }}")
+                if (observation.analysisSource == "structured_model") appendLine("判断维度：${observation.dimension.ifBlank { "未识别" }}；立场：${observation.stance.ifBlank { "未识别" }}")
+                appendLine("适用条件：${observation.conditions.ifBlank { "未识别" }}；出处：${if (observation.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表作者或你的看法"}")
+                appendLine("观点对比：${observation.increment.label}；用于对比的早期记录：${observation.previousEventId ?: "无"}")
                 if (observation.evidenceDetails.isNotEmpty()) observation.evidenceDetails.forEach {
                     appendLine("${it.type.label}${if (it.isNew) "（对比历史为新增）" else ""} · 同一记录原文：${it.text}")
                     if (it.identity.actors.isNotEmpty()) appendLine("案例当事对象：${it.identity.actors.joinToString("、")}")
@@ -115,10 +115,10 @@ object ReportExporter {
             }
         }
         appendLine("## 7. 方法与局限")
-        appendLine("方法：通过事件编号、完整原文和引用子串校验的云端结构结果优先用于主题、观点、讨论对象、判断维度、立场、条件与依据；无有效结果时使用文字过滤、词表主题和判断句规则。历史比较与时序汇总仍在本机完成。")
+        appendLine("方法：通过事件编号、完整原文和引用片段校验的云端分析优先用于主题、观点、讨论对象、判断维度、立场、条件与依据；无有效结果时使用本地识别，包括文字过滤、词表主题和判断句规则。历史比较与时序汇总在本机完成。")
         appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。本地相似观点阈值为 0.65；论据先核对当事对象、材料、数量单位、否定及已识别范围，再使用有限同义规范化与 0.85 字符相似度。明确独立的数量事实至多拆成 8 个原文片段，逐项检索历史并要求规范化内容一致；未拆出的条件、引用或未知语法仍按整段保留。相对月、季、年按观察时间对齐。每次最多对比最近 120 个同范围候选，未确认身份或超出比较预算的未覆盖片段保留待定。以上规则及阈值未经独立人工标注数据校准。")
         appendLine("同一记录出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")
-        appendLine("云端结构抽取仍可能有误，原文校验不证明观点归属或推理正确。历史依据比较仍采用本地规则，未实现语义编码、时序图学习、阅读投入估计或可信执行环境；模型观点和规则候选均不能替代这些研究方法。音频转写和视觉提取文字作为材料进入分析，不单独增加作品接触数或观看时长。")
+        appendLine("云端分析仍可能有误，原文校验不能确认观点归属或推理正确。历史依据比较使用本地识别规则，尚未实现语义编码、时序图学习、阅读投入估计或可信执行环境。音频转写和视觉提取文字可参与分析，不单独增加作品接触数或观看时长。")
         appendLine("这份回顾在本机生成。语音转写在本机完成；配置云端并启用相应分析、实时核查或关键画面开关后，必要文字或采样画面会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
     }
 

@@ -38,7 +38,7 @@ fun rememberAudioActions(model: AudioViewModel, apps: List<CaptureApp>, onChoose
         pendingPackage = null
         if (result.resultCode == Activity.RESULT_OK && result.data != null && packageName != null)
             model.startPlayback(packageName, result.resultCode, result.data!!)
-        else model.notify("没有获得授权，可以重新开始，也可以导入音频")
+        else model.notify("未授权，可重试或导入音频")
     }
     fun requestProjection() {
         val manager = context.getSystemService(MediaProjectionManager::class.java)
@@ -47,15 +47,15 @@ fun rememberAudioActions(model: AudioViewModel, apps: List<CaptureApp>, onChoose
         else manager.createScreenCaptureIntent())
     }
     val audioPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) requestProjection() else { pendingPackage = null; model.notify("记录应用声音需要录音权限，也可以直接导入音频") }
+        if (granted) requestProjection() else { pendingPackage = null; model.notify("请授权录音或导入音频") }
     }
     val notificationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) requestProjection()
         else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
-    if (chooseApp) AlertDialog(onDismissRequest = { chooseApp = false }, title = { Text("记录哪个应用的声音？") },
+    if (chooseApp) AlertDialog(onDismissRequest = { chooseApp = false }, title = { Text("选择要录制的应用") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("只记录所选应用播放的声音，最长 5 分钟。系统会弹出授权确认；不会保存屏幕画面，也不会使用麦克风。")
+            Text("录制应用声音，最长 5 分钟。")
             apps.forEach { app -> OutlinedButton(onClick = {
                 chooseApp = false; pendingPackage = app.packageName
                 if (Build.VERSION.SDK_INT >= 33 && context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED)
@@ -82,7 +82,7 @@ fun AudioCloudDialog(config: TextServiceConfig, onDismiss: () -> Unit,
     var saving by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("云端文字分析") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("开启后，点「生成音频回顾」时，会把当前转写和少量相关历史文字发送到你配置的服务。原声音频不会上传。关闭时使用本地规则分析。")
+            Text("开启后发送转写与相关历史文字，不上传原声。")
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text("启用文字服务", modifier = Modifier.weight(1f)); Switch(checked = enabled, onCheckedChange = { enabled = it }, enabled = !saving)
             }
@@ -90,10 +90,9 @@ fun AudioCloudDialog(config: TextServiceConfig, onDismiss: () -> Unit,
                 singleLine = true, enabled = !saving, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
             OutlinedTextField(token, { token = it }, label = { Text("访问令牌") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !saving)
-            Text("填写自建文字服务的地址和令牌；大模型的 API 密钥保存在服务端，不会写进应用。", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(limit, { limit = it.filter(Char::isDigit).take(3) }, label = { Text("每日调用上限（1–100）") },
                 singleLine = true, enabled = !saving, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            Text("每次发起请求均计数，失败也计入。可随时关闭服务。", style = MaterialTheme.typography.bodySmall)
+            Text("失败请求也计入额度。", style = MaterialTheme.typography.bodySmall)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         } }, confirmButton = { TextButton(enabled = !saving, onClick = {
             val parsed = limit.toIntOrNull()

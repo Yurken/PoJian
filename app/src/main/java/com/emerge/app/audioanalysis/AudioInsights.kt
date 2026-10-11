@@ -17,7 +17,7 @@ data class AudioInsightReport(val summary: String, val method: String, val claim
 
 object LocalAudioInsights {
     fun analyze(current: List<TranscriptEvidence>, history: List<TranscriptEvidence>): AudioInsightReport {
-        if (current.isEmpty()) return AudioInsightReport("还没有可分析的转写", "本地文字规则", emptyList())
+        if (current.isEmpty()) return AudioInsightReport("暂无可分析的转写", "本地识别", emptyList())
         val selected = current.map { it.id }.toSet()
         val all = (current + earlierHistory(current, history)).distinctBy { it.id }
             .sortedWith(compareBy<TranscriptEvidence> { it.timestamp }.thenBy { it.id })
@@ -54,10 +54,10 @@ object LocalAudioInsights {
                 claim.increment.label, historicalMatch?.eventId, historicalMatch?.quote,
                 comparison?.eventId, comparison?.quote)
         }
-        val summary = if (claims.isEmpty()) "没有识别到明确的观点。可以核对转写内容，或开启云端文字服务做进一步分析。"
+        val summary = if (claims.isEmpty()) "未识别到明确观点，请核对转写，或开启云端分析。"
             else "识别出 ${claims.size} 个观点，其中 ${claims.count { it.novelty == Increment.NEW.label }} 个依据有新增，${claims.count { it.novelty == Increment.REPEATED.label }} 个依据重复。"
-        val comparisonNote = "比较采用同范围历史片段的联合覆盖；单条历史引文只展示其中一处匹配。新增片段不证明真实性或来源独立性。"
-        return AudioInsightReport(summary + "\n" + comparisonNote, "本地文字规则 v0.4 · 联合历史对照 · 结果需核查", claims)
+        val comparisonNote = "比对综合同范围历史片段，所示引文仅为其中一处匹配。新增依据不代表真实或来源独立。"
+        return AudioInsightReport(summary + "\n" + comparisonNote, "本地识别 · 历史对照 · 请核对转写", claims)
     }
 
     /** Similarity retrieves candidates only; the analyzer still compares actual evidence and conditions. */

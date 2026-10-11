@@ -56,8 +56,10 @@ class CaptureVisibilityUiTest {
             }
         } } }
         assertRegions(4, 2, 4)
-        compose.onNodeWithText("只统计实际记录的可见区间；页面切换时段归为未定位，暂停和缺失窗口不计时。评论区停留尚未分配到单条评论。")
+        compose.onNodeWithText("时长统计口径").performClick()
+        compose.onNodeWithText("仅统计已记录的可见区间，暂停和缺失窗口不计时。未定位时段单独统计，评论区时长未分配到单条评论。旧记录仅有整次访问的时长估计。")
             .assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
         compose.runOnIdle { selectedHour.value = 11 }
         assertRegions(4, 2, 0)
         compose.runOnIdle { selectedHour.value = 12 }
@@ -67,7 +69,8 @@ class CaptureVisibilityUiTest {
         compose.runOnIdle { window.value = ObservationWindow(hour + 9000, hour + 11_000, zone) }
         assertRegions(0, 0, 2)
         compose.runOnIdle { event.value = exact.copy(visibilityIntervals = null) }
-        compose.onNodeWithText("旧记录只有整次访问的时长估计，未区分正文和评论区。")
+        compose.onNodeWithText("时长统计口径").performClick()
+        compose.onNodeWithText("仅统计已记录的可见区间，暂停和缺失窗口不计时。未定位时段单独统计，评论区时长未分配到单条评论。旧记录仅有整次访问的时长估计。")
             .assertIsDisplayed()
         compose.onNodeWithTag("capture-region-times-${exact.id}").assertDoesNotExist()
     }

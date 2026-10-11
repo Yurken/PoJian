@@ -113,7 +113,7 @@ class MonitorSemanticsIntegrationTest {
             assertEquals(ids.first(), report.claims.last().previousEventId)
             assertEquals(5000L, report.observedDurationMillis)
             assertEquals(2, report.workStatistics!!.total)
-            assertTrue(ReportExporter.text(report).contains("语义覆盖：2/2"))
+            assertTrue(ReportExporter.text(report).contains("分析进度：2/2"))
             val shares = ViewpointTimeline.groups(ViewpointTimeline.build(events, StatisticsPeriod.DAY, now,
                 ZoneId.systemDefault(), report, semantics).flatMap { it.items })
             assertEquals(1, shares.size)

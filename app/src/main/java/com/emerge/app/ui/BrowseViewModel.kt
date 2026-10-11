@@ -62,7 +62,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     init {
         viewModelScope.launch {
             combine(allEvents, semantics, analysisStatuses) { events, extracted, statuses -> Triple(events, extracted, statuses) }.collect {
-                invalidate("记录或观点结果已更新，正在同步回顾", cancelAnalysis = false, clearReport = false)
+                invalidate("记录已更新，正在整理回顾", cancelAnalysis = false, clearReport = false)
                 scheduleAnalysis()
             }
         }
@@ -83,7 +83,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                     } catch (error: Exception) {
                         if (error is CancellationException) throw error
                         appsState.value = known.map { CaptureApp(it, it) }.sortedBy { it.packageName }
-                        messageState.value = "暂时无法加载应用列表，仍可管理已选应用和历史记录"
+                        messageState.value = "应用列表加载失败，可继续管理已选应用和浏览记录"
                     } finally {
                         appsLoadingState.value = false
                     }
@@ -94,7 +94,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     fun setPeriod(value: StatisticsPeriod) {
         if (period == value) return
         period = value
-        invalidate("时间范围已切换，正在重新整理")
+        invalidate("正在整理所选时段的回顾")
         scheduleAnalysis()
     }
 
@@ -103,7 +103,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         if (analysisState.value.purpose == purpose) return
         preferences.edit().putString("purpose", purpose).apply()
         analysisState.update { it.copy(purpose = purpose) }
-        invalidate("浏览目的已保存，正在重新整理")
+        invalidate("浏览目的已保存，正在更新回顾")
         scheduleAnalysis()
     }
 
@@ -115,7 +115,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             reportMinute = minute
             reportDay = day
             reportZone = zone.id
-            invalidate("日期已切换，正在重新整理")
+            invalidate("正在更新当前时段的回顾")
             scheduleAnalysis()
         }
     }
@@ -123,7 +123,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     fun analyze(value: StatisticsPeriod) {
         period = value
         analysisState.update { it.copy(active = true) }
-        invalidate("正在分析最新记录")
+        invalidate("正在整理浏览回顾")
         scheduleAnalysis(immediate = true)
     }
 
@@ -158,10 +158,10 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             val semanticSnapshot = semantics.value.toList()
             val statusSnapshot = analysisStatuses.value.toMap()
             if (snapshot.isEmpty()) {
-                analysisState.update { it.copy(running = false, report = null, status = "暂无记录，采集后会自动更新") }
+                analysisState.update { it.copy(running = false, report = null, status = "暂无浏览记录，开始采集后会自动更新") }
                 return@launch
             }
-            analysisState.update { it.copy(running = true, status = "正在本地分析最新记录", error = null) }
+            analysisState.update { it.copy(running = true, status = "正在整理浏览回顾", error = null) }
             try {
                 val result = withContext(Dispatchers.Default) {
                     val computationContext = currentCoroutineContext()
@@ -171,10 +171,10 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 ensureActive()
                 analysisState.update { it.copy(running = false, report = result, stale = generation != version,
-                    status = if (generation == version) "已更新，有新记录会自动重新分析" else "有新记录，正在继续更新") }
+                    status = if (generation == version) "回顾已更新" else "发现新记录，正在更新回顾") }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
-                if (generation == version) analysisState.update { it.copy(running = false, error = "分析失败，请重试", status = "分析未完成") }
+                if (generation == version) analysisState.update { it.copy(running = false, error = "生成回顾失败，请重试", status = "回顾未完成") }
             }
             }
         }
@@ -197,13 +197,13 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun exportReport(uri: Uri, pdf: Boolean) {
         val report = exportSnapshot ?: run {
-            analysisState.update { it.copy(exporting = false, exportMessage = "记录或时间范围已变化，请重新导出最新回顾") }
+            analysisState.update { it.copy(exporting = false, exportMessage = "导出已失效，请重新导出最新回顾") }
             return
         }
         val version = exportGeneration
         if (version != generation || analysisState.value.report !== report) { cancelExport(); return }
         exportJob = viewModelScope.launch {
-            analysisState.update { it.copy(exporting = true, exportMessage = "正在生成报告") }
+            analysisState.update { it.copy(exporting = true, exportMessage = "正在生成导出文件") }
             try {
                 // Finish generation before opening the target; invalidation can stop a pending export.
                 val bytes = withContext(Dispatchers.Default) {
@@ -225,7 +225,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     } ?: error("无法打开保存位置")
                 }
-                if (version == generation) analysisState.update { it.copy(exporting = false, exportMessage = "报告已保存到你选择的位置") }
+                if (version == generation) analysisState.update { it.copy(exporting = false, exportMessage = "回顾已保存到所选位置") }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 if (version == generation) analysisState.update { it.copy(exporting = false, exportMessage = "保存失败，请重试") }
@@ -250,7 +250,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setCapture(enabled: Boolean) {
         if (enabled && pendingMutations > 0) {
-            messageState.value = "正在更新本地记录，完成后可重新开启采集"
+            messageState.value = "正在更新浏览记录，完成后可重新开启采集"
             return
         }
         if (enabled && allowedPackages.value.isEmpty()) {
@@ -265,15 +265,15 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         if (packages == allowedPackages.value) return
         app.audioCoordinator.stopAll()
         setCapture(false)
-        invalidate("采集范围已变更，等待分析")
+        invalidate("应用范围已更新，正在整理回顾")
         app.captureSettings.setAllowedPackages(packages)
-        messageState.value = "已保存，采集已暂停，确认后请重新开启"
+        messageState.value = "应用范围已保存，采集已暂停"
         scheduleAnalysis()
     }
 
     fun deleteEvent(id: Long) {
         allEvents.value.firstOrNull { it.id == id }?.audioSessionId?.let(app.audioCoordinator::stopSession)
-        mutateHistory("记录已删除，报告将按剩余记录更新", { records -> records.none { it.id == id } }) { app.repository.deleteEvent(id) }
+        mutateHistory("记录已删除", { records -> records.none { it.id == id } }) { app.repository.deleteEvent(id) }
     }
     fun deletePackage(packageName: String) {
         app.audioCoordinator.stopAll()

@@ -160,8 +160,6 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     canImport = audioState.modelState.status == AudioModelStatus.READY && audioState.task == null)
                 showCaptureTools -> Column(contentModifier) {
                     TextButton(onClick = { showCaptureTools = false }) { Text("返回设置") }
-                    Text("采集工具只提供材料；观点观察与事实核查结果在发现页。", modifier = Modifier.padding(horizontal = 16.dp),
-                        style = MaterialTheme.typography.bodySmall)
                     RecordingScreen(audioState.copy(cloudLabel = if (audioConfig.enabled) "云端已启用；自动发送由实时核查与画面开关控制" else "云端关闭"), audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
                         audioModel::stopTask, { showAudioRecords = true }, modifier = Modifier.weight(1f),
                         onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio, isPaused = audioRuntime.isPaused)
@@ -214,15 +212,15 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         remember(all) { all.groupingBy { it.packageName }.eachCount() }, onDismiss = { showApps = false },
         onApply = { model.setAllowedPackages(it); showApps = false }, onDeletePackage = { deletePackage = it })
     if (confirmClear) AlertDialog(onDismissRequest = { confirmClear = false }, title = { Text("清空本地记录？") },
-        text = { Text("将先暂停采集，再删除全部记录、核查结果和当前分析。无法撤销；已导出的文件需自行删除。") },
-        confirmButton = { TextButton(onClick = { app.monitor.invalidate(); model.clearHistory(); confirmClear = false }) { Text("暂停并清空") } },
+        text = { Text("暂停采集并删除全部记录与分析，无法撤销。已导出文件保留。") },
+        confirmButton = { Button(onClick = { app.monitor.invalidate(); model.clearHistory(); confirmClear = false }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("清空全部") } },
         dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } })
     deleteEvent?.let { event -> AlertDialog(onDismissRequest = { deleteEvent = null }, title = { Text("删除这条记录？") },
-        text = { Text("事件 #${event.id} 将从本机删除，旧核查结果会清除，观点和报告按剩余记录重新分析。") },
-        confirmButton = { TextButton(onClick = { app.monitor.invalidate(); model.deleteEvent(event.id); deleteEvent = null }) { Text("删除") } },
+        text = { Text("删除记录 #${event.id} 并清除旧核查结果，无法撤销。") },
+        confirmButton = { Button(onClick = { app.monitor.invalidate(); model.deleteEvent(event.id); deleteEvent = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("删除") } },
         dismissButton = { TextButton(onClick = { deleteEvent = null }) { Text("取消") } }) }
     deletePackage?.let { application -> AlertDialog(onDismissRequest = { deletePackage = null }, title = { Text("删除此应用的记录？") },
-        text = { Text("将暂停采集并删除「${application.label}」的全部历史记录，清除旧核查结果，并更新分析报告。") },
-        confirmButton = { TextButton(onClick = { app.monitor.invalidate(); model.deletePackage(application.packageName); deletePackage = null }) { Text("删除历史") } },
+        text = { Text("暂停采集，删除「${application.label}」的历史记录与旧核查结果。无法撤销。") },
+        confirmButton = { Button(onClick = { app.monitor.invalidate(); model.deletePackage(application.packageName); deletePackage = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("删除历史") } },
         dismissButton = { TextButton(onClick = { deletePackage = null }) { Text("取消") } }) }
 }

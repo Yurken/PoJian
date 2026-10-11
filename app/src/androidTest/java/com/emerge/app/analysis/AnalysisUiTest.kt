@@ -46,10 +46,11 @@ class AnalysisUiTest {
                 }
             }
         }
-        compose.onNodeWithContentDescription("0时，2条记录，预计停留20 秒，点击查看详情")
+        compose.onNodeWithContentDescription("0时，2条记录，预计停留20 秒")
             .performScrollTo().performClick()
         compose.onNode(hasText("00:00—01:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
-        compose.onNodeWithText("2 条有效记录 · 20 秒").assertIsDisplayed()
+        compose.onNode(hasText("2 条有效记录 · 20 秒") and
+            hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
         compose.onAllNodesWithText("本条采集原文：", substring = true).onFirst().assertExists()
         compose.onNodeWithTag("hourly-review-details")
             .performScrollToNode(hasText("用于对比的早期记录 #1"))
@@ -72,11 +73,11 @@ class AnalysisUiTest {
                 }
             }
         }
-        compose.onNodeWithContentDescription("0时，1条记录，预计停留1 分 0 秒，点击查看详情")
+        compose.onNodeWithContentDescription("0时，1条记录，预计停留1 分 0 秒")
             .performScrollTo().performClick()
-        compose.onNodeWithText("0 条未统计时长 · 1 个观点").assertIsDisplayed()
+        compose.onNodeWithText("0 条时长未统计 · 1 个观点").assertIsDisplayed()
         compose.onAllNodesWithText("记录 #9", substring = true).onFirst().assertExists()
-        compose.onNodeWithText("本时段预计停留：1 分 0 秒 · 同一条记录里的多个观点共用时长，不能相加").assertExists()
+        compose.onNodeWithText("本时段预计停留：1 分 0 秒").assertExists()
         compose.onNodeWithText("本条采集原文：", substring = true).assertExists()
     }
 
