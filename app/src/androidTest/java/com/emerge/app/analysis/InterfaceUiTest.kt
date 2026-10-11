@@ -86,6 +86,47 @@ class InterfaceUiTest {
         compose.onNodeWithText("7 天").assertIsNotSelected()
     }
 
+    @Test fun compactReviewKeepsExportsGatedAndReturnsFromHourlyEvidence() {
+        val start = todayStart()
+        val now = start + 12 * 3_600_000
+        val records = listOf(measured(71, start + 8 * 3_600_000, "招聘岗位同比减少20%", 60_000))
+        val report = CognitiveAnalyzer().analyze(records, StatisticsPeriod.DAY, now)
+        val state = mutableStateOf(AnalysisState(report = report, active = true, stale = true))
+        val exports = mutableListOf<Pair<CognitiveReport, Boolean>>()
+        render {
+            EmergeTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    AnalysisCards(state.value, StatisticsPeriod.DAY, records, {},
+                        { value, pdf -> exports += value to pdf })
+                }
+            }
+        }
+        compose.onNodeWithTag("hourly-hour-options").assertDoesNotExist()
+        compose.onNodeWithText("观点对比").assertDoesNotExist()
+        compose.onNodeWithText("长期观察").assertDoesNotExist()
+        listOf("导出 PDF", "导出文本").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
+        compose.runOnIdle { state.value = state.value.copy(stale = false, running = true) }
+        listOf("导出 PDF", "导出文本").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
+        compose.runOnIdle { state.value = state.value.copy(running = false, exporting = true) }
+        listOf("导出 PDF", "导出文本").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
+        compose.runOnIdle { state.value = state.value.copy(exporting = false) }
+        compose.onNodeWithText("导出 PDF").assertIsEnabled().performClick()
+        compose.onNodeWithText("导出文本").assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(listOf(report to true, report to false), exports) }
+        saveScreenshot("pojian-compact-review.png")
+        compose.onNodeWithTag("report-open").performClick()
+        compose.onNodeWithTag("report-details").assertIsDisplayed()
+        saveScreenshot("pojian-report-details.png")
+        compose.onNodeWithContentDescription("8时，1条记录，预计停留1 分 0 秒")
+            .performScrollTo().performClick()
+        compose.onNodeWithTag("hourly-review-details").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performClick()
+        compose.onNodeWithTag("report-details").assertIsDisplayed()
+        compose.onNodeWithText("关闭").performScrollTo().performClick()
+        compose.onNodeWithTag("report-details").assertDoesNotExist()
+        compose.onNodeWithTag("report-open").assertIsDisplayed()
+    }
+
     @Test fun purposePresetsPreserveCustomTextAndCancelDoesNotApplyDraft() {
         val initial = "比较嵌入式岗位的要求"
         val purpose = mutableStateOf(initial)
@@ -131,6 +172,7 @@ class InterfaceUiTest {
         compose.onNodeWithText("关闭").performClick()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今日回顾"))
         compose.onNodeWithText("今日回顾").assertIsDisplayed()
+        compose.onNodeWithTag("report-open").performScrollTo().performClick()
         compose.onNodeWithTag("hourly-hour-options").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("8时，1条记录，时长未统计")
             .performScrollTo().assertIsDisplayed().performClick()
@@ -160,6 +202,7 @@ class InterfaceUiTest {
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今日回顾"))
         compose.onNodeWithText("今日回顾").assertIsDisplayed()
         // Bring the horizontal list into the vertical viewport before scrolling to its hour.
+        compose.onNodeWithTag("report-open").performScrollTo().performClick()
         compose.onNodeWithTag("hourly-hour-options").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription("8时，1条记录，预计停留1 分 20 秒")
             .performScrollTo().assertIsDisplayed().performClick()

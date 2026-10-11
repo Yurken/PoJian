@@ -77,13 +77,13 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onSettings),
                     verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(6.dp).clip(CircleShape).background(if (active) Accent else Muted))
-                    Text("采集 · $statusLabel · $selectedAppCount 个应用", color = Muted,
+                    Text("$statusLabel · $selectedAppCount 个应用", color = Muted,
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
                     Text("设置 ›", color = Accent, style = MaterialTheme.typography.labelMedium)
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                    CompactFact("${stats.total} 个", "浏览作品 · 估算", "${stats.visitCount} 次观看 · ${stats.appCount} 个应用", Modifier.weight(1f))
+                    CompactFact("${stats.total} 个", "浏览作品", "${stats.visitCount} 次观看", Modifier.weight(1f))
                     val duration = when {
                         browsingCount == 0 -> "—"
                         browsingUnknown == browsingCount -> "未知"
@@ -109,22 +109,18 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             WhiteCard {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("平台分布", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-                    TextButton(onClick = { showSources = !showSources }) { Text(if (showSources) "收起 −" else "${stats.appCount} 个来源 ＋") }
+                    TextButton(onClick = { showSources = !showSources }) { Text(if (showSources) "收起" else "${stats.appCount} 个平台") }
                 }
                 run {
-                    val shares = if (showSources) stats.apps else stats.apps.take(5)
+                    val shares = if (showSources) stats.apps else stats.apps.take(3)
                     shares.forEach { share ->
                         Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Text(if (share.packageName == "__other__") "其他应用" else appNames[share.packageName] ?: share.packageName,
                                     modifier = Modifier.weight(1f).padding(end = 8.dp), style = MaterialTheme.typography.bodyMedium,
-                                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 MetadataText("${share.count} 个作品")
                             }
-                            MetadataText("${share.visitCount} 次观看 · " +
-                                if (share.unknownDurationRecords == share.visitCount) "时长未统计" else
-                                    "预计停留 ${formatDuration(share.durationMillis)}" +
-                                        if (share.unknownDurationRecords > 0) " · ${share.unknownDurationRecords} 次时长未统计" else "")
                             LinearProgressIndicator(progress = { share.count.toFloat() / stats.total },
                                 modifier = Modifier.fillMaxWidth().height(5.dp), color = Accent,
                                 trackColor = MaterialTheme.colorScheme.surfaceVariant)

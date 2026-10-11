@@ -45,6 +45,10 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithText("浏览记录").assertIsDisplayed()
         tab("设置").performClick().assertIsSelected()
         compose.onNodeWithTag("capture-toggle").assertExists()
+        compose.onNodeWithText("监测与提醒").performScrollTo()
+        saveScreenshot("pojian-monitor-settings-analysis.png")
+        compose.onNodeWithText("专题研究模式").performScrollTo()
+        saveScreenshot("pojian-monitor-settings-alerts.png")
         compose.onNodeWithText("采集工具").performScrollTo().performClick()
         compose.onNodeWithTag("recording-screen").assertIsDisplayed()
         compose.onNodeWithText("返回设置").performClick()
@@ -156,6 +160,8 @@ class FunctionalMinimalUiTest {
         })
         saveScreenshot("pojian-model-viewpoint-shares.png")
         saveScreenshot("pojian-overlapping-distribution-card.png", "daily-viewpoint-card")
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
+        compose.onNodeWithTag("viewpoint-bar-6").performClick()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details")))
         compose.onNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
@@ -173,6 +179,7 @@ class FunctionalMinimalUiTest {
     }
 
     private fun saveScreenshot(name: String, tag: String? = null) {
+        tag?.let { compose.onNodeWithTag(it).performScrollTo() }
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.waitForIdleSync(); android.os.SystemClock.sleep(350)

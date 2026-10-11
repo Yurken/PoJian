@@ -44,6 +44,7 @@ internal fun HourlyRecordHeatmapContent(
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
     countLabel: String = "数字为保存记录数",
+    showLegend: Boolean = true,
     hourDescription: (Int, Int) -> String
 ) {
     val normalizedCounts = List(24) { counts.getOrElse(it) { 0 }.coerceAtLeast(0) }
@@ -100,7 +101,7 @@ internal fun HourlyRecordHeatmapContent(
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically,
+            if (showLegend) Row(Modifier.fillMaxWidth().padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("少", color = Muted, fontSize = 10.sp)
                 listOf(scheme.surfaceVariant, lerp(scheme.surface, scheme.primary, .2f),

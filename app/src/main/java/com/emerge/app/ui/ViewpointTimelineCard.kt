@@ -49,9 +49,21 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
     LaunchedEffect(period, scroll.maxValue) {
         if (selected == null && buckets.size > 7) scroll.scrollTo((latest * step - step * 3).coerceIn(0, scroll.maxValue))
     }
+    val date = if (period == StatisticsPeriod.WEEK) Instant.ofEpochMilli(bucket.start).atZone(zone).toLocalDate()
+        else Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+    val dayEnd = if (date == today) now else date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
+    val dayGroups = remember(events, date, dayEnd, report, semantics) {
+        ViewpointTimeline.groups(ViewpointTimeline.build(events, StatisticsPeriod.DAY, dayEnd, zone,
+            report?.takeIf { it.period == StatisticsPeriod.DAY.label }, semantics).flatMap { it.items })
+    }
+    val total = dayGroups.firstOrNull()?.total ?: 0
+    val works = dayGroups.flatMap { it.items }.distinctBy { it.record.packageName + "|" +
+        (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }
+    val format = DateTimeFormatter.ofPattern("M/d HH:mm").withZone(zone)
     WhiteCard {
-        SectionTitle("浏览趋势", help = "点击柱子查看时段观点，小时图可左右滑动。各时段独立去重，同一作品可能跨时段出现，数量不能直接相加。")
-        Text("${bucket.label} · ${bucket.items.size} 个作品", style = MaterialTheme.typography.titleLarge)
+        SectionTitle("浏览趋势", help = "各时段独立去重，同一作品可能跨时段出现，数量不能直接相加。\n\n${bucket.items.count { it.analysisSource == "structured_model" }}/${bucket.items.size} 个作品有云端采样结果，其余使用本地识别。采样仅覆盖部分内容，可查看原文核对。\n\n观点分布统计范围为当天 $total 个去重作品，含未识别部分；一部作品可含多个观点，各组比例之和可能超过 100%。${works.count { it.analysisSource == "structured_model" }}/$total 个作品有有效云端采样结果，其余使用本地识别。云端分析按主题、对象、维度、条件和立场归组；信息不明确时标为待确认，未提取观点时标为未识别。采样不代表整部作品已分析，音频和视觉文字不单独增加作品数或停留时长。")
+        Text("${bucket.label} · ${bucket.items.size} 个作品", style = MaterialTheme.typography.titleSmall)
         Row(Modifier.fillMaxWidth().height(230.dp)) {
             Column(Modifier.width(32.dp).height(190.dp), verticalArrangement = Arrangement.SpaceBetween) {
                 MetadataText("$maximum"); MetadataText("${maximum / 2}"); MetadataText("0")
@@ -80,28 +92,17 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
                 }
             }
         }
-    }
-    val format = DateTimeFormatter.ofPattern("M/d HH:mm").withZone(zone)
-    WhiteCard {
-        Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            SectionTitle("时段观点", "${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}",
-                help = "${bucket.items.count { it.analysisSource == "structured_model" }}/${bucket.items.size} 个作品有云端采样结果，其余使用本地识别。采样仅覆盖部分内容，可查看原文核对。")
+        if (selected != null) Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            MetadataText("${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
             if (bucket.items.isEmpty()) MetadataText("该时段暂无作品。")
             ViewpointTimeline.groups(bucket.items).forEachIndexed { i, share ->
                 ViewpointGroup(share, bucket.start, bucket.end, appNames, "bucket-$index", i == 0 && share.items.size <= 3)
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        DailyViewpointDistribution(dayGroups, "$date", appNames, date.atStartOfDay(zone).toInstant().toEpochMilli(), dayEnd)
     }
-    val date = if (period == StatisticsPeriod.WEEK) Instant.ofEpochMilli(bucket.start).atZone(zone).toLocalDate()
-        else Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    val dayEnd = if (date == today) now else date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-    val dayGroups = remember(events, date, dayEnd, report, semantics) {
-        ViewpointTimeline.groups(ViewpointTimeline.build(events, StatisticsPeriod.DAY, dayEnd, zone,
-            report?.takeIf { it.period == StatisticsPeriod.DAY.label }, semantics).flatMap { it.items })
-    }
-    Spacer(Modifier.height(8.dp))
-    DailyViewpointDistribution(dayGroups, "$date", appNames, date.atStartOfDay(zone).toInstant().toEpochMilli(), dayEnd)
 }
 
 @Composable
@@ -161,16 +162,13 @@ private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names:
 @Composable
 private fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: String, names: Map<String, String>, start: Long, end: Long) {
     val total = groups.firstOrNull()?.total ?: 0
-    val works = groups.flatMap { it.items }.distinctBy { it.record.packageName + "|" +
-        (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }
     val scheme = MaterialTheme.colorScheme
-    WhiteCard(Modifier.testTag("daily-viewpoint-card")) {
+    Column(Modifier.testTag("daily-viewpoint-card"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("观点分布", style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
-                MetadataText("$date · $total 个作品（估算）")
+                Text("观点分布", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
+                MetadataText("$date · $total 个作品")
             }
-            HelpButton("观点分布", "统计范围为当天 $total 个去重作品，含未识别部分；一部作品可含多个观点，各组比例之和可能超过 100%。${works.count { it.analysisSource == "structured_model" }}/$total 个作品有有效云端采样结果，其余使用本地识别。云端分析按主题、对象、维度、条件和立场归组；信息不明确时标为待确认，未提取观点时标为未识别。多观点用比例条表示。采样不代表整部作品已分析，音频和视觉文字不单独增加作品数或停留时长。")
         }
         val chartSemantics = Modifier.fillMaxWidth().testTag("daily-viewpoint-pie").semantics {
             contentDescription = groups.joinToString("；") { "${it.label}，${it.items.size}个作品，${String.format(Locale.CHINA, "%.1f", it.percent)}%" }

@@ -137,9 +137,6 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     modifier = Modifier.size(26.dp).clip(RoundedCornerShape(8.dp)))
                 Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleMedium)
             }
-        }, actions = {
-            Text(if (!enabled || !permission || !diagnostics.connected) "监测已暂停" else "采样监测中",
-                style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(end = 16.dp))
         }, colors = TopAppBarDefaults.topAppBarColors(containerColor = PageBackground))
     }, bottomBar = {
         NavigationBar(containerColor = MaterialTheme.colorScheme.surface, tonalElevation = 0.dp) {

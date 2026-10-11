@@ -21,23 +21,23 @@ import com.emerge.app.audioanalysis.TextServiceConfig
 fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> Unit,
     requestCount: Int, frameCount: Int, onCloud: () -> Unit, onCaptureTools: () -> Unit,
     cloudEnabled: Boolean = false, onCloudEnabledChange: (Boolean) -> Unit = {}) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("监测与提醒", help = "悬浮球：在所选应用内点击核查。\n观点重复观察：比较议题、观点与依据。\n实时事实核查：自动核查新增文字与口播。\n关键画面分析：采样当前画面，需 Android 11 及以上。\n专题研究模式：保留统计，暂缓重复提醒。\n夜间免打扰：${config.quietStart}:00—${config.quietEnd}:00 不主动提醒，提醒始终静音。")
         MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
-        MonitorSwitch("悬浮球", "在所选应用内显示，点击即可核查", config.bubble) { onChange(config.copy(bubble = it)) }
-        MonitorSwitch("观点重复观察", "识别议题、观点与依据的重复出现", config.cocoon) { onChange(config.copy(cocoon = it)) }
-        MonitorSwitch("实时事实核查", "自动核查新增文字与口播片段", config.realtime) { onChange(config.copy(realtime = it)) }
-        MonitorSwitch("关键画面分析", "Android 11+，采样当前画面用于分析", config.visual) { onChange(config.copy(visual = it)) }
-        MonitorSwitch("专题研究模式", "保留统计，暂缓观点重复提醒", config.researchMode) { onChange(config.copy(researchMode = it)) }
-        MonitorSwitch("夜间免打扰", "${config.quietStart}:00—${config.quietEnd}:00", config.quiet) { onChange(config.copy(quiet = it)) }
-        MonitorSlider("同议题/声明提醒间隔", config.cooldownMinutes, 5..180, "分钟") { onChange(config.copy(cooldownMinutes = it)) }
-        MonitorSlider("每日主动提醒上限", config.dailyAlerts, 0..30, "次") { onChange(config.copy(dailyAlerts = it)) }
-        MonitorSlider("自动提示停留", config.displaySeconds, 2..8, "秒") { onChange(config.copy(displaySeconds = it)) }
-        MonitorSlider("自动画面采样间隔", config.frameIntervalSeconds, 15..120, "秒") { onChange(config.copy(frameIntervalSeconds = it)) }
+        MonitorSwitch("实时事实核查", "", config.realtime) { onChange(config.copy(realtime = it)) }
+        MonitorSwitch("关键画面分析", "", config.visual) { onChange(config.copy(visual = it)) }
+        MonitorSlider("画面采样间隔", config.frameIntervalSeconds, 15..120, "秒") { onChange(config.copy(frameIntervalSeconds = it)) }
         MonitorSlider("每日画面请求上限", config.dailyFrames, 1..100, "次") { onChange(config.copy(dailyFrames = it)) }
+        HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        MonitorSwitch("悬浮球", "", config.bubble) { onChange(config.copy(bubble = it)) }
+        MonitorSwitch("观点重复观察", "", config.cocoon) { onChange(config.copy(cocoon = it)) }
+        MonitorSwitch("专题研究模式", "", config.researchMode) { onChange(config.copy(researchMode = it)) }
+        MonitorSwitch("夜间免打扰", "${config.quietStart}:00—${config.quietEnd}:00", config.quiet) { onChange(config.copy(quiet = it)) }
+        MonitorSlider("提醒间隔", config.cooldownMinutes, 5..180, "分钟") { onChange(config.copy(cooldownMinutes = it)) }
+        MonitorSlider("每日提醒上限", config.dailyAlerts, 0..30, "次") { onChange(config.copy(dailyAlerts = it)) }
+        MonitorSlider("自动提示停留", config.displaySeconds, 2..8, "秒") { onChange(config.copy(displaySeconds = it)) }
+        HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Text("今日云端请求 $requestCount 次（含画面 $frameCount 次）", style = MaterialTheme.typography.bodySmall)
-        // 网关与模型配置统一在服务端管理台维护，App 不再提供设置入口。
-        // TextButton(onClick = onCloud) { Text("配置语义、视觉与取证网关") }
         TextButton(onClick = onCaptureTools) { Text("采集工具") }
     }
 }
@@ -57,7 +57,10 @@ private fun MonitorSwitch(title: String, detail: String, checked: Boolean, onCha
 @Composable
 private fun MonitorSlider(title: String, value: Int, range: IntRange, unit: String, onChange: (Int) -> Unit) {
     var draft by remember(value) { mutableFloatStateOf(value.toFloat()) }
-    Text("$title：${draft.toInt()} $unit", style = MaterialTheme.typography.bodySmall)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(title, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+        Text("${draft.toInt()} $unit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
     Slider(value = draft, onValueChange = { draft = it }, onValueChangeFinished = { onChange(draft.toInt()) },
         valueRange = range.first.toFloat()..range.last.toFloat())
 }

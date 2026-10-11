@@ -46,6 +46,7 @@ class AnalysisUiTest {
                 }
             }
         }
+        compose.onNodeWithTag("report-open").performScrollTo().performClick()
         compose.onNodeWithContentDescription("0时，2条记录，预计停留20 秒")
             .performScrollTo().performClick()
         compose.onNode(hasText("00:00—01:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
@@ -73,6 +74,7 @@ class AnalysisUiTest {
                 }
             }
         }
+        compose.onNodeWithTag("report-open").performScrollTo().performClick()
         compose.onNodeWithContentDescription("0时，1条记录，预计停留1 分 0 秒")
             .performScrollTo().performClick()
         compose.onNodeWithText("0 条时长未统计 · 1 个观点").assertIsDisplayed()
