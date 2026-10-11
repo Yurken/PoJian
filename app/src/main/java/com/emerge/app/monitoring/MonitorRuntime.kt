@@ -499,7 +499,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         val bytes = payload.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= 512 * 1024) { "当前画面过大，请缩小采样尺寸" }
         val http = (URL(endpoint.trimEnd('/') + "/monitor").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"; doOutput = true; connectTimeout = 15000; readTimeout = 75000; instanceFollowRedirects = false
+            requestMethod = "POST"; doOutput = true; connectTimeout = 15000; readTimeout = 120_000; instanceFollowRedirects = false
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             if (token.isNotEmpty()) setRequestProperty("Authorization", "Bearer $token")
             setFixedLengthStreamingMode(bytes.size)
