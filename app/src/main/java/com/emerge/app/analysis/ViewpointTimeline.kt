@@ -9,11 +9,13 @@ import java.time.temporal.ChronoUnit
 data class ViewpointClaim(val quote: String, val topic: String = "", val subject: String = "",
     val dimension: String = "", val stance: String = "", val conditions: String = "",
     val uncertain: Boolean = false, val analysisSource: String = "local_rules",
-    val record: BrowseEvent? = null) {
+    val record: BrowseEvent? = null, val zoneId: String = ZoneId.systemDefault().id) {
     private fun normalized(value: String) = value.trim().replace(Regex("\\s+"), " ").lowercase()
     val confirmed: Boolean get() = !uncertain && topic.isNotBlank() && subject.isNotBlank() && dimension.isNotBlank() && stance.isNotBlank()
     val key: String get() = if (analysisSource == "structured_model")
-        listOf(analysisSource, topic, subject, dimension, conditions, stance,
+        listOf(analysisSource, topic, subject, dimension,
+            record?.let { SemanticFieldKeys.conditions(conditions, it.timestamp, ZoneId.of(zoneId)) } ?: normalized(conditions),
+            SemanticFieldKeys.stance(stance, subject, dimension),
             if (confirmed) "" else quote).joinToString("|") { normalized(it) }
         else "local_rules|${ViewpointTimeline.label(quote)}"
     val label: String get() = if (analysisSource == "structured_model") {
@@ -95,12 +97,12 @@ object ViewpointTimeline {
         val candidates = selected.associateWith { event ->
             val model = modelResults[event.id]?.takeIf { it.validFor(event) }
             val modelClaims = model?.claims?.map { ViewpointClaim(it.quote, it.topic, it.subject,
-                it.dimension, it.stance, it.conditions, it.uncertain, "structured_model", event) }
+                it.dimension, it.stance, it.conditions, it.uncertain, "structured_model", event, zone.id) }
             // A report may be stale; only the full input snapshot can authorize a model result here.
             val reportClaims = observations[event.id].orEmpty().filter {
                 it.analysisSource == "local_rules" && event.visibleText.contains(it.quote)
             }.map { ViewpointClaim(it.quote, it.topic,
-                it.subject, it.dimension, it.stance, it.conditions, it.uncertainAttribution, it.analysisSource, event) }
+                it.subject, it.dimension, it.stance, it.conditions, it.uncertainAttribution, it.analysisSource, event, zone.id) }
             val fallback = event.visibleText.lines().map {
                 it.trim().replace(Regex("(?:\\.\\.\\.|…)?\\s*展开[>〉]?\\s*$"), "").trim()
             }
