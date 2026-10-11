@@ -19,6 +19,7 @@ import java.net.URL
 import java.time.LocalDate
 import java.time.LocalTime
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** No raw audio or screenshots are persisted here. Findings are explicitly separate from unverified input. */
 data class MonitorState(val findings: List<MonitorFinding> = emptyList(), val busy: Boolean = false,
@@ -31,8 +32,10 @@ private data class MonitorInput(val id: String, val packageName: String, val tex
     val kind: String, val token: String, val epoch: Long, val permission: Long, val deletion: Long,
     val encounter: String, val image: String = "", val snapshots: List<BrowseEvent> = emptyList(),
     val checkFacts: Boolean = false, val lease: MonitorTaskLease? = null) {
-    val key: String get() = MonitorPolicy.hash(packageName + "|" + kind + "|" + text + "|" + image)
+    val key: String by lazy { MonitorPolicy.hash(packageName + "|" + kind + "|" + text + "|" + image) }
 }
+
+private data class MonitorFrameWork(val input: MonitorInput, val completed: (Boolean) -> Unit)
 
 /** Revoking one input leaves the consumer available for later authorized inputs. */
 internal class MonitorInputInvalidated : Exception("Monitoring input invalidated")
@@ -56,7 +59,9 @@ class MonitorRuntime(private val app: EmergeApplication) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val epoch = AtomicLong()
     // Images stay in memory. Text/audio requests are encrypted in Room before submission.
-    private val frames = Channel<MonitorInput>(1)
+    private val frames = Channel<MonitorFrameWork>(1)
+    private val frameOutstanding = AtomicBoolean()
+    internal val samplingRevision: Long get() = epoch.get()
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val settingsReady = CompletableDeferred<Unit>()
     private val tasks get() = app.monitorTasks
@@ -95,11 +100,14 @@ class MonitorRuntime(private val app: EmergeApplication) {
         scope.launch {
             settingsReady.await()
             tasks.recover(System.currentTimeMillis())
+            var preferFrame = true
             while (isActive) {
-                val frame = frames.tryReceive().getOrNull()
-                if (frame != null) { process(frame); continue }
+                // Alternate when both sources are ready; slow visual requests cannot starve transcripts.
+                val frame = if (preferFrame) frames.tryReceive().getOrNull() else null
+                if (frame != null) { processFrame(frame); preferFrame = false; continue }
                 val lease = tasks.claim(System.currentTimeMillis(), ::authorized)
                 if (lease != null) {
+                    preferFrame = true
                     val r = lease.request
                     val permission = app.captureSettings.permissionToken(r.packageName)
                     if (permission == null) { tasks.cancel(lease); continue }
@@ -120,10 +128,12 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     }
                     continue
                 }
+                val waitingFrame = frames.tryReceive().getOrNull()
+                if (waitingFrame != null) { processFrame(waitingFrame); preferFrame = false; continue }
                 val due = tasks.nextReadyAt()
                 val waitMillis = if (due == null) 30_000L else (due - System.currentTimeMillis()).coerceIn(1, 30_000)
                 select<Unit> {
-                    frames.onReceive { process(it) }
+                    frames.onReceive { processFrame(it); preferFrame = false }
                     wake.onReceive { }
                     onTimeout(waitMillis) { }
                 }
@@ -202,8 +212,36 @@ class MonitorRuntime(private val app: EmergeApplication) {
     fun clearScreen() = setScreen("", "", "")
     fun revokeScreen() { mutableState.update { it.copy(contextToken = "", screenText = "", contextSince = System.currentTimeMillis()) } }
     fun notice(value: String) { mutableState.update { it.copy(notice = value) } }
-    fun submitFrame(packageName: String, text: String, image: String, token: String, at: Long, manual: Boolean = false) {
-        submit(if (manual) "manual-frame:$at" else "frame:$at", packageName, text.take(6000), at, "frame", token, state.value.encounter.ifBlank { "screen:$at" }, image)
+    internal fun canSampleFrame(manual: Boolean): Boolean = !frameOutstanding.get() &&
+        (manual || state.value.pending < MonitorTaskStore.CAPACITY)
+
+    internal fun submitFrame(packageName: String, text: String, image: String, token: String, at: Long,
+        manual: Boolean = false, completed: (Boolean) -> Unit = {}): Boolean {
+        val permission = app.captureSettings.permissionToken(packageName) ?: return false
+        if (!frameOutstanding.compareAndSet(false, true)) return false
+        val inputEpoch = epoch.get()
+        val generation = app.repository.captureGeneration
+        val screen = state.value
+        val checkFacts = config.value.realtime || manual
+        scope.launch {
+            var enqueued = false
+            try {
+                val targets = listOfNotNull(MonitorInputs.screenSnapshot(app.repository.allEvents.first(), packageName, text, at))
+                val input = MonitorInput(if (manual) "manual-frame:$at" else "frame:$at", packageName, text.take(6000), at,
+                    "frame", token, inputEpoch, permission, generation, screen.encounter.ifBlank { "screen:$at" },
+                    image, targets, checkFacts)
+                if (current(input)) enqueued = frames.trySend(MonitorFrameWork(input, completed)).isSuccess
+            } finally {
+                if (!enqueued) { frameOutstanding.set(false); completed(false) }
+            }
+        }
+        return true
+    }
+
+    private suspend fun processFrame(work: MonitorFrameWork) {
+        var success = false
+        try { success = process(work.input) == ProcessResult.DONE }
+        finally { frameOutstanding.set(false); work.completed(success) }
     }
     fun submitCurrentText() {
         val current = state.value
@@ -212,30 +250,26 @@ class MonitorRuntime(private val app: EmergeApplication) {
         submit("manual:$now", current.currentPackage, current.screenText, now, "text", current.contextToken, current.encounter.ifBlank { "screen:$now" })
     }
     private fun submit(id: String, packageName: String, text: String, at: Long, kind: String,
-        token: String, encounter: String, image: String = "", snapshots: List<BrowseEvent>? = null) {
+        token: String, encounter: String, snapshots: List<BrowseEvent>? = null) {
         val permission = app.captureSettings.permissionToken(packageName) ?: return
-        if (text.length < 12 && image.isEmpty()) return
+        if (text.length < 12) return
         val inputEpoch = epoch.get()
         val generation = app.repository.captureGeneration
         scope.launch {
             val targets = snapshots ?: listOfNotNull(MonitorInputs.screenSnapshot(
                 app.repository.allEvents.first(), packageName, text, at))
             val input = MonitorInput(id, packageName, text, at, kind, token, inputEpoch, permission,
-                generation, encounter, image, targets, checkFacts = config.value.realtime || id.startsWith("manual"))
+                generation, encounter, snapshots = targets, checkFacts = config.value.realtime || id.startsWith("manual"))
             if (!current(input)) return@launch
-            if (kind != "frame") {
-                val request = MonitorTaskRequest(id, packageName, kind, text, at, token, encounter, targets,
-                    serviceFingerprint(), authorizationKey(), input.checkFacts)
-                if (!authorized(request)) { unchecked(input, "云端分析未开启或服务未配置，本次未核查"); return@launch }
-                when (tasks.enqueue(request, System.currentTimeMillis()) { current(input) && authorized(request) }) {
-                    EnqueueResult.ENQUEUED -> wake.trySend(Unit)
-                    EnqueueResult.DUPLICATE -> notice("此内容已提交分析")
-                    EnqueueResult.FULL -> mutableState.update { it.copy(skipped = it.skipped + 1, notice = "待处理内容已满，本次未核查") }
-                    EnqueueResult.INVALID -> unchecked(input, "此内容未能提交分析，请稍后重试")
-                }
-            } else if (!frames.trySend(input).isSuccess) {
-                mutableState.update { it.copy(skipped = it.skipped + 1, notice = "待处理内容已满，本次未核查") }
-            } else wake.trySend(Unit)
+            val request = MonitorTaskRequest(id, packageName, kind, text, at, token, encounter, targets,
+                serviceFingerprint(), authorizationKey(), input.checkFacts)
+            if (!authorized(request)) { unchecked(input, "云端分析未开启或服务未配置，本次未核查"); return@launch }
+            when (tasks.enqueue(request, System.currentTimeMillis()) { current(input) && authorized(request) }) {
+                EnqueueResult.ENQUEUED -> wake.trySend(Unit)
+                EnqueueResult.DUPLICATE -> notice("此内容已提交分析")
+                EnqueueResult.FULL -> mutableState.update { it.copy(skipped = it.skipped + 1, notice = "待处理内容已满，本次未核查") }
+                EnqueueResult.INVALID -> unchecked(input, "此内容未能提交分析，请稍后重试")
+            }
         }
     }
     private fun current(input: MonitorInput) = input.epoch == epoch.get() &&
@@ -288,14 +322,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 if (!app.audioCoordinator.settings.reserveRequest()) { unchecked(input, "今日云端分析额度已用完，此内容未核查"); return ProcessResult.FAILED("request_budget") }
                 if (input.kind == "frame") reserveFrame()
                 mutableState.update { it.copy(requestsToday = app.audioCoordinator.settings.requestsToday(), framesToday = frameCount()) }
-                request(input, service.endpoint, service.token, checkFacts).also { value ->
-                    synchronized(cache) {
-                        if (current(input) && app.audioCoordinator.settings.config.value == service) {
-                            cache[cacheKey] = now to value
-                            while (cache.size > 32) cache.remove(cache.keys.first())
-                        }
-                    }
-                }
+                request(input, service.endpoint, service.token, checkFacts)
             }
             currentCoroutineContext().ensureActive()
             if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
@@ -372,6 +399,13 @@ class MonitorRuntime(private val app: EmergeApplication) {
             if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
             input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
             commit(input, outputs, claims, units, observed, policy, service)
+            // Invalid or failed responses must never prevent a fresh network attempt.
+            if (cached == null) synchronized(cache) {
+                if (current(input) && app.audioCoordinator.settings.config.value == service) {
+                    cache[cacheKey] = System.currentTimeMillis() to json
+                    while (cache.size > 32) cache.remove(cache.keys.first())
+                }
+            }
             notice(if (outputs.isEmpty()) "未提取到可核查陈述，不代表内容真实" else
                 "已分析 ${outputs.size} 个观点候选，结果仅覆盖已提取的采样内容")
             return ProcessResult.DONE

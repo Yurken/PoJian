@@ -8,7 +8,7 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
-import android.util.Base64
+import android.os.SystemClock
 import android.view.Display
 import android.view.Gravity
 import android.view.MotionEvent
@@ -24,7 +24,6 @@ import com.emerge.app.EmergeApplication
 import com.emerge.app.MainActivity
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.combine
-import java.io.ByteArrayOutputStream
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -41,11 +40,10 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private var closePanel: Job? = null
     private var revision = 0L
     private val screenScope = MonitorScreenScope()
-    private var lastShot = 0L
+    private val sampling = FrameSamplingPolicy()
     private var shotPending = false
     private var windowId = -1
     private var bounds = Rect()
-    private var lastImageKey = ""
     private val position = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,
         WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
@@ -73,7 +71,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                 refresh()
                 val config = monitor.config.value
                 if (config.visual && app.audioCoordinator.settings.config.value.enabled &&
-                    monitor.frameCount() < config.dailyFrames && System.currentTimeMillis() - lastShot >= config.frameIntervalSeconds * 1000L) screenshot(false)
+                    monitor.frameCount() < config.dailyFrames) screenshot(false)
                 delay(2000)
             }
         }
@@ -84,33 +82,42 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             revision++
             // Revoke screen binding immediately; do not wait for the next periodic sample.
             monitor.revokeScreen()
+            sampling.observeContext("", SystemClock.elapsedRealtime())
             closePanel?.cancel(); panel?.visibility = View.GONE
         }
         if (event.packageName?.toString() !in app.captureSettings.allowedPackages.value &&
-            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) { monitor.clearScreen(); hide() }
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) { clearScreen(); hide() }
+    }
+    private fun samplingScope(): String = monitor.state.value.contextToken.let {
+        if (it.isBlank()) "" else "$it:${monitor.samplingRevision}"
+    }
+    private fun clearScreen() {
+        monitor.clearScreen()
+        sampling.observeContext("", SystemClock.elapsedRealtime())
     }
     @Suppress("DEPRECATION")
     private fun refresh() {
         val power = service.getSystemService(android.os.PowerManager::class.java)
         val lock = service.getSystemService(android.app.KeyguardManager::class.java)
         if (!app.captureSettings.enabled.value || !power.isInteractive || lock.isKeyguardLocked) {
-            monitor.clearScreen(); hide(); return
+            clearScreen(); hide(); return
         }
-        val root = service.rootInActiveWindow ?: run { monitor.clearScreen(); hide(); return }
+        val root = service.rootInActiveWindow ?: run { clearScreen(); hide(); return }
         try {
             val name = root.packageName?.toString().orEmpty()
             if (name == service.packageName || name !in app.captureSettings.allowedPackages.value ||
                 name.startsWith("com.android.inputmethod") || name.contains("keyboard", true) || name == "com.android.systemui") {
-                monitor.clearScreen(); hide(); return
+                clearScreen(); hide(); return
             }
             windowId = root.windowId
             root.getBoundsInScreen(bounds)
             val text = visibleText(root)
             if (com.emerge.app.capture.WorkIdentityExtractor.isRecommendationList(name, text)) {
-                monitor.clearScreen(); hide(); return
+                clearScreen(); hide(); return
             }
             val token = screenScope.token(name, windowId, revision, text)
             monitor.setScreen(name, text, token)
+            sampling.observeContext(samplingScope(), SystemClock.elapsedRealtime())
         } finally { root.recycle() }
     }
     @Suppress("DEPRECATION")
@@ -137,7 +144,11 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private fun screenshot(manual: Boolean) {
         val state = monitor.state.value
         if (state.currentPackage.isBlank() || !app.captureSettings.enabled.value || !monitor.config.value.visual || shotPending) return
-        if (!manual && System.currentTimeMillis() - state.contextSince < 800) return
+        if (!monitor.canSampleFrame(manual)) {
+            if (manual) monitor.notice("待处理内容已满，本次未核查")
+            return
+        }
+        if (!sampling.shouldCapture(SystemClock.elapsedRealtime(), monitor.config.value.frameIntervalSeconds, manual, false)) return
         if (Build.VERSION.SDK_INT < 30) { monitor.notice("Android 10 当前仅支持文字与播放音频；关键画面需要 Android 11+"); return }
         screenshotSupported(manual)
     }
@@ -150,13 +161,14 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         val capturedWindow = windowId
         val capturedBounds = Rect(bounds)
         val token = state.contextToken
+        val sampleScope = samplingScope()
         val at = System.currentTimeMillis()
         // On Android 11–13 the API captures a display: avoid input methods and another focused window.
         if (Build.VERSION.SDK_INT < 34 && service.windows.any {
                 it.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
                     (it.isFocused && it.id != capturedWindow)
             }) { monitor.notice("当前有输入法或其他窗口遮挡，已跳过画面采样"); return }
-        shotPending = true; lastShot = at
+        shotPending = true; sampling.started(SystemClock.elapsedRealtime())
         if (Build.VERSION.SDK_INT < 34) rootView?.visibility = View.INVISIBLE
         val callback = object : AccessibilityService.TakeScreenshotCallback {
             override fun onFailure(errorCode: Int) {
@@ -165,40 +177,35 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             }
             override fun onSuccess(result: AccessibilityService.ScreenshotResult) {
                 val hardware = result.hardwareBuffer
-                val bitmap = try {
-                    val wrapped = Bitmap.wrapHardwareBuffer(hardware, result.colorSpace)
-                    try { wrapped?.copy(Bitmap.Config.ARGB_8888, false) } finally { wrapped?.recycle() }
-                } finally { hardware.close() }
-                if (bitmap == null) { shotPending = false; rootView?.visibility = View.VISIBLE; return }
-                if (!scope.isActive) { bitmap.recycle(); shotPending = false; return }
-                scope.launch {
+                // Enter try/finally even when the service was stopped before this callback arrived.
+                scope.launch(start = CoroutineStart.UNDISPATCHED) {
                     try {
+                        ensureActive()
                         refresh()
-                        if (monitor.state.value.contextToken != token || windowId != capturedWindow ||
+                        if (samplingScope() != sampleScope || windowId != capturedWindow ||
                             !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
-                        val jpeg = withContext(Dispatchers.Default) {
-                            val area = if (Build.VERSION.SDK_INT >= 34) Rect(0, 0, bitmap.width, bitmap.height) else
-                                Rect(capturedBounds).apply { require(intersect(0, 0, bitmap.width, bitmap.height)) }
-                            require(area.width() > 0 && area.height() > 0)
-                            val crop = Bitmap.createBitmap(bitmap, area.left, area.top, area.width(), area.height())
-                            val scale = minOf(1f, 960f / maxOf(crop.width, crop.height))
-                            val small = Bitmap.createScaledBitmap(crop, (crop.width * scale).roundToInt().coerceAtLeast(1),
-                                (crop.height * scale).roundToInt().coerceAtLeast(1), true)
+                        val previous = if (manual) null else sampling.previousFingerprint(SystemClock.elapsedRealtime())
+                        val encoded = withContext(Dispatchers.Default) {
+                            val wrapped = Bitmap.wrapHardwareBuffer(hardware, result.colorSpace)
                             try {
-                                val out = ByteArrayOutputStream(); small.compress(Bitmap.CompressFormat.JPEG, 45, out)
-                                require(out.size() <= 180 * 1024) { "画面尺寸超限，本次未上传" }; out.toByteArray()
-                            } finally { if (small !== crop) small.recycle(); if (crop !== bitmap) crop.recycle() }
+                                val bitmap = wrapped?.copy(Bitmap.Config.ARGB_8888, false) ?: return@withContext null
+                                try { MonitorFrameEncoder.encode(bitmap, if (Build.VERSION.SDK_INT >= 34) null else capturedBounds, previous) }
+                                finally { bitmap.recycle() }
+                            } finally { wrapped?.recycle() }
                         }
-                        if (!app.captureSettings.isPermissionCurrent(state.currentPackage, permission) || monitor.state.value.contextToken != token) return@launch
-                        val image = Base64.encodeToString(jpeg, Base64.NO_WRAP)
-                        val key = MonitorPolicy.hash(state.currentPackage + state.screenText + image)
-                        if (!manual && key == lastImageKey) return@launch
-                        lastImageKey = key
-                        monitor.submitFrame(state.currentPackage, state.screenText, image, token, at, manual)
+                        refresh()
+                        if (encoded == null || samplingScope() != sampleScope || windowId != capturedWindow ||
+                            !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
+                        sampling.sampled(sampleScope, encoded.image == null)
+                        val image = encoded.image ?: return@launch
+                        val accepted = monitor.submitFrame(state.currentPackage, state.screenText, image, token, at, manual) { success ->
+                            scope.launch { sampling.completed(sampleScope, encoded.fingerprint, success, SystemClock.elapsedRealtime()) }
+                        }
+                        if (!accepted) sampling.completed(sampleScope, encoded.fingerprint, false, SystemClock.elapsedRealtime())
                     } catch (e: Exception) {
                         if (e is CancellationException) throw e
                         monitor.notice("画面采样未完成：${e.message?.take(80).orEmpty()}")
-                    } finally { bitmap.recycle(); shotPending = false; rootView?.visibility = View.VISIBLE }
+                    } finally { hardware.close(); shotPending = false; rootView?.visibility = View.VISIBLE }
                 }
             }
         }
@@ -277,6 +284,6 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         closePanel?.cancel(); rootView?.let { runCatching { manager.removeView(it) } }
         rootView = null; bubble = null; panel = null; detail = null; actions.clear()
     }
-    fun interrupt() { monitor.clearScreen(); hide() }
-    fun stop() { monitor.bindManual(null); monitor.clearScreen(); scope.cancel(); hide() }
+    fun interrupt() { clearScreen(); hide() }
+    fun stop() { monitor.bindManual(null); clearScreen(); scope.cancel(); hide() }
 }

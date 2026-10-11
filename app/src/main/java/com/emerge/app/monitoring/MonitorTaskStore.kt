@@ -290,7 +290,7 @@ class MonitorTaskStore(private val database: BrowseDatabase,
         private const val CANCELLED = "cancelled"
         private val PENDING = setOf(QUEUED, RUNNING)
         private val HASH = Regex("[a-f0-9]{64}")
-        private const val CAPACITY = 6
+        internal const val CAPACITY = 6
         private const val MAX_ATTEMPTS = 3
         private const val TTL = 24 * 60 * 60 * 1000L
         private const val LEASE_MILLIS = 120_000L
