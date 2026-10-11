@@ -183,14 +183,17 @@ internal fun SectionTitle(title: String, subtitle: String? = null, help: String?
     if (!subtitle.isNullOrBlank()) MetadataText(subtitle)
 }
 
-/** Contextual help stays out of the reading flow, with a full touch target and spoken label. */
+/** Help entry points are intentionally disabled; retain the implementation for later restoration. */
 @Composable
+@Suppress("UNUSED_PARAMETER")
 internal fun HelpButton(title: String, body: String, modifier: Modifier = Modifier) {
+    /*
     var open by rememberSaveable(title) { mutableStateOf(false) }
     IconButton(onClick = { open = true }, modifier = modifier) {
         Icon(Icons.Outlined.Info, contentDescription = "${title}说明", tint = Muted)
     }
     if (open) HelpDialog(title, body) { open = false }
+    */
 }
 
 @Composable

@@ -77,7 +77,6 @@ fun AudioCloudDialog(config: TextServiceConfig, onDismiss: () -> Unit,
     var enabled by remember { mutableStateOf(config.enabled) }
     var endpoint by remember { mutableStateOf(config.endpoint) }
     var token by remember { mutableStateOf(config.token) }
-    var limit by remember { mutableStateOf(config.dailyLimit.toString()) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("云端文字分析") },
@@ -90,14 +89,9 @@ fun AudioCloudDialog(config: TextServiceConfig, onDismiss: () -> Unit,
                 singleLine = true, enabled = !saving, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
             OutlinedTextField(token, { token = it }, label = { Text("访问令牌") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true, enabled = !saving)
-            OutlinedTextField(limit, { limit = it.filter(Char::isDigit).take(3) }, label = { Text("每日调用上限（1–100）") },
-                singleLine = true, enabled = !saving, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
-            Text("失败请求也计入额度。", style = MaterialTheme.typography.bodySmall)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         } }, confirmButton = { TextButton(enabled = !saving, onClick = {
-            val parsed = limit.toIntOrNull()
-            if (parsed == null || parsed !in 1..100) error = "每日上限应为 1–100"
-            else { saving = true; error = null; onSave(TextServiceConfig(enabled, endpoint, token, parsed), onDismiss) { error = it; saving = false } }
+            saving = true; error = null; onSave(TextServiceConfig(enabled, endpoint, token), onDismiss) { error = it; saving = false }
         }) { Text(if (saving) "保存中" else "保存") } },
         dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("取消") } })
 }

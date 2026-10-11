@@ -35,12 +35,12 @@ class MonitorRecoveryLifecycleTest {
         val original = JSONObject().put("enabled", app.captureSettings.enabled.value)
             .put("packages", JSONArray(app.captureSettings.allowedPackages.value.toList()))
             .put("cloudEnabled", cloud.enabled).put("endpoint", cloud.endpoint).put("token", cloud.token)
-            .put("limit", cloud.dailyLimit).put("realtime", monitor.realtime).put("cocoon", monitor.cocoon)
+            .put("realtime", monitor.realtime).put("cocoon", monitor.cocoon)
             .put("visual", monitor.visual).put("day", budget.getString("day", null)).put("count", budget.getInt("count", 0))
         check(prefs.edit().putString("original", MonitorPayloadCipher().seal(original.toString(), "recovery-fixture")).commit())
         app.monitor.saveConfig(monitor.copy(realtime = false, cocoon = false, visual = false))
         val port = requireNotNull(args.getString("monitor_recovery_port")).toInt()
-        app.audioCoordinator.settings.save(TextServiceConfig(true, "http://127.0.0.1:$port", "", 100), true)
+        app.audioCoordinator.settings.save(TextServiceConfig(true, "http://127.0.0.1:$port", ""), true)
         app.captureSettings.setAllowedPackages(setOf(PACKAGE))
         app.captureSettings.setEnabled(true)
         delay(300)
@@ -49,8 +49,6 @@ class MonitorRecoveryLifecycleTest {
             visibleText = TEXT, endTimestamp = now, sampleCount = 1, workKey = "recovery-fixture-$now")
         val id = app.repository.record(row)
         check(prefs.edit().putLong("eventId", id).commit())
-        app.monitor.setScreen(PACKAGE, TEXT, "recovery-screen-$now")
-        app.monitor.submitCurrentText()
         withTimeout(10000) { app.monitorTasks.observeInputStates().first { it[id] == "running" } }
         // Instrumentation may stop the process as soon as it returns; prove the request reached the fake server first.
         withTimeout(10000) {
@@ -87,7 +85,7 @@ class MonitorRecoveryLifecycleTest {
             if (id > 0) app.repository.deleteEvent(id)
             app.monitor.invalidate(clearSemantics = false)
             app.audioCoordinator.settings.save(TextServiceConfig(original.getBoolean("cloudEnabled"),
-                original.getString("endpoint"), original.getString("token"), original.getInt("limit")), true)
+                original.getString("endpoint"), original.getString("token")), true)
             val budget = app.getSharedPreferences("audio_analysis", Context.MODE_PRIVATE)
             budget.edit().apply { if (original.isNull("day")) remove("day") else putString("day", original.getString("day")) }
                 .putInt("count", original.getInt("count")).commit()

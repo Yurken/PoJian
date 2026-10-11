@@ -54,6 +54,7 @@ class MonitorSemanticsIntegrationTest {
                 var read = 0
                 while (read < length) { val count = input.read(body, read, length - read); require(count > 0); read += count }
                 val request = JSONObject(String(body, Charsets.UTF_8))
+                assertFalse(request.getBoolean("check_facts"))
                 if (responseIndex == 0) {
                     retriedId = request.getString("id")
                     socket.getOutputStream().write("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray(Charsets.US_ASCII))
@@ -80,7 +81,7 @@ class MonitorSemanticsIntegrationTest {
         }
         try {
             app.monitor.saveConfig(oldMonitor.copy(realtime = false, cocoon = false, visual = false))
-            settings.save(oldCloud.copy(enabled = true, endpoint = "http://127.0.0.1:${server.localPort}", token = "", dailyLimit = 100), true)
+            settings.save(oldCloud.copy(enabled = false, endpoint = "http://127.0.0.1:${server.localPort}", token = ""), true)
             app.captureSettings.setAllowedPackages(oldPackages + "com.example.semanticfixture")
             app.captureSettings.setEnabled(true)
             delay(300) // Let the permission/config collector establish the request epoch.
@@ -92,9 +93,11 @@ class MonitorSemanticsIntegrationTest {
                     sampleCount = 2, workKey = "semantic-fixture-$index-$at")
                 val id = app.repository.record(row)
                 ids += id
-                delay(100)
-                app.monitor.setScreen(row.packageName, row.visibleText, "fixture-$index")
-                app.monitor.submitCurrentText()
+                if (index == 0) {
+                    delay(300)
+                    assertTrue(app.repository.semantics.first().none { it.eventId == id })
+                    settings.save(settings.config.value.copy(enabled = true), true)
+                }
                 try {
                     withTimeout(15000) { app.repository.semantics.first { rows -> rows.any { it.eventId == id } } }
                 } catch (error: Exception) { throw AssertionError(app.monitor.state.value.notice, error) }
@@ -119,6 +122,7 @@ class MonitorSemanticsIntegrationTest {
             assertEquals(1, shares.size)
             assertEquals(2, shares.single().total)
             assertEquals("structured_model", shares.single().analysisSource)
+            assertEquals(setOf("就业", "招聘岗位"), recentContentWords(events, StatisticsPeriod.DAY, now, semantics).map { it.text }.toSet())
             app.repository.deleteEvent(ids.first())
             val remaining = app.repository.allEvents.first().filter { it.id in ids }
             val retained = app.repository.semantics.first().filter { it.eventId in ids }

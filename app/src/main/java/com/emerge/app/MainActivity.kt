@@ -157,7 +157,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     canImport = audioState.modelState.status == AudioModelStatus.READY && audioState.task == null)
                 showCaptureTools -> Column(contentModifier) {
                     TextButton(onClick = { showCaptureTools = false }) { Text("返回设置") }
-                    RecordingScreen(audioState.copy(cloudLabel = if (audioConfig.enabled) "云端已启用；自动发送由实时核查与画面开关控制" else "云端关闭"), audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
+                    RecordingScreen(audioState.copy(cloudLabel = if (audioConfig.enabled) "云端已启用" else "云端关闭"), audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
                         audioModel::stopTask, { showAudioRecords = true }, modifier = Modifier.weight(1f),
                         onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio, isPaused = audioRuntime.isPaused)
                 }

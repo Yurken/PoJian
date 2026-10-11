@@ -4,14 +4,12 @@ package com.emerge.app.monitoring
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.emerge.app.ui.SectionTitle
@@ -27,7 +25,6 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         MonitorSwitch("实时事实核查", "", config.realtime) { onChange(config.copy(realtime = it)) }
         MonitorSwitch("关键画面分析", "", config.visual) { onChange(config.copy(visual = it)) }
         MonitorSlider("画面采样间隔", config.frameIntervalSeconds, 15..120, "秒") { onChange(config.copy(frameIntervalSeconds = it)) }
-        MonitorSlider("每日画面请求上限", config.dailyFrames, 1..100, "次") { onChange(config.copy(dailyFrames = it)) }
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         MonitorSwitch("悬浮球", "", config.bubble) { onChange(config.copy(bubble = it)) }
         MonitorSwitch("观点重复观察", "", config.cocoon) { onChange(config.copy(cocoon = it)) }
@@ -71,7 +68,6 @@ fun MonitorGatewayDialog(config: TextServiceConfig, onDismiss: () -> Unit,
     var enabled by remember { mutableStateOf(config.enabled) }
     var endpoint by remember { mutableStateOf(config.endpoint) }
     var token by remember { mutableStateOf(config.token) }
-    var limit by remember { mutableStateOf(config.dailyLimit.toString()) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     AlertDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("分析与取证网关") },
@@ -81,14 +77,9 @@ fun MonitorGatewayDialog(config: TextServiceConfig, onDismiss: () -> Unit,
             OutlinedTextField(endpoint, { endpoint = it }, label = { Text("HTTPS 网关地址（不含 /monitor）") }, singleLine = true)
             OutlinedTextField(token, { token = it }, label = { Text("访问令牌（非模型密钥）") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true)
-            OutlinedTextField(limit, { limit = it }, label = { Text("每日共享请求上限（1—100）") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), singleLine = true)
-            Text("文字、音频与画面共用额度。", style = MaterialTheme.typography.bodySmall)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         } }, confirmButton = { TextButton(enabled = !saving, onClick = {
-            val count = limit.toIntOrNull()
-            if (count == null || count !in 1..100) error = "请输入 1—100 的每日请求上限"
-            else { saving = true; onSave(TextServiceConfig(enabled, endpoint, token, count), onDismiss) { error = it; saving = false } }
+            saving = true; onSave(TextServiceConfig(enabled, endpoint, token), onDismiss) { error = it; saving = false }
         }) { Text(if (saving) "保存中" else "保存") } },
         dismissButton = { TextButton(enabled = !saving, onClick = onDismiss) { Text("取消") } })
 }

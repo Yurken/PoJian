@@ -63,6 +63,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     private val frameOutstanding = AtomicBoolean()
     internal val samplingRevision: Long get() = epoch.get()
     private val wake = Channel<Unit>(Channel.CONFLATED)
+    private val textWake = Channel<Unit>(Channel.CONFLATED)
     private val settingsReady = CompletableDeferred<Unit>()
     private val tasks get() = app.monitorTasks
     @Volatile private var authorizationRevision = prefs.getLong("authorization_revision", 0L)
@@ -76,7 +77,6 @@ class MonitorRuntime(private val app: EmergeApplication) {
     @Volatile private var connection: HttpURLConnection? = null
     @Volatile private var manualHandler: (() -> Unit)? = null
     private var lastLocalAnalysis = 0L
-    private val startedAt = System.currentTimeMillis()
 
     init {
         scope.launch {
@@ -88,6 +88,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 mutableState.update { s -> s.copy(busy = false) }
                 settingsReady.complete(Unit)
                 wake.trySend(Unit)
+                textWake.trySend(Unit)
             }
         }
         scope.launch {
@@ -95,6 +96,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 mutableState.update { it.copy(pending = counts.queued + counts.running,
                     retrying = counts.retrying, failed = counts.failed) }
                 wake.trySend(Unit)
+                textWake.trySend(Unit)
             }
         }
         scope.launch {
@@ -140,6 +142,16 @@ class MonitorRuntime(private val app: EmergeApplication) {
             }
         }
         scope.launch {
+            settingsReady.await()
+            while (isActive) {
+                enqueueTextAnalysis()
+                select<Unit> {
+                    textWake.onReceive { }
+                    onTimeout(30_000) { }
+                }
+            }
+        }
+        scope.launch {
             combine(app.repository.allEvents, app.repository.semantics) { rows, semantics -> rows to semantics }
                 .collect { (rows, semantics) ->
                 val events = rows.associateBy { it.id }
@@ -150,31 +162,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     val updated = events[id]
                     updated == null || (updated.visibleText != old.visibleText && !MonitorInputs.isAppend(old, updated))
                 }) invalidate(clearSemantics = false)
-                val added = rows.filter { row -> previous != null && row.visibleText != previous[row.id]?.visibleText &&
-                    MonitorInputs.observationTime(row) >= startedAt - 120_000 && row.sourceType !in setOf("visual_model", ScreenTextMaterial.SOURCE) }
-                    .sortedBy { it.timestamp }
-                if (config.value.realtime && app.captureSettings.enabled.value) {
-                    // A transcript batch is submitted with nearby stable context, not once per tiny segment.
-                    added.groupBy { it.audioSessionId ?: "event:${it.id}" }.values.forEach { batch ->
-                        val last = batch.last()
-                        if (last.packageName !in app.captureSettings.allowedPackages.value) return@forEach
-                        val snapshots = if (last.audioSessionId != null) rows.filter {
-                            it.audioSessionId == last.audioSessionId && it.timestamp <= last.timestamp &&
-                                last.timestamp - it.timestamp <= 30_000
-                        }.sortedBy { it.timestamp }.takeLast(4) else listOf(last)
-                        val text = if (last.audioSessionId != null) snapshots.joinToString("\n") { it.visibleText }.takeLast(6000)
-                        else last.visibleText.take(6000)
-                        val screen = state.value
-                        val token = if (last.packageName == screen.currentPackage &&
-                            (if (last.audioSessionId != null) last.timestamp >= screen.contextSince
-                            else MonitorPolicy.normalized(text.take(4000)) == MonitorPolicy.normalized(screen.screenText.take(4000))))
-                            screen.contextToken else ""
-                        submit("event:${last.id}", last.packageName, text, MonitorInputs.observationTime(last),
-                            if (last.audioSessionId != null) "audio" else "text", token,
-                            last.audioSessionId?.let { "audio:$it" } ?: screen.encounter.takeIf { screen.currentPackage == last.packageName }.orEmpty().ifBlank { "event:${last.id}" },
-                            snapshots = snapshots)
-                    }
-                }
+                textWake.trySend(Unit)
                 if (config.value.cocoon && app.captureSettings.enabled.value && rows.isNotEmpty() &&
                     System.currentTimeMillis() - lastLocalAnalysis >= 30_000) {
                     lastLocalAnalysis = System.currentTimeMillis()
@@ -198,6 +186,38 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     }
                 }
             }
+        }
+    }
+
+    /** Refill the bounded durable queue on capture, opt-in, restart and completion. */
+    private suspend fun enqueueTextAnalysis() {
+        val service = app.audioCoordinator.settings.config.value
+        if (!service.enabled || service.endpoint.isBlank() || !app.captureSettings.enabled.value) return
+        val inputEpoch = epoch.get()
+        val generation = app.repository.captureGeneration
+        val pending = tasks.observeInputStates().first().filterValues { it == "queued" || it == "running" }.keys
+        val batches = MonitorInputs.pendingTextBatches(app.repository.allEvents.first().filter { it.id !in pending },
+            app.repository.semantics.first(), app.captureSettings.allowedPackages.value, System.currentTimeMillis())
+        for (snapshots in batches) {
+            if (inputEpoch != epoch.get() || service != app.audioCoordinator.settings.config.value) return
+            val last = snapshots.last()
+            val permission = app.captureSettings.permissionToken(last.packageName) ?: continue
+            val text = snapshots.joinToString("\n") { it.visibleText }.take(6000)
+            if (text.length < 12) continue
+            val screen = state.value
+            val token = if (last.packageName == screen.currentPackage &&
+                (if (last.audioSessionId != null) last.timestamp >= screen.contextSince
+                else MonitorPolicy.normalized(text.take(4000)) == MonitorPolicy.normalized(screen.screenText.take(4000))))
+                screen.contextToken else ""
+            val input = MonitorInput("event:${last.id}", last.packageName, text, MonitorInputs.observationTime(last),
+                if (last.audioSessionId != null) "audio" else "text", token, inputEpoch, permission, generation,
+                last.audioSessionId?.let { "audio:$it" } ?: screen.encounter.takeIf {
+                    screen.currentPackage == last.packageName && last.timestamp >= screen.contextSince
+                }.orEmpty().ifBlank { "event:${last.id}" }, snapshots = snapshots,
+                checkFacts = config.value.realtime)
+            val request = MonitorTaskRequest(input.id, input.packageName, input.kind, input.text, input.at,
+                token, input.encounter, snapshots, serviceFingerprint(), authorizationKey(), input.checkFacts)
+            if (tasks.enqueue(request, System.currentTimeMillis()) { current(input) && authorized(request) } == EnqueueResult.FULL) return
         }
     }
 
@@ -245,7 +265,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         try {
             val result = process(work.input)
             success = result == ProcessResult.DONE
-            if (result is ProcessResult.FAILED && result.reason !in setOf("frame_budget", "request_budget")) {
+            if (result is ProcessResult.FAILED) {
                 enqueueScreenTextFallback(work.input)
             }
         }
@@ -338,9 +358,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
             val cacheKey = input.key + ":" + checkFacts + ":" + MonitorPolicy.hash(service.endpoint + "|" + service.token)
             val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now >= it.first && now - it.first <= 300_000 }?.second }
             val json = if (cached != null) JSONObject(cached.toString()).put("id", input.id) else {
-                if (input.kind == "frame" && frameCount() >= policy.dailyFrames) { unchecked(input, "今日画面分析额度已用完，此画面未核查"); return ProcessResult.FAILED("frame_budget") }
                 if (!current(input)) return ProcessResult.CANCELLED
-                if (!app.audioCoordinator.settings.reserveRequest()) { unchecked(input, "今日云端分析额度已用完，此内容未核查"); return ProcessResult.FAILED("request_budget") }
+                app.audioCoordinator.settings.recordRequest()
                 if (input.kind == "frame") reserveFrame()
                 mutableState.update { it.copy(requestsToday = app.audioCoordinator.settings.requestsToday(), framesToday = frameCount()) }
                 request(input, service.endpoint, service.token, checkFacts)
@@ -529,7 +548,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         check(prefs.edit().putLong("authorization_revision", next).putString("config", JSONObject().apply {
             put("bubble", clean.bubble); put("cocoon", clean.cocoon); put("realtime", clean.realtime); put("visual", clean.visual)
             put("cooldown", clean.cooldownMinutes); put("alerts", clean.dailyAlerts); put("seconds", clean.displaySeconds)
-            put("interval", clean.frameIntervalSeconds); put("frames", clean.dailyFrames); put("quiet", clean.quiet)
+            put("interval", clean.frameIntervalSeconds); put("quiet", clean.quiet)
             put("start", clean.quietStart); put("end", clean.quietEnd); put("research", clean.researchMode)
         }.toString()).commit())
         authorizationRevision = next
@@ -539,7 +558,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         val j = JSONObject(prefs.getString("config", "{}").orEmpty())
         MonitorConfig(j.optBoolean("bubble"), j.optBoolean("cocoon", true), j.optBoolean("realtime"), j.optBoolean("visual"),
             j.optInt("cooldown", 30), j.optInt("alerts", 6), j.optInt("seconds", 3), j.optInt("interval", 30),
-            j.optInt("frames", 20), j.optBoolean("quiet"), j.optInt("start", 22), j.optInt("end", 8), j.optBoolean("research")).bounded()
+            j.optBoolean("quiet"), j.optInt("start", 22), j.optInt("end", 8), j.optBoolean("research")).bounded()
     }.getOrDefault(MonitorConfig())
     @Synchronized fun consumeAlert(finding: MonitorFinding): Boolean {
         if (!app.captureSettings.enabled.value || finding.packageName !in app.captureSettings.allowedPackages.value) return false

@@ -67,7 +67,7 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     }
     val ui = combine(runtimeUi, sessions, config, coordinator.message, localMessage) { state, sessions, config, message, local ->
         state.copy(sessionCount = sessions.size, message = local ?: message ?: state.message,
-            cloudLabel = if (config.enabled) "已启用 · 每日最多 ${config.dailyLimit} 次" else "未启用 · 使用本地识别")
+            cloudLabel = if (config.enabled) "已启用" else "未启用 · 使用本地识别")
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AudioUiState())
 
     fun notify(value: String) { localMessage.value = value }

@@ -1,9 +1,11 @@
 package com.emerge.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -14,10 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -26,6 +31,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import com.emerge.app.capture.CaptureStatus
 import com.emerge.app.capture.VisibilityRegion
 import com.emerge.app.analysis.ObservationWindow
@@ -38,6 +44,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, String>, modifier: Modifier = Modifier,
@@ -342,27 +350,45 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
     onDeletePackage: (CaptureApp) -> Unit) {
     var draft by remember(selected) { mutableStateOf(selected.toSet()) }
     var query by rememberSaveable { mutableStateOf("") }
+    var selectedOnly by rememberSaveable { mutableStateOf(false) }
     val compactHeight = LocalConfiguration.current.screenHeightDp < 600 && LocalDensity.current.fontScale > 1.3f
-    val filtered = remember(apps, query) {
-        apps.filter { it.label.contains(query.trim(), true) || it.packageName.contains(query.trim(), true) }
+    val keyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val listState = rememberLazyListState()
+    // Keep row positions stable during selection; prioritize the saved scope when the picker opens.
+    val ordered = remember(apps, selected, recordCounts) {
+        val collator = java.text.Collator.getInstance(Locale.CHINA)
+        apps.sortedWith(compareByDescending<CaptureApp> { it.packageName in selected }
+            .thenByDescending { (recordCounts[it.packageName] ?: 0) > 0 }
+            .thenComparator { a, b -> collator.compare(a.label, b.label) }
+            .thenBy { it.packageName })
     }
+    val filtered = remember(ordered, query, selectedOnly, draft) {
+        ordered.filter { (!selectedOnly || it.packageName in draft) &&
+            (it.label.contains(query.trim(), true) || it.packageName.contains(query.trim(), true)) }
+    }
+    LaunchedEffect(query, selectedOnly) { listState.scrollToItem(0) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surface,
         dragHandle = { if (!compactHeight) BottomSheetDefaults.DragHandle() }) {
         Column(Modifier.fillMaxWidth().fillMaxHeight(if (compactHeight) 1f else 0.9f)
             .then(if (compactHeight) Modifier.statusBarsPadding() else Modifier).padding(horizontal = 16.dp)) {
-            LazyColumn(Modifier.testTag("capture-app-options").weight(1f)) {
-                item(key = "capture-heading") {
-                    Column {
-                        SectionTitle("选择要采集的应用")
-                        MetadataText("已选 ${draft.size} 个 · 保存后需开启采集", Modifier.padding(top = 6.dp))
-                        OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth()
-                            .padding(vertical = if (compactHeight) 4.dp else 12.dp),
-                            singleLine = true, label = { Text("搜索应用") }, shape = MaterialTheme.shapes.small,
-                            trailingIcon = { if (query.isNotEmpty()) TextButton(onClick = { query = "" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除") } })
-                        if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    }
+            if (!keyboardVisible) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("选择要采集的应用", modifier = Modifier.weight(1f), color = Ink,
+                        style = if (compactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge)
+                    MetadataText("已选 ${draft.size} 个", Modifier.padding(start = 8.dp))
                 }
+            }
+            OutlinedTextField(query, { query = it }, modifier = Modifier.fillMaxWidth()
+                .padding(vertical = if (compactHeight) 4.dp else 8.dp),
+                singleLine = true, label = { Text("搜索应用") }, shape = MaterialTheme.shapes.small,
+                trailingIcon = { if (query.isNotEmpty()) TextButton(onClick = { query = "" }, modifier = Modifier.heightIn(min = 48.dp)) { Text("清除") } })
+            if (!keyboardVisible) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !selectedOnly, onClick = { selectedOnly = false }, label = { Text("全部应用") })
+                FilterChip(selected = selectedOnly, onClick = { selectedOnly = true }, label = { Text("已选") })
+            }
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            LazyColumn(Modifier.testTag("capture-app-options").weight(1f), state = listState) {
                 if (filtered.isEmpty() && !loading) item {
                     Text("未找到应用", color = Muted,
                         style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(vertical = 20.dp))
@@ -374,12 +400,13 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
                         Row(Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Checkbox, onValueChange = { value ->
                             draft = if (value) draft + application.packageName else draft - application.packageName
                         }).heightIn(min = 64.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(checked = checked, onCheckedChange = null)
+                            CaptureApplicationIcon(application.packageName)
                             Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                 Text(application.label, color = Ink, style = MaterialTheme.typography.titleSmall)
                                 Text(application.packageName, color = Muted, style = MaterialTheme.typography.bodySmall,
                                     modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
+                            Checkbox(checked = checked, onCheckedChange = null)
                         }
                         if (records > 0) TextButton(onClick = { onDeletePackage(application) },
                             modifier = Modifier.padding(start = 36.dp).heightIn(min = 48.dp)) {
@@ -400,6 +427,21 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun CaptureApplicationIcon(packageName: String) {
+    val context = LocalContext.current
+    val icon by produceState<ImageBitmap?>(null, packageName, context) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { context.packageManager.getApplicationIcon(packageName)
+                .toBitmap(width = 96, height = 96).asImageBitmap() }.getOrNull()
+        }
+    }
+    Box(Modifier.size(36.dp).clip(MaterialTheme.shapes.small)
+        .background(MaterialTheme.colorScheme.surfaceVariant), contentAlignment = Alignment.Center) {
+        icon?.let { Image(it, contentDescription = null, modifier = Modifier.fillMaxSize()) }
     }
 }
 

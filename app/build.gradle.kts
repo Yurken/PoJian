@@ -3,6 +3,7 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -58,9 +59,15 @@ android {
         }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions { annotationProcessorOptions { arguments["room.schemaLocation"] = "$projectDir/schemas" } }
-        // Injected at build time via the gradle property pojian.serviceToken (e.g. ~/.gradle/gradle.properties); never commit real tokens.
-        val pojianServiceToken = providers.gradleProperty("pojian.serviceToken").orNull ?: ""
-        buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$pojianServiceToken\"")
+        // Injected from Gradle properties or ignored local.properties; never commit real tokens.
+        val localServiceProperties = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
+        }
+        val pojianServiceToken = providers.gradleProperty("pojian.serviceToken").orNull
+            ?: localServiceProperties.getProperty("pojian.serviceToken", "")
+        require(pojianServiceToken.length <= 512 && pojianServiceToken.all { it.code in 33..126 }) { "Invalid service token format" }
+        val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

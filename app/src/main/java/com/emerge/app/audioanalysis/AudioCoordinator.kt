@@ -166,7 +166,7 @@ class AudioCoordinator(private val app: EmergeApplication) {
                 val history = repository.getHistory(session.startedAt, id).map(::evidence)
                 val config = settings.config.value
                 val result = if (config.enabled) {
-                    check(settings.reserveRequest()) { "今天云端分析次数已用完，可以在设置中关闭云端，改用本地分析" }
+                    settings.recordRequest()
                     RemoteAudioInsights.analyze(config, current, history)
                 } else withContext(Dispatchers.Default) { LocalAudioInsights.analyze(current, history) }
                 ensureActive()

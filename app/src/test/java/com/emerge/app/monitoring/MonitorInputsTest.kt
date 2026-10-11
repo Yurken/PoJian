@@ -1,6 +1,7 @@
 package com.emerge.app.monitoring
 
 import com.emerge.app.analysis.ArgumentUnit
+import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.data.BrowseEvent
 import org.junit.Assert.*
 import org.junit.Test
@@ -9,6 +10,37 @@ class MonitorInputsTest {
     private fun event(id: Long, text: String, at: Long = 1000, kind: String = "accessibility") =
         BrowseEvent(id = id, packageName = "app", timestamp = at, eventType = 0,
             visibleText = text, endTimestamp = at + 2000, sampleCount = 2, sourceType = kind, workKey = "work:$id")
+
+    @Test fun backlogUsesOnlyRecentAuthorizedUnanalyzedCaptureText() {
+        val now = 100_000_000L
+        val recent = event(1, "已保存但尚未分析的文字", now - 10_000)
+        val analyzed = recent.copy(id = 2)
+        val revised = recent.copy(id = 3, visibleText = "修订后的文字")
+        val results = listOf(EventSemantics(2, analyzed.visibleText, now, emptyList()),
+            EventSemantics(3, recent.visibleText, now, emptyList()))
+        val excluded = listOf(recent.copy(id = 4, packageName = "not-allowed"),
+            recent.copy(id = 5, sourceType = "visual_model"), recent.copy(id = 6, sourceType = "screen_ocr"),
+            recent.copy(id = 7, sourceType = "audio_import"), recent.copy(id = 8, sourceType = "recommendation_list"),
+            recent.copy(id = 9, timestamp = now - 86_400_000, endTimestamp = now - 86_400_000),
+            recent.copy(id = 10, endTimestamp = now + 1), recent.copy(id = 11, visibleText = " "))
+        assertEquals(setOf(1L, 3L), MonitorInputs.pendingTextBatches(listOf(recent, analyzed, revised) + excluded,
+            results, setOf("app"), now).flatten().map { it.id }.toSet())
+        assertTrue(MonitorInputs.pendingTextBatches(listOf(recent), emptyList(), emptySet(), now).isEmpty())
+    }
+
+    @Test fun audioBacklogStaysWithinSessionWindowAndPayloadBounds() {
+        val rows = (1L..9L).map { id -> event(id, "片段$id", id * 1000, "audio_playback").copy(audioSessionId = "session") }
+        val distant = event(10, "稍后的片段", 100_000, "audio_playback").copy(audioSessionId = "session")
+        val other = event(11, "其他应用片段", 102_000, "audio_playback").copy(audioSessionId = "session", packageName = "other")
+        val long = (12L..14L).map { id -> event(id, "长".repeat(3000), 104_000 + id, "audio_playback").copy(audioSessionId = "long") }
+        val all = rows + distant + other + long
+        val batches = MonitorInputs.pendingTextBatches(all, emptyList(), setOf("app", "other"), 110_000)
+        assertEquals(all.map { it.id }.toSet(), batches.flatten().map { it.id }.toSet())
+        assertTrue(batches.all { it.size <= 4 && it.last().timestamp - it.first().timestamp <= 30_000 })
+        assertTrue(batches.all { it.map { row -> row.packageName }.distinct().size == 1 })
+        assertTrue(batches.all { it.joinToString("\n") { row -> row.visibleText }.length <= 6000 })
+        assertEquals(14L, batches.first().single().id)
+    }
 
     @Test fun completedCaptureAppendPreservesUnrelatedResultsButCorrectionDoesNot() {
         val old = event(1, "原文观点\n已有依据")

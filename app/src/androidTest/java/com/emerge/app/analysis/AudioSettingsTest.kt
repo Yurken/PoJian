@@ -23,7 +23,7 @@ class AudioSettingsTest {
 
     @Test fun serviceCredentialIsEncryptedAndReadableAfterRecreation() {
         val settings = AudioAnalysisSettings(context)
-        val config = TextServiceConfig(true, "https://service.example/", "fixture-service-token", 2)
+        val config = TextServiceConfig(true, "https://service.example/", "fixture-service-token")
         settings.save(config, false)
         val stored = context.getSharedPreferences("audio_analysis", Context.MODE_PRIVATE).getString("token", "")
         assertFalse(stored.isNullOrEmpty())
@@ -31,14 +31,15 @@ class AudioSettingsTest {
         assertFalse(stored!!.contains(config.token))
         assertEquals(config.copy(endpoint = "https://service.example"), AudioAnalysisSettings(context).config.value)
     }
-    @Test fun requestBudgetPersistsAcrossSettingsInstances() {
+    @Test fun requestCountPersistsWithoutEnforcingLegacyClientQuota() {
+        context.getSharedPreferences("audio_analysis", Context.MODE_PRIVATE).edit().putInt("limit", 2).commit()
         val first = AudioAnalysisSettings(context)
-        first.save(TextServiceConfig(true, "https://service.example", "token", 2), false)
-        assertTrue(first.reserveRequest())
+        first.save(TextServiceConfig(true, "https://service.example", "token"), false)
+        first.recordRequest()
         val second = AudioAnalysisSettings(context)
-        assertTrue(second.reserveRequest())
-        assertFalse(first.reserveRequest())
-        assertEquals(2, second.requestsToday())
+        repeat(120) { second.recordRequest() }
+        assertEquals(121, first.requestsToday())
+        assertEquals(121, second.requestsToday())
     }
     @Test fun invalidCredentialOrReleaseHttpDoesNotChangeSettings() {
         val settings = AudioAnalysisSettings(context)

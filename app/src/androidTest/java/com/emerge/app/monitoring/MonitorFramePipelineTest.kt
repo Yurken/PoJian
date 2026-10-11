@@ -24,6 +24,36 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Real HTTP worker and Room, using only a loopback server and synthetic input. */
 @RunWith(AndroidJUnit4::class)
 class MonitorFramePipelineTest {
+    @Test fun cloudOptInDrainsBacklogBeyondCapacityWithoutFactChecksOrClientQuotas() = runBlocking {
+        fixture { f ->
+            val settings = f.app.audioCoordinator.settings
+            settings.save(settings.config.value.copy(enabled = false), true)
+            delay(300)
+            repeat(9) { f.text(it) }
+            delay(300)
+            assertEquals(0, f.requestCount.get())
+            f.app.getSharedPreferences("audio_analysis", Context.MODE_PRIVATE).edit()
+                .putString("day", java.time.LocalDate.now().toString()).putInt("count", 120).putInt("limit", 1).commit()
+            f.app.getSharedPreferences("live_monitor", Context.MODE_PRIVATE).edit()
+                .putString("frame_day", java.time.LocalDate.now().toString()).putInt("frames_used", 120).commit()
+            settings.save(settings.config.value.copy(enabled = true), true)
+            withTimeout(15000) { f.app.repository.semantics.first { rows -> rows.count { it.eventId in f.ids } == 9 } }
+            withTimeout(5000) { f.app.monitorTasks.counts.first { it.queued == 0 && it.running == 0 } }
+            repeat(9) { assertFalse(f.received.receive().getBoolean("check_facts")) }
+            assertEquals(9, f.requestCount.get())
+            assertEquals(129, settings.requestsToday())
+            assertTrue(f.frame("past-old-frame-limit").await())
+            assertEquals("frame", f.received.receive().getString("kind"))
+            f.app.monitor.saveConfig(f.app.monitor.config.value.copy(realtime = true))
+            delay(300)
+            f.text(10)
+            assertTrue(f.received.receive().getBoolean("check_facts"))
+            withTimeout(5000) { f.app.monitorTasks.counts.first { it.queued == 0 && it.running == 0 } }
+            delay(500)
+            assertEquals(11, f.requestCount.get())
+        }
+    }
+
     @Test fun failedVisionPreservesOcrAndCompletesItThroughThePersistentTextQueue() = runBlocking {
         fixture { f ->
             f.text(40)
@@ -153,9 +183,9 @@ class MonitorFramePipelineTest {
         val frameDay = framePrefs.getString("frame_day", null)
         val frames = framePrefs.getInt("frames_used", 0)
         try {
-            app.monitor.saveConfig(monitor.copy(visual = true, realtime = false, cocoon = false, dailyFrames = 100))
+            app.monitor.saveConfig(monitor.copy(visual = true, realtime = false, cocoon = false))
             app.audioCoordinator.settings.save(cloud.copy(enabled = true, endpoint = "http://127.0.0.1:${f.server.localPort}",
-                token = "", dailyLimit = 100), true)
+                token = ""), true)
             requestPrefs.edit().remove("day").putInt("count", 0).commit()
             framePrefs.edit().remove("frame_day").putInt("frames_used", 0).commit()
             app.captureSettings.setAllowedPackages(setOf(PACKAGE))
@@ -233,8 +263,6 @@ class MonitorFramePipelineTest {
             val text = "$TEXT；测试文本序号 $index"
             ids += app.repository.record(BrowseEvent(packageName = PACKAGE, timestamp = at, eventType = 32,
                 visibleText = text, endTimestamp = at, workKey = "frame-pipeline-$index-$at"))
-            app.monitor.setScreen(PACKAGE, text, "text-$index")
-            app.monitor.submitCurrentText()
         }
     }
 

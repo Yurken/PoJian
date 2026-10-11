@@ -27,7 +27,6 @@ data class MonitorConfig(
     val dailyAlerts: Int = 6,
     val displaySeconds: Int = 3,
     val frameIntervalSeconds: Int = 30,
-    val dailyFrames: Int = 20,
     val quiet: Boolean = false,
     val quietStart: Int = 22,
     val quietEnd: Int = 8,
@@ -35,7 +34,7 @@ data class MonitorConfig(
 ) {
     fun bounded() = copy(cooldownMinutes = cooldownMinutes.coerceIn(5, 180),
         dailyAlerts = dailyAlerts.coerceIn(0, 30), displaySeconds = displaySeconds.coerceIn(2, 8),
-        frameIntervalSeconds = frameIntervalSeconds.coerceIn(15, 120), dailyFrames = dailyFrames.coerceIn(1, 100),
+        frameIntervalSeconds = frameIntervalSeconds.coerceIn(15, 120),
         quietStart = quietStart.coerceIn(0, 23), quietEnd = quietEnd.coerceIn(0, 23))
 }
 

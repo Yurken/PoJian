@@ -15,8 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 // 网关与模型统一走服务端管理台；App 内置生产网关地址，令牌在构建时注入（local.properties 的 pojian.serviceToken）。
-data class TextServiceConfig(val enabled: Boolean = false, val endpoint: String = DEFAULT_ENDPOINT, val token: String = "",
-    val dailyLimit: Int = 20) {
+data class TextServiceConfig(val enabled: Boolean = false, val endpoint: String = DEFAULT_ENDPOINT, val token: String = "") {
     companion object { const val DEFAULT_ENDPOINT = "https://xiaoyan.net.cn/pojian" }
 }
 
@@ -26,32 +25,36 @@ class AudioAnalysisSettings(context: Context) {
     val config = state.asStateFlow()
     @Volatile private var revision = preferences.getLong("authorization_revision", 0L)
     internal val authorizationRevision: Long get() = revision
-    private fun read() = TextServiceConfig(preferences.getBoolean("enabled", BuildConfig.POJIAN_SERVICE_TOKEN.isNotEmpty()),
-        preferences.getString("endpoint", null).orEmpty().ifEmpty { TextServiceConfig.DEFAULT_ENDPOINT },
-        // An explicitly saved empty token must remain empty after restart; build defaults apply only before configuration.
-        if (preferences.contains("token")) preferences.getString("token", null)
-            ?.let { runCatching { decrypt(it) }.getOrDefault("") }.orEmpty() else BuildConfig.POJIAN_SERVICE_TOKEN,
-        preferences.getInt("limit", 20).coerceIn(1, 100))
+    private fun read(): TextServiceConfig {
+        val endpoint = preferences.getString("endpoint", null).orEmpty().ifEmpty { TextServiceConfig.DEFAULT_ENDPOINT }
+        val savedToken = preferences.getString("token", null)
+            ?.let { runCatching { decrypt(it) }.getOrDefault("") }.orEmpty()
+        // Older builds could save an empty token when the cloud switch was enabled.
+        // The bundled credential belongs only to the built-in gateway, never to a custom endpoint.
+        val token = savedToken.ifEmpty {
+            if (endpoint.trimEnd('/') == TextServiceConfig.DEFAULT_ENDPOINT) BuildConfig.POJIAN_SERVICE_TOKEN else ""
+        }
+        return TextServiceConfig(preferences.getBoolean("enabled", BuildConfig.POJIAN_SERVICE_TOKEN.isNotEmpty()), endpoint, token)
+    }
 
     @Synchronized fun save(value: TextServiceConfig, allowLocalHttp: Boolean) {
         val endpoint = if (value.endpoint.isBlank() && !value.enabled) "" else EndpointPolicy.validate(value.endpoint, allowLocalHttp)
         require(!value.enabled || endpoint.isNotBlank()) { "请先填写文字服务地址" }
-        val clean = value.copy(endpoint = endpoint, token = value.token.trim(), dailyLimit = value.dailyLimit.coerceIn(1, 100))
+        val clean = value.copy(endpoint = endpoint, token = value.token.trim())
         require(clean.token.length <= 512 && clean.token.all { it.code in 33..126 }) { "访问令牌只能是不含空格的 ASCII 字符，最多 512 个" }
         val token = if (clean.token.isEmpty()) "" else encrypt(clean.token)
         val next = if (clean == state.value) revision else Math.addExact(revision, 1L)
         check(preferences.edit().putBoolean("enabled", clean.enabled).putString("endpoint", clean.endpoint)
-            .putString("token", token).putInt("limit", clean.dailyLimit)
+            .putString("token", token).remove("limit")
             .putLong("authorization_revision", next).commit()) { "保存失败，请重试" }
         revision = next
         state.value = clean
     }
 
-    @Synchronized fun reserveRequest(): Boolean {
+    @Synchronized fun recordRequest() {
         val today = LocalDate.now().toString()
         val previous = if (preferences.getString("day", "") == today) preferences.getInt("count", 0) else 0
-        if (previous >= state.value.dailyLimit) return false
-        return preferences.edit().putString("day", today).putInt("count", previous + 1).commit()
+        preferences.edit().putString("day", today).putInt("count", previous + 1).commit()
     }
     fun requestsToday(): Int = if (preferences.getString("day", "") == LocalDate.now().toString()) preferences.getInt("count", 0) else 0
 
