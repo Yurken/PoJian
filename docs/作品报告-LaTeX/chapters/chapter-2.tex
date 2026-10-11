@@ -23,31 +23,11 @@
   >{\RaggedRight\arraybackslash}p{(\linewidth - 8\tabcolsep) * \real{0.2000}}@{}}
 \caption{系统模块、处理职责及章节对应}\label{tab:2-1}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-功能位置
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-模块
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-主要输入
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-处理职责与输出
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-对应章节
-\end{minipage} \\
+功能位置 & 模块 & 主要输入 & 处理职责与输出 & 对应章节 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-功能位置
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-模块
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-主要输入
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-处理职责与输出
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-对应章节
-\end{minipage} \\
+功能位置 & 模块 & 主要输入 & 处理职责与输出 & 对应章节 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
@@ -88,27 +68,11 @@
   >{\RaggedRight\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}@{}}
 \caption{浏览分析记录的主要字段}\label{tab:2-2}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-记录层次
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-字段组
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-记录内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-用途
-\end{minipage} \\
+记录层次 & 字段组 & 记录内容 & 用途 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-记录层次
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-字段组
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-记录内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-用途
-\end{minipage} \\
+记录层次 & 字段组 & 记录内容 & 用途 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
@@ -133,11 +97,11 @@
 
 破茧以 Android 手机和桌面浏览器为首期实现对象。客户端负责取得用户授权范围内的内容片段，记录其出现时间、位置及交互事件，再将必要数据加密发送至服务器可信执行环境。端侧工作以界面读取、图像裁剪、变化检测和数据压缩为主；跨模态观点理解、历史检索与信息茧房分析由服务器承担。
 
-手机端优先使用无障碍服务读取可取得的界面节点。用户启用服务后，客户端监听窗口内容变化和滚动事件，从应用提供的节点中获取文本、内容描述和屏幕边界，并将正文、评论、标题及操作控件分别组织。此路径能在条件允许时直接取得文字，省去截图识别。无障碍接口返回应用暴露的界面结构；客户端检查节点完整性与时效，对为空或已过时的节点请求更新，仍缺失的区域转入图像采集流程。\cite{ref18}
+手机端优先使用无障碍服务读取可取得的界面节点。用户启用服务后，客户端监听窗口内容变化和滚动事件，从应用提供的节点中获取文本、内容描述和屏幕边界，并将正文、评论、标题及操作控件分别组织。此路径能在条件允许时直接取得文字，省去截图识别。无障碍接口返回应用暴露的界面结构；客户端检查节点完整性与时效，对为空或已过时的节点请求更新，仍缺失的区域转入图像采集流程\cite{ref18}。
 
-当文字存在于图片、视频画面或未提供有效节点的区域时，客户端在用户批准的 MediaProjection 会话内取得画面，裁剪需要补充识别的区域。Android 14 及以上版本中，每个新会话均需用户同意，授权令牌按单次会话使用；相关前台服务按系统要求声明和运行。客户端在授权会话内连续记录，用户停止共享或会话失效时停止相应采集。\cite{ref19}
+当文字存在于图片、视频画面或未提供有效节点的区域时，客户端在用户批准的 MediaProjection 会话内取得画面，裁剪需要补充识别的区域。Android 14 及以上版本中，每个新会话均需用户同意，授权令牌按单次会话使用；相关前台服务按系统要求声明和运行。客户端在授权会话内连续记录，用户停止共享或会话失效时停止相应采集\cite{ref19}。
 
-浏览器端通过获准网站中的扩展内容脚本读取文档对象模型，取得当前显示的正文、评论和来源链接，并结合元素边界记录可见区变化。网站实际提供且允许访问的字幕作为文本输入，绘制在图片、画布和视频帧中的文字转入图像识别流程。跨域框架和未授权页面按实际权限处理，采集失败时记录缺失原因。\cite{ref20}
+浏览器端通过获准网站中的扩展内容脚本读取文档对象模型，取得当前显示的正文、评论和来源链接，并结合元素边界记录可见区变化。网站实际提供且允许访问的字幕作为文本输入，绘制在图片、画布和视频帧中的文字转入图像识别流程。跨域框架和未授权页面按实际权限处理，采集失败时记录缺失原因\cite{ref20}。
 
 节点或网页中能够读取的文字，按当前视口、可见状态与已知遮挡过滤。接触记录保留已显示的正文、展开的评论及当前播放片段对应的字幕。长段落只有部分行可见时，按可取得的行边界确定输入范围；无法定位时，使用能够核验的片段并标记不完整。
 
@@ -152,27 +116,11 @@
   >{\RaggedRight\arraybackslash}p{(\linewidth - 6\tabcolsep) * \real{0.2500}}@{}}
 \caption{不同内容形态的采集与分析输入}\label{tab:2-3}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-内容形态
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-优先获取的信息
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-必要补充
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-交给可信分析程序的材料
-\end{minipage} \\
+内容形态 & 优先获取的信息 & 必要补充 & 交给可信分析程序的材料 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-内容形态
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-优先获取的信息
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-必要补充
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-交给可信分析程序的材料
-\end{minipage} \\
+内容形态 & 优先获取的信息 & 必要补充 & 交给可信分析程序的材料 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
@@ -182,9 +130,9 @@
 纯视频或视频配文 & 已显示的配文、字幕及播放时段 & 允许获取的音频片段、字幕变化帧和必要场景关键帧 & 具有时间对应关系的字幕、语音转写和画面片段 \\
 \end{longtable}
 
-OCR 采用区域更新方式。客户端先判断哪些区域发生变化，待滚动减缓或页面稳定后，再识别新出现的文字；相同文字块通过位置匹配与内容摘要复用结果。端侧可选用支持中文的轻量文字识别组件，设备负载较高时只完成区域检测和裁剪，将待识别片段送至可信执行环境。实现以现有移动端文字识别接口为基础，在目标机型、分辨率和真实页面上测量识别速度。\cite{ref21} 图文混合内容的裁剪保留理解图意所需的上下文；服务器根据缺失情况请求补充已采集的相关片段。
+OCR 采用区域更新方式。客户端先判断哪些区域发生变化，待滚动减缓或页面稳定后，再识别新出现的文字；相同文字块通过位置匹配与内容摘要复用结果。端侧可选用支持中文的轻量文字识别组件，设备负载较高时只完成区域检测和裁剪，将待识别片段送至可信执行环境。实现以现有移动端文字识别接口为基础，在目标机型、分辨率和真实页面上测量识别速度\cite{ref21}。 图文混合内容的裁剪保留理解图意所需的上下文；服务器根据缺失情况请求补充已采集的相关片段。
 
-视频音频通过 Android 10 起提供的 AudioPlaybackCapture 获取允许捕获的播放流，再交由可信执行环境分段转写。该接口要求录音权限、用户批准的投屏授权、相同用户资料等条件，源应用和播放器的音频用途及捕获策略也必须允许。采集对象为正在播放的音频流；源应用禁止捕获时，系统使用可见字幕和画面完成可用模态的分析。\cite{ref12} 音频缺失、转写中断和已取得的时间区间均随内容事件记录。
+视频音频通过 Android 10 起提供的 AudioPlaybackCapture 获取允许捕获的播放流，再交由可信执行环境分段转写。该接口要求录音权限、用户批准的投屏授权、相同用户资料等条件，源应用和播放器的音频用途及捕获策略也必须允许。采集对象为正在播放的音频流；源应用禁止捕获时，系统使用可见字幕和画面完成可用模态的分析\cite{ref12}。 音频缺失、转写中断和已取得的时间区间均随内容事件记录。
 
 音频采集按获准应用或可验证的来源过滤，并结合可获得的播放进度、暂停、拖动和设备时间建立片段对应关系。UID 用于识别应用，具体内容归属结合播放状态和时间信息确定。存在多个播放源、后台声音混入或无法完成音画对齐时，相关片段标记为归属不明，进入待关联记录。
 
@@ -210,7 +158,7 @@ OCR 采用区域更新方式。客户端先判断哪些区域发生变化，待�
 
 桌面端以鼠标所在行上下区域作为重点阅读候选区，增加该区域的阅读权重，并根据距最后一次鼠标移动的时间逐步衰减。手机端在触点可取得的自有界面或受控测试场景中，将触点上方作为候选区，并结合屏幕中部和下部区域的位置特征估计阅读投入。候选区范围与权重通过阅读任务中的位置标注进行校准。
 
-第三方应用场景下，以可取得的滚动事件、页面位移和稳定可见区域为基础估计阅读位置，触点可用时加入相应特征。Android 的部分手势和运动事件接口具有额外模式要求，并会影响事件向其他应用的分发，客户端按接口能力选择采集方式。\cite{ref18} 触点缺失时关闭该特征，以其余空间与停留线索计算阅读投入及定位置信度。
+第三方应用场景下，以可取得的滚动事件、页面位移和稳定可见区域为基础估计阅读位置，触点可用时加入相应特征。Android 的部分手势和运动事件接口具有额外模式要求，并会影响事件向其他应用的分发，客户端按接口能力选择采集方式\cite{ref18}。 触点缺失时关闭该特征，以其余空间与停留线索计算阅读投入及定位置信度。
 
 \subsubsection{阅读估计的输出与校准}\label{section:2.3.3}
 
@@ -520,23 +468,11 @@ U_{ir}=\frac{\sum_k m_{ikr}p_{ik}^{\mathrm{unk}}}{\sum_k m_{ikr}},\label{eq:2-29
   >{\RaggedRight\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}@{}}
 \caption{面向个人历史的信息增量类型}\label{tab:2-4}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-类型
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-比较内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-分析规则
-\end{minipage} \\
+类型 & 比较内容 & 分析规则 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-类型
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-比较内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-分析规则
-\end{minipage} \\
+类型 & 比较内容 & 分析规则 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
@@ -832,23 +768,11 @@ K_{p,d}&=\operatorname{HKDF}\!\left(Z,H(T),\operatorname{Encode}(\mathrm{proto},
   >{\RaggedRight\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}@{}}
 \caption{远程证明与受保护分析协议}\label{tab:2-5}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-阶段
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-交互内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-状态转移与处理
-\end{minipage} \\
+阶段 & 交互内容 & 状态转移与处理 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-阶段
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-交互内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-状态转移与处理
-\end{minipage} \\
+阶段 & 交互内容 & 状态转移与处理 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
@@ -952,23 +876,11 @@ f=(a,b,h,o,\epsilon,\mathcal D,\mathbf v,\mathcal R,\rho,\Pi),\label{eq:2-66}
   >{\RaggedRight\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}@{}}
 \caption{情绪框架的字段与监督依据}\label{tab:2-6}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-字段
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-识别内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-标注与输出依据
-\end{minipage} \\
+字段 & 识别内容 & 标注与输出依据 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-字段
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-识别内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-标注与输出依据
-\end{minipage} \\
+字段 & 识别内容 & 标注与输出依据 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
@@ -1071,7 +983,7 @@ p^{H}_{\xi}=\sigma(\mathbf w_H^\top\mathbf r_\xi+b_H),\label{eq:2-82}
 p^{O}_{\xi}(o)=\sigma(\mathbf r_\xi^{\top}W_O\mathbf e_o+b_O).\label{eq:2-83}
 \end{equation}
 
-\(\operatorname{FFN}_{F}\) 为框架投影网络，\(\mathbf r_\xi\in\mathbb R^{d_f}\) 为其输出，\(d_f\) 为框架表示维度；\(q^{\mathrm{aux}}_{ab}\) 与 \(q^{\mathrm{aux}}_{ab,\epsilon}\) 分别接收无类别和带类别的公共配对监督。\(p^H_\xi\) 是持有者链接的辅助分数，\(p^O_\xi(o)\) 是对象链接分数，二者使用独立Sigmoid，不要求候选间互斥。所有权重与偏置均为可训练参数。在各预算块内保留全部可用持有者与情绪类别组合，框架候选分微批计算，不以辅助情绪或持有者分数提前截断。缺失人物身份可使用局部角色；只有人工确认归属无法确定时，未知持有者才作为训练金标。
+\(\operatorname{FFN}_{F}\) 为框架投影网络，\(\mathbf r_\xi\in\mathbb R^{d_f}\) 为其输出，\(d_f\) 为框架表示维度；\(q^{\mathrm{aux}}_{ab}\) 与 \(q^{\mathrm{aux}}_{ab,\epsilon}\) 分别接收无类别和带类别的公共配对监督。\(p^H_\xi\) 是持有者链接的辅助分数，\(p^O_\xi(o)\) 是对象链接分数，二者使用独立 Sigmoid，不要求候选间互斥。所有权重与偏置均为可训练参数。在各预算块内保留全部可用持有者与情绪类别组合，框架候选分微批计算，不以辅助情绪或持有者分数提前截断。缺失人物身份可使用局部角色；只有人工确认归属无法确定时，未知持有者才作为训练金标。
 
 归属头读取 \(\mathbf r_\xi\) 及相应语者、引用关系特征，以多标签方式预测自述、转述、引用、否定或反驳。各角色和归属结果因此对应特定持有者与情绪，引用与反驳允许同时成立。一个框架有多个达标对象时，报告按对象拆分记录并共享证据。
 
@@ -1166,13 +1078,13 @@ p_{\xi,d}=q_\xi
 
 \subsubsection{分阶段训练与方法评价}\label{section:2.8.6}
 
-训练分为结构迁移、目标域联合学习和输出校准三个阶段。首先利用公开情绪---诱因配对语料学习片段间关系，以角色标注语料学习体验者、对象和刺激的证据跨度；SemEval-2024 Task 3的英语对话数据用于迁移话语级情绪配对与多模态对齐能力\cite{ref28}。各数据集按已有字段提供监督，缺失字段通过任务掩码跳过。crowd-enVENT的文档级评价标签训练独立的文档辅助头\cite{ref26}，与中文目标域的候选框架评价头共享编码表示，文档分数保持文档粒度。COVIDET-Appraisals作为自然社交文本的标注参考与小型诊断集，用于检查威胁、控制、确定性及未提及状态的识别\cite{ref27}。
+训练分为结构迁移、目标域联合学习和输出校准三个阶段。首先利用公开情绪---诱因配对语料学习片段间关系，以角色标注语料学习体验者、对象和刺激的证据跨度；SemEval-2024 Task 3 的英语对话数据用于迁移话语级情绪配对与多模态对齐能力\cite{ref28}。各数据集按已有字段提供监督，缺失字段通过任务掩码跳过。crowd-enVENT 的文档级评价标签训练独立的文档辅助头\cite{ref26}，与中文目标域的候选框架评价头共享编码表示，文档分数保持文档粒度。COVIDET-Appraisals 作为自然社交文本的标注参考与小型诊断集，用于检查威胁、控制、确定性及未提及状态的识别\cite{ref27}。
 
 目标域建立中文正文、评论和短视频片段标注集，覆盖升学、保研、就业、职场、婚恋和生育处境。每条标注保留情绪与诱因跨度、关联关系、语者与持有者、指向对象、评价适用性及五级强度、处境层级和表达方式，并记录引用、否定及来源模态。社会比较补充比较对象、参照标准和差距证据。双人独立标注后复核分歧，集中纳入相邻但无诱因关系、同主题不同事件、引用反驳、反讽、多语者交替、画外音与背景音乐干扰等难例。跨数据集先核对题项含义和方向，再映射共有维度；不同量表保留各自监督头，由中文标注确定最终五级边界。
 
 训练集、校准集和测试集按原文、完整视频、评论线程及来源组隔离，同源转载与近重复内容归入同组。训练集优化模型参数，校准集确定分类阈值、拒识边界和概率校准参数，测试集固定用于最终评价。个体反馈另按用户划分。新用户以零偏置接受冷启动评价；适配评价仅使用该用户早期反馈拟合个人参数，以后续记录检验预测。
 
-评价同时报告情绪---诱因配对F1、带情绪类别的配对F1、角色跨度F1与归属正确率、处境及表达方式macro-F1；评价分支报告适用性F1和有效标签上的有序误差。概率输出报告Brier分数与校准误差，并按六类处境、正文/评论/视频及难例分别分析。关键消融包括：以等参数通用分支替代评价分支、使用预测评价、使用金标评价上限，以及移除角色、行列交互或单一模态。各组保持数据划分和训练预算一致。系统开销报告每千片段耗时、峰值显存、缓存命中率及单位内容推理成本，以确定候选窗口和批处理配置。
+评价同时报告情绪---诱因配对 F1、带情绪类别的配对 F1、角色跨度 F1 与归属正确率、处境及表达方式 macro-F1；评价分支报告适用性 F1 和有效标签上的有序误差。概率输出报告 Brier 分数与校准误差，并按六类处境、正文/评论/视频及难例分别分析。关键消融包括：以等参数通用分支替代评价分支、使用预测评价、使用金标评价上限，以及移除角色、行列交互或单一模态。各组保持数据划分和训练预算一致。系统开销报告每千片段耗时、峰值显存、缓存命中率及单位内容推理成本，以确定候选窗口和批处理配置。
 
 \subsubsection{个体反馈校准与小时报告}\label{section:2.8.7}
 
@@ -1194,11 +1106,11 @@ b_u^{*}
 +\lambda_b b^2\right].\label{eq:2-96}
 \end{equation}
 
-其中，\(u\)为用户，\(i\)为一次浏览记录；\(r_{u,i}\)为该次阅读后1---5级自报程度，\(\mathbf x_i^{F}\)为对应内容的情绪、评价和处境特征。\(\beta_0\)与\(\boldsymbol\beta\)为部署后固定的总体截距和回归系数，\(\mathcal D_u\)为用户已提供的反馈集合，\(\lambda_b>0\)将个人偏置\(b_u\)向零收缩；\(\operatorname{clip}\)将预测限制在量表范围内。没有反馈时取\(b_u=0\)。普通使用过程中，个人反馈保留在用户对应的机密计算会话中，只用于个人校准；共享参数的更新使用另行授权的研究数据。
+其中，\(u\)为用户，\(i\)为一次浏览记录；\(r_{u,i}\)为该次阅读后 1--5 级自报程度，\(\mathbf x_i^{F}\)为对应内容的情绪、评价和处境特征。\(\beta_0\)与\(\boldsymbol\beta\)为部署后固定的总体截距和回归系数，\(\mathcal D_u\)为用户已提供的反馈集合，\(\lambda_b>0\)将个人偏置\(b_u\)向零收缩；\(\operatorname{clip}\)将预测限制在量表范围内。没有反馈时取\(b_u=0\)。普通使用过程中，个人反馈保留在用户对应的机密计算会话中，只用于个人校准；共享参数的更新使用另行授权的研究数据。
 
 个体估计的启用样本量和误差阈值由校准集确定。历史不足时，界面展示内容统计与已收到的自报；满足条件后增加明确标注的个体估计。已有自报与模型估计分别存储，后续自报用于滚动检查误差。评价时报告冷启动、早期适配和后续预测三个阶段，并固定每阶段的数据边界。
 
-小时报告按已定位片段汇总内容中的情绪表达、相关处境和接触时长，并提供原文跨度或视频时间戳。时间重叠的片段取区间并集，多标签内容分别计入构成统计而不重复累加总时长。报告同时列出已分析与未分析时长，以分析覆盖率限定统计范围；有个人反馈时另列本小时自报及历史变化。焦虑表达密集、重复出现且经2.5判定信息增量较低的内容，挂接其重复和增量指标，提示调整后续浏览。舞蹈等娱乐内容归入娱乐时长及重复消费统计；出现可定位的担忧表达时，再增加对应的情绪---处境记录。
+小时报告按已定位片段汇总内容中的情绪表达、相关处境和接触时长，并提供原文跨度或视频时间戳。时间重叠的片段取区间并集，多标签内容分别计入构成统计而不重复累加总时长。报告同时列出已分析与未分析时长，以分析覆盖率限定统计范围；有个人反馈时另列本小时自报及历史变化。焦虑表达密集、重复出现且经 2.5 节判定信息增量较低的内容，挂接其重复和增量指标，提示调整后续浏览。舞蹈等娱乐内容归入娱乐时长及重复消费统计；出现可定位的担忧表达时，再增加对应的情绪---处境记录。
 
 \subsection{持续浏览场景下的异步分析与性能设计}\label{section:2.9}
 
@@ -1214,23 +1126,11 @@ b_u^{*}
   >{\RaggedRight\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}@{}}
 \caption{连续分析的处理阶段}\label{tab:2-7}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-阶段
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-处理内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-结果进入报告的条件
-\end{minipage} \\
+阶段 & 处理内容 & 结果进入报告的条件 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-阶段
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-处理内容
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-结果进入报告的条件
-\end{minipage} \\
+阶段 & 处理内容 & 结果进入报告的条件 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
@@ -1302,28 +1202,16 @@ P^{\mathrm{count}}_{h,z,k}=\frac{\sum_{i\in I_{h,z}}\mathbb{1}(i\text{表达观�
   >{\RaggedRight\arraybackslash}p{(\linewidth - 4\tabcolsep) * \real{0.4000}}@{}}
 \caption{小时尺度统计示例}\label{tab:2-8}\tabularnewline
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-展示项目
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-示例数值
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-对应解释
-\end{minipage} \\
+展示项目 & 示例数值 & 对应解释 \\
 \midrule\noalign{}
 \endfirsthead
 \toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-展示项目
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-示例数值
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-对应解释
-\end{minipage} \\
+展示项目 & 示例数值 & 对应解释 \\
 \midrule\noalign{}
 \endhead
 \bottomrule\noalign{}
 \endlastfoot
-23---24 时求职主题浏览时长 & 25 分钟 & 按主主题分配的有效观察时间 \\
+23--24 时求职主题浏览时长 & 25 分钟 & 按主主题分配的有效观察时间 \\
 可分析的求职正文或视频 & 20 条 & 统计范围为去重后的正文与视频，评论另行统计 \\
 表达``当前就业形势较差'' & 16 条，占 80\% & 分母为上述 20 条，可与其他观点重叠 \\
 表达``未来可能向好'' & 4 条，占 20\% & 属于未来预期，可与当前状况类观点并存 \\
