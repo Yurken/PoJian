@@ -10,7 +10,6 @@
 - `references.bib`：统一书目，键为 `ref1` 至 `ref33`。
 - `figures/`：各章高清 PNG 及可编辑 SVG；排版使用 PNG。
 - `sources/`：保留的原始 Markdown 稿件。
-- `破茧_作品报告_第一至四章.pdf`：编译后的预览。
 
 需要安装含 `ctex`、`gbt7714` 和 Fandol 字体的 TeX Live / MacTeX。使用 XeLaTeX 和 BibTeX，由 latexmk 自动完成多轮编译。无需系统安装宋体字体，也无需联网或启用 shell escape。
 
@@ -20,7 +19,7 @@
 bash build.sh
 ```
 
-编译中间文件放入已忽略的 `build/`。使用独立作业名 `pojian-report`，避免与编辑器生成的 `main.*` 文件相互干扰。也可直接运行：
+编译后的报告为 `build/pojian-report.pdf`，PDF 和编译中间文件均不提交到 Git。使用独立作业名 `pojian-report`，避免与编辑器生成的 `main.*` 文件相互干扰。也可直接运行：
 
 ```bash
 latexmk -xelatex -jobname=pojian-report main.tex
