@@ -31,6 +31,7 @@ except ImportError:
 
 MAX_BODY = 512 * 1024
 MAX_REPLY = 1024 * 1024
+MONITOR_TIMEOUT_SECONDS = 120.0
 
 
 class BodyError(ClientError):
@@ -636,7 +637,9 @@ class Providers:
         return self.runtime.search_key()
 
     def model(self, system: str, user: object, deadline: float, image: str = "") -> dict:
-        remaining = min(self.config.timeout, deadline - time.monotonic())
+        # Monitor shares a two-minute budget across extraction and verification;
+        # the legacy /analyze timeout must not truncate these model calls.
+        remaining = min(MONITOR_TIMEOUT_SECONDS, deadline - time.monotonic())
         if remaining <= 0:
             raise UpstreamError("Monitor deadline exceeded", 504)
         settings = self.runtime.provider_settings(bool(image))
@@ -797,7 +800,7 @@ def validate_verdict(value: dict, sources: list[dict]) -> dict:
 
 
 def analyze_monitor(source: dict, providers: Providers) -> dict:
-    deadline = time.monotonic() + 70
+    deadline = time.monotonic() + MONITOR_TIMEOUT_SECONDS
     extracted = providers.model(EXTRACT_PROMPT, {key: source[key] for key in ("text", "kind", "captured_at")}, deadline, source["image"])
     observed, claims = validate_extraction(extracted, source)
     searched = False
@@ -850,7 +853,7 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
 
         def status_payload(self) -> dict:
             settings = runtime.masked_settings()
-            settings["text"]["timeout"] = config.timeout
+            settings["text"]["timeout"] = MONITOR_TIMEOUT_SECONDS
             settings["text"]["concurrency"] = config.concurrency
             settings["service_token"] = "已配置" if config.service_token else "未配置"
             settings["budget_used_today"] = budget.used()
