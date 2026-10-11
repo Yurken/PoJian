@@ -11,6 +11,8 @@ import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.analysis.SemanticsCodec
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,8 +46,10 @@ class SemanticsPersistenceTest {
             val initial = database(name)
             val saved = try {
                 val repository = BrowseRepository(initial)
-                val event = encounter(repository)
-                val result = semantics(event)
+                val event = encounter(repository, "岗位正在减少，因为小林引用《就业报告》描述招聘数量下降")
+                val result = semantics(event).copy(claims = listOf(semantics(event).claims.single().copy(
+                    evidence = "小林引用《就业报告》描述招聘数量下降", evidenceActors = listOf("小林"),
+                    evidenceOrigins = listOf("《就业报告》"))))
                 assertTrue(repository.saveSemantics(event, result, repository.captureGeneration) { true })
                 event to result
             } finally { initial.close() }
@@ -53,6 +57,8 @@ class SemanticsPersistenceTest {
             try {
                 val repository = BrowseRepository(reopened)
                 assertEquals(saved.second, repository.semantics.first().single())
+                assertEquals(listOf("小林"), repository.semantics.first().single().claims.single().evidenceActors)
+                assertEquals(listOf("《就业报告》"), repository.semantics.first().single().claims.single().evidenceOrigins)
                 assertEquals(saved.first, repository.findEvent(saved.first.id))
                 assertEquals(1, repository.count.first())
                 assertEquals(5000L, repository.allEvents.first().single().durationMillis)
@@ -153,6 +159,63 @@ class SemanticsPersistenceTest {
         assertEquals(result, SemanticsCodec.decode(encoded))
         assertNull(SemanticsCodec.decode(encoded.copy(claimsJson = encoded.claimsJson.replace(
             "\"uncertain\":true", "\"uncertain\":\"true\""))))
+    }
+
+    @Test fun storedLegacyClaimsWithoutEvidenceIdentityFieldsRemainReadable() = runBlocking {
+        val db = database()
+        try {
+            val repository = BrowseRepository(db)
+            val event = encounter(repository)
+            val result = semantics(event)
+            val encoded = SemanticsCodec.encode(result)
+            val legacy = JSONArray(encoded.claimsJson).apply {
+                getJSONObject(0).remove("evidence_actors")
+                getJSONObject(0).remove("evidence_origins")
+            }
+            db.browseEventDao().putSemantics(encoded.copy(claimsJson = legacy.toString()))
+            val restored = repository.semantics.first().single()
+            assertEquals(result, restored)
+            assertTrue(restored.claims.single().evidenceActors.isEmpty())
+            assertTrue(restored.claims.single().evidenceOrigins.isEmpty())
+            assertEquals(event, repository.findEvent(event.id))
+        } finally { db.close() }
+    }
+
+    @Test fun invalidEvidenceIdentityRejectsTheWholeStoredResultAndCannotBeSaved() = runBlocking {
+        val db = database()
+        try {
+            val repository = BrowseRepository(db)
+            val event = encounter(repository, "岗位正在减少，因为小林引用《就业报告》描述招聘数量下降，阿明转述")
+            val unit = semantics(event).claims.single().copy(evidence = "小林引用《就业报告》描述招聘数量下降",
+                evidenceActors = listOf("小林"), evidenceOrigins = listOf("《就业报告》"))
+            val result = semantics(event).copy(claims = listOf(unit))
+            assertTrue(repository.saveSemantics(event, result, repository.captureGeneration) { true })
+            assertFalse(repository.saveSemantics(event, result.copy(analyzedAt = 3000,
+                claims = listOf(unit.copy(evidenceActors = listOf("阿明")))), repository.captureGeneration) { true })
+            assertFalse(repository.saveSemantics(event, result.copy(analyzedAt = 3000,
+                claims = listOf(unit.copy(evidenceOrigins = listOf("虚构报告")))), repository.captureGeneration) { true })
+            assertEquals(result, repository.semantics.first().single())
+            val encoded = SemanticsCodec.encode(result)
+            val invalidValues: List<Any> = listOf("小林", JSONObject.NULL, 7, JSONObject(),
+                JSONArray().put(7), JSONArray().put(JSONObject.NULL), JSONArray().put(""),
+                JSONArray().put(" "), JSONArray().put("小林").put("小林"), JSONArray().put("阿明"),
+                JSONArray().put("甲".repeat(81)), JSONArray(listOf("小", "林", "引用", "报告", "描述")))
+            listOf("evidence_actors", "evidence_origins").forEach { field ->
+                invalidValues.forEach { value ->
+                    val rows = JSONArray(encoded.claimsJson)
+                    val invalidClaim = JSONObject(rows.getJSONObject(0).toString()).put(field, value)
+                    rows.put(invalidClaim) // One valid claim must not conceal a malformed second claim.
+                    val corrupt = encoded.copy(claimsJson = rows.toString())
+                    assertNull("$field=$value", SemanticsCodec.decode(corrupt))
+                    db.browseEventDao().putSemantics(corrupt)
+                    assertTrue("$field=$value", repository.semantics.first().isEmpty())
+                }
+            }
+            val noEvidence = unit.copy(evidence = "")
+            assertNull(SemanticsCodec.decode(SemanticsCodec.encode(result.copy(claims = listOf(noEvidence)))))
+            assertEquals(event, repository.findEvent(event.id))
+            assertEquals(1, repository.count.first())
+        } finally { db.close() }
     }
 
     @Test fun migrationFromVersionFourPreservesOriginalRowsAndEnablesCascadingSemantics() = runBlocking {

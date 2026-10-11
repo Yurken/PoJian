@@ -61,11 +61,13 @@ class MonitorSemanticsIntegrationTest {
                 }
                 if (responseIndex == 1) assertEquals(retriedId, request.getString("id"))
                 val index = responseIndex - 1
-                val evidence = "招聘数量同比减少${if (index == 0) 20 else 30}%"
+                val evidence = "甲公司《招聘报告》显示招聘数量同比减少${if (index == 0) 20 else 30}%"
                 assertTrue(request.getString("text").contains(evidence))
                 val claim = JSONObject().put("quote", "招聘岗位正在减少").put("topic", "就业")
                     .put("subject", "招聘岗位").put("dimension", "数量").put("stance", "减少")
                     .put("conditions", "今年").put("evidence", evidence).put("uncertain", false)
+                    .put("evidence_actors", JSONArray().put("甲公司"))
+                    .put("evidence_origins", JSONArray().put("《招聘报告》"))
                     .put("verdict", "not_checked").put("explanation", "本地测试响应，未做事实核查")
                     .put("sources", JSONArray())
                 val response = JSONObject().put("id", request.getString("id")).put("claims", JSONArray().put(claim))
@@ -85,7 +87,7 @@ class MonitorSemanticsIntegrationTest {
             repeat(2) { index ->
                 val at = System.currentTimeMillis()
                 val row = BrowseEvent(packageName = "com.example.semanticfixture", timestamp = at - if (index == 0) 300000 else 0,
-                    eventType = 32, visibleText = "今年招聘岗位正在减少，因为招聘数量同比减少${if (index == 0) 20 else 30}%",
+                    eventType = 32, visibleText = "今年招聘岗位正在减少，因为甲公司《招聘报告》显示招聘数量同比减少${if (index == 0) 20 else 30}%",
                     endTimestamp = at, durationMillis = if (index == 0) 5000 else 0,
                     sampleCount = 2, workKey = "semantic-fixture-$index-$at")
                 val id = app.repository.record(row)
@@ -101,6 +103,9 @@ class MonitorSemanticsIntegrationTest {
             withTimeout(5000) { app.monitorTasks.counts.first { it.queued == 0 && it.running == 0 } }
             val events = app.repository.allEvents.first().filter { it.id in ids }
             val semantics = app.repository.semantics.first().filter { it.eventId in ids }
+            assertEquals(2, semantics.size)
+            assertTrue(semantics.all { it.claims.single().evidenceActors == listOf("甲公司") })
+            assertTrue(semantics.all { it.claims.single().evidenceOrigins == listOf("《招聘报告》") })
             val now = System.currentTimeMillis()
             val report = CognitiveAnalyzer().analyze(events, StatisticsPeriod.DAY, now, semantics = semantics)
             assertEquals(2, report.structuredAnalyzedRecords)

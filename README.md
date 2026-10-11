@@ -2,7 +2,7 @@
 
 > 察觉观点重复，查证眼前信息。
 
-当前版本 0.4.9 在统一观点分析链上增加加密的文字／音频待分析队列、进程恢复、受限重试和正文／评论区的可见区间。日报和导出区分待分析与最近未完成；小时统计按实际区间切分，暂停空档不分摊为浏览时间。[离线标注评测](docs/OFFLINE_QUALITY_EVALUATION.md)提供独立金标、完整混淆矩阵与误提醒分母。作品身份仍有启发式限制，详见[作品与观看统计](docs/WORK_VISITS.md)。实时核查和视觉能力仍需配置网关并开启相应开关。
+当前版本 0.4.10 在历史比较中保留论据里的案例当事对象与原材料线索：不同人的相似经历不再仅凭句式判重复，同一案例跨账号转发仍可回溯；身份或材料关系不清楚时保留待定。文字／音频任务支持加密持久队列、进程恢复与受限重试，小时统计按正文／评论区的可见区间切分。[离线标注评测](docs/OFFLINE_QUALITY_EVALUATION.md)保留固定输入、金标、完整混淆矩阵和误提醒分母。作品身份仍有启发式限制，详见[作品与观看统计](docs/WORK_VISITS.md)。实时核查和视觉能力仍需配置网关并开启相应开关。
 
 破茧是一款面向图文笔记、短视频和文章浏览的 Android 信息环境监测与事实核查原型。它关注两件事：**接触的观点与论据是否持续单一，以及眼前的具体声明是否有可追溯的外部依据。** 录音、转写和画面采样只是材料入口，不是产品主角。
 
@@ -52,7 +52,7 @@ bash scripts/check-monitor-core.sh
 
 这是工程原型，不是已经验证准确率的信息茧房诊断器或视频鉴伪系统。当前仍缺少完整的跨页笔记归并、可靠的推荐流/搜索入口识别、精确声画对齐、连续视频时序推理和经过标注校准的提醒阈值。视觉文字由模型提取，可能有错；不能用引文字符串检查替代真实性验证。
 
-[产品规划](docs/PRD-Multimodal.md) · [设计与实现对照](docs/IMPLEMENTATION.md) · [0.4.9 验证记录](docs/VALIDATION-0.4.9.md) · [实时监测架构与验证](docs/REALTIME_MONITORING.md) · [历史比较优化](docs/DESIGN_ALIGNMENT_HISTORY.md) · [既有构建记录](BUILD_VALIDATION.md) · [作品概述](docs/破茧_第一章_作品概述.md)
+[产品规划](docs/PRD-Multimodal.md) · [设计与实现对照](docs/IMPLEMENTATION.md) · [0.4.10 验证记录](docs/VALIDATION-0.4.10.md) · [实时监测架构与验证](docs/REALTIME_MONITORING.md) · [历史比较优化](docs/DESIGN_ALIGNMENT_HISTORY.md) · [既有构建记录](BUILD_VALIDATION.md) · [作品概述](docs/破茧_第一章_作品概述.md)
 
 ## GitHub APK 打包
 

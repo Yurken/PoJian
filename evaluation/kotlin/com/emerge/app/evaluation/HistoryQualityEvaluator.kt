@@ -187,6 +187,7 @@ object HistoryQualityEvaluator {
             "scope" to "Offline downstream history analysis with supplied structured fields; no model/API, extraction accuracy, truth verification, or psychological diagnosis is evaluated.",
             "dataset_sha256" to listOf("metadata.properties", "inputs.tsv", "labels.tsv", "windows.tsv").associateWith { sha(File(folder, it)) },
             "source_sha256" to listOf("app/src/main/java/com/emerge/app/analysis/CognitiveAnalyzer.kt",
+                "app/src/main/java/com/emerge/app/analysis/EvidenceIdentity.kt",
                 "app/src/main/java/com/emerge/app/analysis/StructuredSemantics.kt",
                 "app/src/main/java/com/emerge/app/analysis/ObservationWindow.kt",
                 "evaluation/kotlin/com/emerge/app/evaluation/HistoryQualityEvaluator.kt").associateWith { sha(File(repository, it)) },

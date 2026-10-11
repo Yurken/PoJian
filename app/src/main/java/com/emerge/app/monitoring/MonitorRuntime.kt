@@ -311,9 +311,16 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 }
                 val uncertain = if (!row.has("uncertain")) true else row.get("uncertain") as? Boolean
                     ?: error("观点归属标记无效")
+                fun anchors(name: String): List<String> {
+                    if (!row.has(name)) return emptyList()
+                    val values = row.get(name) as? JSONArray ?: error("论据身份字段类型无效")
+                    require(values.length() <= 4) { "论据身份字段数量超限" }
+                    return (0 until values.length()).map { item -> values.get(item) as? String
+                        ?: error("论据身份字段类型无效") }
+                }
                 ArgumentUnit(string("quote", true), string("topic"), string("subject"),
                     string("dimension"), string("stance"), string("evidence"),
-                    string("conditions"), uncertain)
+                    string("conditions"), uncertain, anchors("evidence_actors"), anchors("evidence_origins"))
             }
             val available = input.text + if (input.kind == "frame") "\n$observed" else ""
             val validationEvent = BrowseEvent(id = 1, packageName = input.packageName, timestamp = input.at,
@@ -364,7 +371,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
             }
             if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
             input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
-            commit(input, outputs, claims, observed, policy, service)
+            commit(input, outputs, claims, units, observed, policy, service)
             notice(if (outputs.isEmpty()) "当前采样未提取到可核查声明，不代表内容已被证明真实" else
                 "已处理 ${outputs.size} 个候选；未显示、未采样和超出候选上限的部分不在核查范围内")
             return ProcessResult.DONE
@@ -379,7 +386,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
         } finally { connection = null; mutableState.update { it.copy(busy = false) } }
     }
 
-    @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, claims: JSONArray, observed: String,
+    @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, claims: JSONArray,
+        units: List<ArgumentUnit>, observed: String,
         policy: MonitorConfig, service: TextServiceConfig) {
         if (!current(input) || app.audioCoordinator.settings.config.value != service) return
         outputs.forEach(::publish)
@@ -392,7 +400,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
                             row.optString("topic", ""), row.optString("subject", ""), row.optString("dimension", ""),
                             row.optString("stance", ""), evidence, row.optString("conditions", ""),
                             row.optBoolean("uncertain", true) || listOf("topic", "subject", "dimension", "stance")
-                                .any { row.optString(it).isBlank() }, input.encounter)
+                                .any { row.optString(it).isBlank() }, input.encounter,
+                            units[index].evidenceActors, units[index].evidenceOrigins)
                     }
                 }
                 val unique = arguments.distinct()
@@ -496,14 +505,26 @@ class MonitorRuntime(private val app: EmergeApplication) {
     private fun encodeArguments(rows: List<ObservedArgument>) = JSONArray().apply { rows.forEach { a ->
         put(JSONObject().put("key", a.contentKey).put("package", a.packageName).put("at", a.capturedAt)
             .put("topic", a.topic).put("subject", a.subject).put("dimension", a.dimension).put("stance", a.stance)
-            .put("evidence", a.evidence).put("conditions", a.conditions).put("uncertain", a.uncertain).put("encounter", a.encounterKey))
+            .put("evidence", a.evidence).put("conditions", a.conditions).put("uncertain", a.uncertain).put("encounter", a.encounterKey)
+            .put("evidence_actors", JSONArray(a.evidenceActors)).put("evidence_origins", JSONArray(a.evidenceOrigins)))
     } }.toString()
     private fun readArguments(): List<ObservedArgument> = runCatching {
         val rows = JSONArray(prefs.getString("arguments", "[]"))
         (0 until minOf(600, rows.length())).map { i -> rows.getJSONObject(i).let { j ->
+            fun identity(name: String): List<String> {
+                if (!j.has(name)) return emptyList()
+                val values = j.get(name) as? JSONArray ?: error("Invalid evidence identity")
+                require(values.length() <= 4)
+                return (0 until values.length()).map { index ->
+                    val value = values.get(index) as? String ?: error("Invalid evidence identity")
+                    require(value.isNotBlank() && value.length <= 80 && j.getString("evidence").contains(value))
+                    value
+                }.also { require(it.distinct().size == it.size) }
+            }
             ObservedArgument(j.getString("key"), j.getString("package"), j.getLong("at"), j.getString("topic"),
                 j.getString("subject"), j.getString("dimension"), j.getString("stance"), j.getString("evidence"),
-                j.getString("conditions"), j.getBoolean("uncertain"), j.getString("encounter"))
+                j.getString("conditions"), j.getBoolean("uncertain"), j.getString("encounter"),
+                identity("evidence_actors"), identity("evidence_origins"))
         } }
     }.getOrDefault(emptyList())
     private fun readFindings(): List<MonitorFinding> = runCatching {

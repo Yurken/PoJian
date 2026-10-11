@@ -105,6 +105,9 @@ object ReportExporter {
                 appendLine("与历史对比：${observation.increment.label}；用于对比的早期记录：${observation.previousEventId ?: "无"}")
                 if (observation.evidenceDetails.isNotEmpty()) observation.evidenceDetails.forEach {
                     appendLine("${it.type.label}${if (it.isNew) "（对比历史为新增）" else ""} · 同一记录原文：${it.text}")
+                    if (it.identity.actors.isNotEmpty()) appendLine("案例当事对象：${it.identity.actors.joinToString("、")}")
+                    if (it.identity.origins.isNotEmpty()) appendLine("原材料线索：${it.identity.origins.joinToString("、")}")
+                    if (it.identityUnresolved) appendLine("案例身份或材料关系不清楚，暂不确认新增或重复。")
                 } else observation.evidence.forEach { appendLine("同一记录的依据/条件片段：$it") }
                 if (observation.evidence.isEmpty()) appendLine("没有识别到相关依据片段，无法判断信息量是否有变化。")
                 appendLine()

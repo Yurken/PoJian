@@ -17,7 +17,8 @@ enum class EvidenceType(val label: String) {
 /** A direct, retained historical quotation, not a claim of independent source or truth. */
 data class EvidenceHistoryMatch(val eventId: Long, val quote: String)
 data class EvidenceFragment(val text: String, val type: EvidenceType, val isNew: Boolean = false,
-    val historyMatches: List<EvidenceHistoryMatch> = emptyList())
+    val historyMatches: List<EvidenceHistoryMatch> = emptyList(),
+    val identity: EvidenceIdentity = EvidenceIdentityComparator.identity(text), val identityUnresolved: Boolean = false)
 data class ClaimObservation(val eventId: Long, val timestamp: Long, val packageName: String,
     val topic: String, val quote: String, val evidence: List<String>, val conditions: String,
     val uncertainAttribution: Boolean, val increment: Increment, val previousEventId: Long?,
@@ -74,9 +75,6 @@ class CognitiveAnalyzer {
     private val conditionMarker = Regex("未来|明年|今年|当前|过去|去年|现在|[0-9]{4}年|北京|上海|深圳|广州|地区|应届|嵌入式|互联网|医疗|制造业|如果[^，。；\\n]{0,30}")
     private val attributionMarker = Regex("有人说|有人认为|听说|据说|网传|引用|反驳|所谓|并非|不代表|不意味着|但|然而|不是.*而是|[“”\"]")
     private val numericTokens = Regex("[0-9]+(?:\\.[0-9]+)?(?:[%万亿年月日人个元])?")
-    // Small changes in negation, quantity direction or signed values must not be erased by similarity.
-    private val evidenceQualifiers = Regex("不少于|不超过|不低于|不高于|上升|下降|增加|减少|提高|降低|增长|下跌|至少|至多|超过|不足|不|没|未|无")
-    private val signedNumbers = Regex("[-+−<>≤≥]?\\s*[0-9]+(?:\\.[0-9]+)?(?:[%％万亿年月日人个元倍])?")
     private val emotionalExpression = Regex("焦虑|恐慌|恐惧|绝望|完蛋|没有未来|毁掉|再不[^，。；]{0,18}就|你还不[^，。；]{0,18}")
 
     fun analyze(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
@@ -141,7 +139,8 @@ class CognitiveAnalyzer {
             // A valid empty model result is an analyzed event, not an invitation to invent a fallback claim.
             val candidates = structured?.claims?.map { claim ->
                 Candidate(claim.topic.trim().ifBlank { "未分类" }, claim.quote, claim.subject.trim(),
-                    claim.evidence.takeIf { it.isNotEmpty() }?.let { listOf(EvidenceFragment(it, evidenceType(it))) }.orEmpty(),
+                    claim.evidence.takeIf { it.isNotEmpty() }?.let { listOf(EvidenceFragment(it, evidenceType(it),
+                        identity = EvidenceIdentityComparator.identity(it, claim.evidenceActors, claim.evidenceOrigins))) }.orEmpty(),
                     claim.conditions.trim(), claim.uncertain || claim.topic.isBlank() || claim.subject.isBlank() ||
                         claim.dimension.isBlank() || claim.stance.isBlank(), claim.dimension.trim(), claim.stance.trim(),
                     "structured_model")
@@ -172,17 +171,24 @@ class CognitiveAnalyzer {
                     comparableHistory.asSequence().flatMap { prior ->
                         checkCancellation()
                         prior.evidenceDetails.asSequence().filter {
-                            it.type == fragment.type && sameEvidence(fragment.text, it.text)
+                            it.type == fragment.type && EvidenceIdentityComparator.compare(fragment.text, it.text,
+                                fragment.identity, it.identity) == EvidenceRelation.REUSED
                         }.map { EvidenceHistoryMatch(prior.eventId, it.text) }
                     }.distinct().take(MATCHES_PER_FRAGMENT).toList()
                 }
                 fun reused(fragment: EvidenceFragment) = matches[fragment].orEmpty().isNotEmpty()
+                fun unresolved(fragment: EvidenceFragment) = !reused(fragment) && comparableHistory.any { prior ->
+                    checkCancellation()
+                    prior.evidenceDetails.any { old ->
+                        EvidenceIdentityComparator.compare(fragment.text, old.text, fragment.identity, old.identity) == EvidenceRelation.UNRESOLVED }
+                }
                 val increment = when {
                     uncertain || subject.isBlank() -> Increment.UNKNOWN
                     related != null && !sameConditions(related) -> Increment.CONDITIONS
                     comparable == null -> Increment.FIRST
                     evidence.isEmpty() || comparableHistory.all { it.evidenceDetails.isEmpty() } -> Increment.UNKNOWN
                     evidence.all { reused(it) } -> Increment.REPEATED
+                    evidence.any(::unresolved) -> Increment.UNKNOWN
                     // An unmatched fragment beyond a truncated recall is not enough to establish novelty.
                     truncated -> Increment.UNKNOWN
                     else -> Increment.NEW
@@ -193,7 +199,7 @@ class CognitiveAnalyzer {
                         .map { EvidenceFragment(it, EvidenceType.CONDITION, isNew = true) }.toList()
                 } else emptyList()
                 val details = evidence.map { it.copy(isNew = increment == Increment.NEW && !reused(it),
-                    historyMatches = matches[it].orEmpty()) } + changedConditions
+                    historyMatches = matches[it].orEmpty(), identityUnresolved = unresolved(it)) } + changedConditions
                 val observation = ClaimObservation(event.id, event.timestamp, event.packageName, topic, quote,
                     details.map { it.text }, conditions, uncertain, increment, comparable?.eventId ?: related?.eventId,
                     if (within) window.durationMillis(event) else event.durationMillis.takeIf { window.durationKnown(event) },
@@ -352,11 +358,6 @@ class CognitiveAnalyzer {
     private fun polarity(text: String) = Regex("不|没|无|下降|减少|降低|增长|增加|提高")
         .findAll(claimPart(text)).map { it.value }.distinct().sorted().joinToString()
     private fun normalize(text: String) = text.lowercase().replace(Regex("[^\\p{L}\\p{N}]"), "")
-    private fun sameEvidence(a: String, b: String): Boolean =
-        signedNumbers.findAll(a).map { it.value.filterNot(Char::isWhitespace) }.toList() ==
-            signedNumbers.findAll(b).map { it.value.filterNot(Char::isWhitespace) }.toList() &&
-        evidenceQualifiers.findAll(a).map { it.value }.toList() == evidenceQualifiers.findAll(b).map { it.value }.toList() &&
-        similarity(a, b) >= 0.85
     private fun similarity(a: String, b: String): Double {
         val first = normalize(a)
         val second = normalize(b)

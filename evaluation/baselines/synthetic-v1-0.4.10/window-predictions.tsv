@@ -1,0 +1,7 @@
+sample_id	sequence_id	expected	predicted	correct	challenge	analysis_source	rationale
+window_repeat	window_repeat	ALERT	ALERT	true	persistent_repeat	report_rule	四天的12次接触持续重复相同判断与同一依据，足以提示回查；不推断个人认同或心理。
+window_new_data	window_new_data	NO_ALERT	NO_ALERT	true	focused_research	report_rule	专题研究反复讨论同一判断，但每次补充明确的新调查和数据，不属于低增量复述。
+window_emotion_new	window_emotion_new	NO_ALERT	NO_ALERT	true	emotional_but_informative	report_rule	虽然措辞焦虑，但每条提供新的调查数据；内容情绪本身不能决定风险。
+window_single_day	window_single_day	INSUFFICIENT	INSUFFICIENT	true	short_term_concentration	report_rule	只有一次当天专题浏览，没有跨日持续性的观察依据。
+window_distinct_cases	window_distinct_cases	NO_ALERT	NO_ALERT	true	similar_wording_distinct_facts	report_rule	材料明确来自12位不同求职者，持续补充个体事实。相似句式不能自动等同同源复述；个体案例也不证明行业全貌。
+window_unknown	window_unknown	INSUFFICIENT	INSUFFICIENT	true	uncertain_window	report_rule	大量记录不等于可比证据充分，未知归属应保持证据不足。

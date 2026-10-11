@@ -17,6 +17,8 @@ import monitor_server as m
 QUOTE = "某产品的测试结果提升了百分之三十"
 BODY = QUOTE + "。根据报告，测试采用相同的条件。"
 SOURCE = {"id": 0, "url": "https://example.org/report", "title": "原始报告", "excerpt": "原始报告显示：测试条件并不相同，结果不能直接比较。"}
+IDENTITY_EVIDENCE = "小李与小王的经历记录在《就业调查》和访谈原稿中"
+IDENTITY_BODY = QUOTE + "。" + IDENTITY_EVIDENCE + "。发布者小张介绍某产品。"
 
 
 def request_data(**updates):
@@ -139,6 +141,22 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(result["claims"][0]["verdict"], "contradicted")
         self.assertEqual(provider.model_calls, 2); self.assertEqual(provider.search_calls, 1)
         self.assertEqual(result["claims"][0]["sources"][0]["url"], SOURCE["url"])
+        self.assertEqual(result["claims"][0]["evidence_actors"], [])
+        self.assertEqual(result["claims"][0]["evidence_origins"], [])
+    def test_evidence_identities_survive_fake_provider_and_verification(self):
+        row = claim(evidence=IDENTITY_EVIDENCE, evidence_actors=["小李", "小王"],
+                    evidence_origins=["《就业调查》", "访谈原稿"])
+        provider = FakeProviders(claims=[row])
+        output = self.run_pipeline(provider, text=IDENTITY_BODY)["claims"][0]
+        self.assertEqual(output["evidence_actors"], row["evidence_actors"])
+        self.assertEqual(output["evidence_origins"], row["evidence_origins"])
+        self.assertEqual(output["verdict"], "contradicted")
+        self.assertEqual(provider.model_calls, 2)
+    def test_one_invalid_identity_rejects_all_claims_before_retrieval(self):
+        provider = FakeProviders(claims=[claim(), claim(evidence_actors=["虚构的当事人"])])
+        with self.assertRaises(m.UpstreamError): self.run_pipeline(provider)
+        self.assertEqual(provider.model_calls, 1)
+        self.assertEqual(provider.search_calls, 0)
     def test_missing_search_never_fabricates_verdict(self):
         provider = FakeProviders(search=False); result = self.run_pipeline(provider)
         self.assertEqual(result["claims"][0]["verdict"], "not_checked"); self.assertEqual(provider.search_calls, 0)
@@ -184,6 +202,82 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(len(result["claims"]), 1)
         self.assertEqual(result["claims"][0]["verdict"], "insufficient")
         self.assertIn("未取得可用的网页正文", result["claims"][0]["explanation"])
+
+    def test_real_provider_json_contract_preserves_evidence_identities(self):
+        config = legacy.Config("https://example.org", "model", "key", "token")
+        runtime = m.RuntimeConfig(config, m.Options(), ":memory:")
+        provider = m.Providers(config, runtime)
+        row = claim(evidence=IDENTITY_EVIDENCE, evidence_actors=["小李"], evidence_origins=["访谈原稿"])
+        extraction = {"observed_text": "", "claims": [row]}
+        envelope = {"choices": [{"message": {"content": json.dumps(extraction, ensure_ascii=False)}}]}
+        with patch.object(m, "post_json", return_value=envelope) as upstream:
+            output = m.analyze_monitor(m.validate_monitor(request_data(text=IDENTITY_BODY, check_facts=False)),
+                                       provider)["claims"][0]
+        self.assertEqual(output["evidence_actors"], ["小李"])
+        self.assertEqual(output["evidence_origins"], ["访谈原稿"])
+        self.assertEqual(output["verdict"], "not_checked")
+        self.assertEqual(upstream.call_count, 1)
+
+
+class ExtractionIdentityTests(unittest.TestCase):
+    fields = ("evidence_actors", "evidence_origins")
+
+    def extract(self, row=None, body=IDENTITY_BODY):
+        return m.validate_extraction({"claims": [row if row is not None else claim(evidence=IDENTITY_EVIDENCE)]},
+                                     m.validate_monitor(request_data(text=body)))[1][0]
+
+    def test_legacy_missing_fields_and_unknown_identity_are_empty(self):
+        row = self.extract()
+        self.assertEqual(row["evidence_actors"], [])
+        self.assertEqual(row["evidence_origins"], [])
+        explicit = self.extract(claim(evidence="", evidence_actors=[], evidence_origins=[]))
+        self.assertEqual(explicit["evidence_actors"], [])
+        self.assertEqual(explicit["evidence_origins"], [])
+
+    def test_exact_identity_values_are_preserved_without_trimming_or_deduction(self):
+        evidence = " 当事人小李 记录在《就业调查》中"
+        row = self.extract(claim(evidence=evidence, evidence_actors=[" 当事人小李 "],
+                                 evidence_origins=["《就业调查》"]), QUOTE + "。" + evidence)
+        self.assertEqual(row["evidence_actors"], [" 当事人小李 "])
+        self.assertEqual(row["evidence_origins"], ["《就业调查》"])
+        self.assertNotIn("independent", row)
+
+    def test_each_column_allows_four_items_of_eighty_characters(self):
+        values = [letter * 80 for letter in "甲乙丙丁"]
+        evidence = "、".join(values)
+        row = self.extract(claim(evidence=evidence, evidence_actors=values, evidence_origins=values),
+                           QUOTE + "。" + evidence)
+        self.assertEqual(row["evidence_actors"], values)
+        self.assertEqual(row["evidence_origins"], values)
+
+    def test_each_present_column_requires_a_list(self):
+        for field in self.fields:
+            for value in [None, "小李", {"name": "小李"}, ("小李",), 1, True]:
+                with self.subTest(field=field, kind=type(value).__name__), self.assertRaises(m.UpstreamError):
+                    self.extract(claim(evidence=IDENTITY_EVIDENCE, **{field: value}))
+
+    def test_identity_item_type_length_and_nonblank_constraints(self):
+        for field in self.fields:
+            for value in [None, 1, True, {}, [], "", " \t\n", "甲" * 81]:
+                with self.subTest(field=field, kind=type(value).__name__), self.assertRaises(m.UpstreamError):
+                    self.extract(claim(evidence=IDENTITY_EVIDENCE, **{field: [value]}))
+
+    def test_duplicate_and_fifth_item_reject_the_response(self):
+        for field in self.fields:
+            for values in [["小李", "小李"], ["小", "李", "小王", "就业", "调查"]]:
+                with self.subTest(field=field, count=len(values)), self.assertRaises(m.UpstreamError):
+                    self.extract(claim(evidence=IDENTITY_EVIDENCE, **{field: values}))
+
+    def test_invented_cross_spliced_and_outside_evidence_values_are_rejected(self):
+        for field in self.fields:
+            for value in ["不存在的人物", "小李小王", "就业访谈", "小张", "某产品"]:
+                with self.subTest(field=field, value=value), self.assertRaises(m.UpstreamError):
+                    self.extract(claim(evidence=IDENTITY_EVIDENCE, **{field: [value]}))
+
+    def test_nonempty_identities_require_nonempty_evidence(self):
+        for field in self.fields:
+            with self.subTest(field=field), self.assertRaises(m.UpstreamError):
+                self.extract(claim(evidence="", **{field: ["小李"]}))
 
 
 class BudgetTests(unittest.TestCase):
@@ -294,7 +388,29 @@ class HttpTests(unittest.TestCase):
         headers = {"Content-Type": "application/json", "Authorization": "Bearer " + token, **(extra or {})}
         connection.request(method, path, json.dumps(body if body is not None else request_data()), headers)
         reply = connection.getresponse(); status = reply.status; data = json.loads(reply.read()); connection.close(); return status, data
-    def test_live_http_pipeline(self): self.assertEqual(self.call()[1]["claims"][0]["verdict"], "contradicted")
+    def test_live_http_pipeline(self):
+        status, body = self.call()
+        self.assertEqual(status, 200)
+        self.assertEqual(body["claims"][0]["verdict"], "contradicted")
+        self.assertEqual(body["claims"][0]["evidence_actors"], [])
+        self.assertEqual(body["claims"][0]["evidence_origins"], [])
+    def test_http_pipeline_preserves_evidence_identity_fields(self):
+        self.provider.claims = [claim(evidence=IDENTITY_EVIDENCE, evidence_actors=["小李", "小王"],
+                                     evidence_origins=["《就业调查》", "访谈原稿"])]
+        status, body = self.call(body=request_data(text=IDENTITY_BODY))
+        self.assertEqual(status, 200)
+        self.assertEqual(body["claims"][0]["evidence_actors"], ["小李", "小王"])
+        self.assertEqual(body["claims"][0]["evidence_origins"], ["《就业调查》", "访谈原稿"])
+        self.assertEqual(body["claims"][0]["verdict"], "contradicted")
+    def test_http_invalid_identity_rejects_whole_response_without_revealing_text(self):
+        for field in ("evidence_actors", "evidence_origins"):
+            with self.subTest(field=field):
+                self.provider.claims = [claim(), claim(**{field: ["private synthetic identity"]})]
+                status, body = self.call()
+                self.assertEqual(status, 502)
+                self.assertEqual(body, {"error": "Invalid argument evidence identities"})
+                self.assertNotIn("claims", body)
+        self.assertEqual(self.provider.search_calls, 0)
     def test_unauthorized_does_not_call_provider(self): self.assertEqual(self.call(token="wrong")[0], 401); self.assertEqual(self.provider.model_calls, 0)
     def test_invalid_body(self): self.assertEqual(self.call(body={"version": 2})[0], 400)
     def test_wrong_media_type(self): self.assertEqual(self.call(extra={"Content-Type": "text/plain"})[0], 415)

@@ -464,6 +464,9 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
                     Text("${fragment.type.label}${if (fragment.isNew) " · 新增" else ""}",
                         color = if (fragment.isNew) Accent else Muted, fontSize = 12.sp)
                     QuoteBlock(fragment.text)
+                    if (fragment.identity.actors.isNotEmpty()) MetadataText("案例当事对象：${fragment.identity.actors.joinToString("、")}")
+                    if (fragment.identity.origins.isNotEmpty()) MetadataText("原材料线索：${fragment.identity.origins.joinToString("、")}")
+                    if (fragment.identityUnresolved) MetadataText("案例身份或材料关系不清楚，暂不确认新增或重复。")
                 }
             }
         } else if (item.evidence.isNotEmpty()) {

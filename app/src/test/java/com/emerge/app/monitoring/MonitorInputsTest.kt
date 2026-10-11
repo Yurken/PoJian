@@ -41,6 +41,30 @@ class MonitorInputsTest {
         assertTrue(MonitorInputs.allocate(listOf(earlier, later), listOf(claim.copy(evidence = "依据乙")), 10_000, "audio").isEmpty())
     }
 
+    @Test fun allocatedEvidenceKeepsItsCaseAndMaterialIdentityOnItsOriginalAudioSegment() {
+        val earlier = event(1, "早期判断。小林引用《调查报告》发现依据甲。", kind = "audio_playback")
+        val later = event(2, "后续判断。小王引用《另一报告》发现依据乙。", 5000, "audio_playback")
+        val claim = ArgumentUnit("早期判断", "议题", "对象", "维度", "立场", "小林引用《调查报告》发现依据甲",
+            uncertain = false, evidenceActors = listOf("小林"), evidenceOrigins = listOf("《调查报告》"))
+        val result = MonitorInputs.allocate(listOf(earlier, later), listOf(claim), 10_000, "audio").single()
+        assertEquals(earlier.id, result.eventId)
+        assertEquals(claim, result.claims.single())
+        assertEquals(listOf("小林"), result.claims.single().evidenceActors)
+        assertEquals(listOf("《调查报告》"), result.claims.single().evidenceOrigins)
+    }
+
+    @Test fun allocationCannotBorrowCaseOrMaterialNamesFromOtherEvidenceOrContext() {
+        val original = event(1, "当前观点。甲公司发布《原报告》，招聘数量减少。旁注：乙公司发布《另一报告》。")
+        val claim = ArgumentUnit("当前观点", "议题", "对象", "维度", "立场", "甲公司发布《原报告》，招聘数量减少",
+            uncertain = false, evidenceActors = listOf("甲公司"), evidenceOrigins = listOf("《原报告》"))
+        assertEquals(claim, MonitorInputs.allocate(listOf(original), listOf(claim), 10_000, "text")
+            .single().claims.single())
+        assertTrue(MonitorInputs.allocate(listOf(original), listOf(claim.copy(evidenceActors = listOf("乙公司"))),
+            10_000, "text").isEmpty())
+        assertTrue(MonitorInputs.allocate(listOf(original), listOf(claim.copy(evidenceOrigins = listOf("《另一报告》"))),
+            10_000, "text").isEmpty())
+    }
+
     @Test fun matchingVisibleTextWinsOverDuplicatedVisualTranscription() {
         val text = event(1, "当前观点。依据甲。")
         val visual = event(2, text.visibleText, 5000, "visual_model")

@@ -5,6 +5,8 @@ import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
+import com.emerge.app.analysis.EvidenceIdentityComparator
+import com.emerge.app.analysis.EvidenceRelation
 
 /** A recreated accessibility bridge cannot reactivate a result bound to an earlier screen session. */
 class MonitorScreenScope {
@@ -64,7 +66,8 @@ data class MonitorFinding(
 data class ObservedArgument(val contentKey: String, val packageName: String, val capturedAt: Long,
     val topic: String, val subject: String, val dimension: String, val stance: String,
     val evidence: String, val conditions: String = "", val uncertain: Boolean = false,
-    val encounterKey: String = contentKey)
+    val encounterKey: String = contentKey, val evidenceActors: List<String> = emptyList(),
+    val evidenceOrigins: List<String> = emptyList())
 
 object MonitorPolicy {
     fun hash(value: String): String = MessageDigest.getInstance("SHA-256")
@@ -106,7 +109,16 @@ object MonitorPolicy {
         if (scope.size < 8 || scope.map { Instant.ofEpochMilli(it.capturedAt).atZone(zone).toLocalDate() }.distinct().size < 3) return null
         val dominant = scope.groupBy { normalized(it.stance) }.maxByOrNull { it.value.size }?.value ?: return null
         if (dominant.none { it.contentKey == latest.contentKey } || dominant.size.toDouble() / scope.size < 0.75) return null
-        val repeated = dominant.groupBy { normalized(it.evidence) }.values.sumOf { (it.size - 1).coerceAtLeast(0) }
+        val ordered = dominant.sortedBy { it.capturedAt }
+        val identities = ordered.map { EvidenceIdentityComparator.identity(it.evidence, it.evidenceActors, it.evidenceOrigins) }
+        val repeated = ordered.indices.count { index ->
+            val current = ordered[index]
+            (maxOf(0, index - 120) until index).reversed().any { previous ->
+                val prior = ordered[previous]
+                prior.capturedAt < current.capturedAt &&
+                EvidenceIdentityComparator.compare(current.evidence, prior.evidence,
+                    identities[index], identities[previous]) == EvidenceRelation.REUSED }
+        }
         return latest.takeIf { repeated.toDouble() / scope.size >= 0.6 }
     }
 }

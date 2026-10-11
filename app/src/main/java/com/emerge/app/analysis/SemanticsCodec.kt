@@ -18,6 +18,8 @@ object SemanticsCodec {
                 put("evidence", claim.evidence)
                 put("conditions", claim.conditions)
                 put("uncertain", claim.uncertain)
+                put("evidence_actors", JSONArray(claim.evidenceActors))
+                put("evidence_origins", JSONArray(claim.evidenceOrigins))
             }) }
         }
         return BrowseSemantic(semantics.eventId, semantics.inputText, semantics.analyzedAt,
@@ -32,10 +34,18 @@ object SemanticsCodec {
             val claim = json.getJSONObject(index)
             fun string(name: String): String = claim.get(name) as? String
                 ?: error("Invalid semantic field")
+            fun anchors(name: String): List<String> {
+                if (!claim.has(name)) return emptyList()
+                val values = claim.get(name) as? JSONArray ?: error("Invalid evidence identity field")
+                require(values.length() <= 4)
+                return (0 until values.length()).map { item -> values.get(item) as? String
+                    ?: error("Invalid evidence identity anchor") }
+            }
             ArgumentUnit(quote = string("quote"), topic = string("topic"), subject = string("subject"),
                 dimension = string("dimension"), stance = string("stance"), evidence = string("evidence"),
                 conditions = string("conditions"), uncertain = claim.get("uncertain") as? Boolean
-                    ?: error("Invalid uncertainty flag"))
+                    ?: error("Invalid uncertainty flag"), evidenceActors = anchors("evidence_actors"),
+                evidenceOrigins = anchors("evidence_origins"))
         }
         EventSemantics(row.eventId, row.inputText, row.analyzedAt, claims, row.inputKind).also { result ->
             // Validate stored shape and verbatim evidence against the saved input. The consumer
