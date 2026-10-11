@@ -3,9 +3,15 @@ package com.emerge.app.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class], version = 5, exportSchema = true)
+@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class], version = 6, exportSchema = true)
 abstract class BrowseDatabase : RoomDatabase() {
     companion object {
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE browse_events ADD COLUMN visibilityIntervals TEXT DEFAULT NULL")
+                MonitorTaskSchema.create(db)
+            }
+        }
         val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("""CREATE TABLE IF NOT EXISTS browse_semantics (
@@ -70,4 +76,5 @@ abstract class BrowseDatabase : RoomDatabase() {
     }
     abstract fun browseEventDao(): BrowseEventDao
     abstract fun audioDao(): AudioDao
+    abstract fun monitorTaskDao(): MonitorTaskDao
 }

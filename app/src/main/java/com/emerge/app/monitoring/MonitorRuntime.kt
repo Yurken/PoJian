@@ -10,6 +10,8 @@ import com.emerge.app.ui.StatisticsPeriod
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.selects.onTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -22,19 +24,43 @@ import java.util.concurrent.atomic.AtomicLong
 data class MonitorState(val findings: List<MonitorFinding> = emptyList(), val busy: Boolean = false,
     val notice: String = "等待所选应用的内容", val currentPackage: String = "", val contextToken: String = "",
     val screenText: String = "", val contextSince: Long = 0, val encounter: String = "", val skipped: Int = 0,
-    val requestsToday: Int = 0, val framesToday: Int = 0)
+    val requestsToday: Int = 0, val framesToday: Int = 0,
+    val pending: Int = 0, val retrying: Int = 0, val failed: Int = 0)
 
 private data class MonitorInput(val id: String, val packageName: String, val text: String, val at: Long,
     val kind: String, val token: String, val epoch: Long, val permission: Long, val deletion: Long,
-    val encounter: String, val image: String = "", val snapshots: List<BrowseEvent> = emptyList()) {
+    val encounter: String, val image: String = "", val snapshots: List<BrowseEvent> = emptyList(),
+    val checkFacts: Boolean = false, val lease: MonitorTaskLease? = null) {
     val key: String get() = MonitorPolicy.hash(packageName + "|" + kind + "|" + text + "|" + image)
 }
 
+/** Revoking one input leaves the consumer available for later authorized inputs. */
+internal class MonitorInputInvalidated : Exception("Monitoring input invalidated")
+
+internal fun requireCurrentMonitorInput(current: Boolean) {
+    if (!current) throw MonitorInputInvalidated()
+}
+
+internal suspend fun <T> handleMonitorInput(cancelled: T, work: suspend () -> T): T = try {
+    currentCoroutineContext().ensureActive()
+    work()
+} catch (_: MonitorInputInvalidated) {
+    // A worker cancelled at the same time must still propagate its structured cancellation.
+    currentCoroutineContext().ensureActive()
+    cancelled
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class MonitorRuntime(private val app: EmergeApplication) {
     private val prefs = app.getSharedPreferences("live_monitor", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val epoch = AtomicLong()
-    private val queue = Channel<MonitorInput>(6)
+    // Images stay in memory. Text/audio requests are encrypted in Room before submission.
+    private val frames = Channel<MonitorInput>(1)
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+    private val settingsReady = CompletableDeferred<Unit>()
+    private val tasks get() = app.monitorTasks
+    @Volatile private var authorizationRevision = prefs.getLong("authorization_revision", 0L)
     private val mutableConfig = MutableStateFlow(readConfig())
     val config = mutableConfig.asStateFlow()
     private val mutableState = MutableStateFlow(MonitorState(findings = readFindings()))
@@ -55,9 +81,54 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 synchronized(cache) { cache.clear() }
                 connection?.disconnect()
                 mutableState.update { s -> s.copy(busy = false) }
+                settingsReady.complete(Unit)
+                wake.trySend(Unit)
             }
         }
-        scope.launch { for (input in queue) process(input) }
+        scope.launch {
+            tasks.counts.collect { counts ->
+                mutableState.update { it.copy(pending = counts.queued + counts.running,
+                    retrying = counts.retrying, failed = counts.failed) }
+                wake.trySend(Unit)
+            }
+        }
+        scope.launch {
+            settingsReady.await()
+            tasks.recover(System.currentTimeMillis())
+            while (isActive) {
+                val frame = frames.tryReceive().getOrNull()
+                if (frame != null) { process(frame); continue }
+                val lease = tasks.claim(System.currentTimeMillis(), ::authorized)
+                if (lease != null) {
+                    val r = lease.request
+                    val permission = app.captureSettings.permissionToken(r.packageName)
+                    if (permission == null) { tasks.cancel(lease); continue }
+                    val input = MonitorInput(lease.task.id, r.packageName, r.text, r.capturedAt, r.kind,
+                        r.contextToken, epoch.get(), permission, app.repository.captureGeneration,
+                        r.encounter, snapshots = r.snapshots, checkFacts = r.checkFacts, lease = lease)
+                    when (val result = process(input)) {
+                        ProcessResult.DONE -> tasks.finish(lease, System.currentTimeMillis()) { current(input) && authorized(r) }
+                        ProcessResult.CANCELLED -> tasks.cancel(lease)
+                        is ProcessResult.RETRY -> {
+                            val retried = tasks.retry(lease, result.reason, System.currentTimeMillis()) { current(input) && authorized(r) }
+                            if (retried) notice("网络或服务暂不可用，已保存材料并等待重试")
+                            else unchecked(input, "重试后仍未完成核查，请稍后重新核查")
+                        }
+                        is ProcessResult.FAILED -> {
+                            tasks.fail(lease, result.reason, System.currentTimeMillis()) { current(input) && authorized(r) }
+                        }
+                    }
+                    continue
+                }
+                val due = tasks.nextReadyAt()
+                val waitMillis = if (due == null) 30_000L else (due - System.currentTimeMillis()).coerceIn(1, 30_000)
+                select<Unit> {
+                    frames.onReceive { process(it) }
+                    wake.onReceive { }
+                    onTimeout(waitMillis) { }
+                }
+            }
+        }
         scope.launch {
             combine(app.repository.allEvents, app.repository.semantics) { rows, semantics -> rows to semantics }
                 .collect { (rows, semantics) ->
@@ -150,32 +221,71 @@ class MonitorRuntime(private val app: EmergeApplication) {
             val targets = snapshots ?: listOfNotNull(MonitorInputs.screenSnapshot(
                 app.repository.allEvents.first(), packageName, text, at))
             val input = MonitorInput(id, packageName, text, at, kind, token, inputEpoch, permission,
-                generation, encounter, image, targets)
-            if (current(input) && !queue.trySend(input).isSuccess) {
+                generation, encounter, image, targets, checkFacts = config.value.realtime || id.startsWith("manual"))
+            if (!current(input)) return@launch
+            if (kind != "frame") {
+                val request = MonitorTaskRequest(id, packageName, kind, text, at, token, encounter, targets,
+                    serviceFingerprint(), authorizationKey(), input.checkFacts)
+                if (!authorized(request)) { unchecked(input, "尚未启用并配置云端服务；本地重复观察不等于事实核查"); return@launch }
+                when (tasks.enqueue(request, System.currentTimeMillis()) { current(input) && authorized(request) }) {
+                    EnqueueResult.ENQUEUED -> wake.trySend(Unit)
+                    EnqueueResult.DUPLICATE -> notice("这份采样已进入分析流程")
+                    EnqueueResult.FULL -> mutableState.update { it.copy(skipped = it.skipped + 1, notice = "处理队列已满，部分内容未核查") }
+                    EnqueueResult.INVALID -> unchecked(input, "当前采样无法与已保存的原文对应，请稍后重试")
+                }
+            } else if (!frames.trySend(input).isSuccess) {
                 mutableState.update { it.copy(skipped = it.skipped + 1, notice = "处理队列已满，部分内容未核查") }
-            }
+            } else wake.trySend(Unit)
         }
     }
     private fun current(input: MonitorInput) = input.epoch == epoch.get() &&
-        input.deletion == app.repository.captureGeneration && app.captureSettings.isPermissionCurrent(input.packageName, input.permission)
+        input.deletion == app.repository.captureGeneration && app.captureSettings.isPermissionCurrent(input.packageName, input.permission) &&
+        (input.lease == null || authorized(input.lease.request))
 
-    private suspend fun process(input: MonitorInput) {
-        if (!current(input)) return
-        if (System.currentTimeMillis() - input.at > 120_000) { unchecked(input, "处理队列中的材料已经过时，本次未核查"); return }
+    private fun serviceFingerprint(): String {
+        val service = app.audioCoordinator.settings.config.value
+        return MonitorPolicy.hash(service.endpoint + "|" + service.token)
+    }
+    private fun authorizationKey() = MonitorPolicy.hash("${app.captureSettings.authorizationRevision}|" +
+        "${app.audioCoordinator.settings.authorizationRevision}|$authorizationRevision")
+    private fun authorized(request: MonitorTaskRequest): Boolean =
+        app.captureSettings.permissionToken(request.packageName) != null &&
+            app.audioCoordinator.settings.config.value.let { it.enabled && it.endpoint.isNotBlank() } &&
+            request.authorizationKey == authorizationKey() && request.serviceFingerprint == serviceFingerprint()
+
+    private sealed interface ProcessResult {
+        data object DONE : ProcessResult
+        data object CANCELLED : ProcessResult
+        data class RETRY(val reason: String) : ProcessResult
+        data class FAILED(val reason: String) : ProcessResult
+    }
+    private class HttpFailure(val status: Int) : java.io.IOException("服务返回 $status")
+
+    private suspend fun process(input: MonitorInput): ProcessResult =
+        handleMonitorInput(ProcessResult.CANCELLED) { processCurrent(input) }
+
+    private suspend fun processCurrent(input: MonitorInput): ProcessResult {
+        if (!current(input)) return ProcessResult.CANCELLED
+        val maxAge = if (input.lease == null) 120_000L else 24 * 60 * 60 * 1000L
+        if (System.currentTimeMillis() - input.at !in 0..maxAge) {
+            unchecked(input, "处理队列中的材料已经过时，本次未核查")
+            return ProcessResult.FAILED("expired")
+        }
+        input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
         val service = app.audioCoordinator.settings.config.value
         val policy = config.value
-        if (!service.enabled || service.endpoint.isBlank()) { unchecked(input, "尚未启用并配置云端服务；本地重复观察不等于事实核查"); return }
-        if (input.kind == "frame" && !policy.visual) return
+        if (!service.enabled || service.endpoint.isBlank()) { unchecked(input, "尚未启用并配置云端服务；本地重复观察不等于事实核查"); return ProcessResult.CANCELLED }
+        if (input.kind == "frame" && !policy.visual) return ProcessResult.CANCELLED
         mutableState.update { it.copy(busy = true, notice = "正在分析已采样内容并查找依据") }
         try {
             val now = System.currentTimeMillis()
-            val checkFacts = policy.realtime || input.id.startsWith("manual")
+            val checkFacts = input.checkFacts
             val cacheKey = input.key + ":" + checkFacts + ":" + MonitorPolicy.hash(service.endpoint + "|" + service.token)
             val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now >= it.first && now - it.first <= 300_000 }?.second }
             val json = if (cached != null) JSONObject(cached.toString()).put("id", input.id) else {
-                if (input.kind == "frame" && frameCount() >= policy.dailyFrames) { unchecked(input, "今日关键画面额度已用完，此画面未核查"); return }
-                if (!current(input)) return
-                if (!app.audioCoordinator.settings.reserveRequest()) { unchecked(input, "今日云端请求额度已用完；未处理内容不能视为真实"); return }
+                if (input.kind == "frame" && frameCount() >= policy.dailyFrames) { unchecked(input, "今日关键画面额度已用完，此画面未核查"); return ProcessResult.FAILED("frame_budget") }
+                if (!current(input)) return ProcessResult.CANCELLED
+                if (!app.audioCoordinator.settings.reserveRequest()) { unchecked(input, "今日云端请求额度已用完；未处理内容不能视为真实"); return ProcessResult.FAILED("request_budget") }
                 if (input.kind == "frame") reserveFrame()
                 mutableState.update { it.copy(requestsToday = app.audioCoordinator.settings.requestsToday(), framesToday = frameCount()) }
                 request(input, service.endpoint, service.token, checkFacts).also { value ->
@@ -188,7 +298,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 }
             }
             currentCoroutineContext().ensureActive()
-            if (!current(input) || app.audioCoordinator.settings.config.value != service) return
+            if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
             require(json.getString("id") == input.id) { "核查结果与当前请求不一致" }
             val observed = json.optString("observed_text", "").take(6000)
             val claims = json.getJSONArray("claims")
@@ -230,7 +340,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 MonitorFinding(input.id + ":$index", input.key, input.packageName, input.at, "fact", verdict,
                     quote, row.getString("explanation").take(1000), sources, row.optString("topic", "").take(100), input.token, input.kind)
             }
-            if (!current(input)) return
+            if (!current(input)) return ProcessResult.CANCELLED
             val targets = input.snapshots.toMutableList()
             if (input.kind == "frame" && observed.isNotBlank()) {
                 // A visual-model transcription is explicitly marked; it adds no measured viewing duration.
@@ -244,17 +354,28 @@ class MonitorRuntime(private val app: EmergeApplication) {
             // Store extracted semantics separately from external fact-check sources.
             MonitorInputs.allocate(targets, units, System.currentTimeMillis(), input.kind, available).forEach { semantics ->
                 val snapshot = targets.first { it.id == semantics.eventId }
-                app.repository.saveSemantics(snapshot, semantics, input.deletion) {
+                app.repository.saveSemantics(snapshot, semantics, input.deletion, transactionGuard = {
+                    input.lease?.let { tasks.isLeaseCurrent(it, System.currentTimeMillis()) {
+                        current(input) && app.audioCoordinator.settings.config.value == service
+                    } } ?: true
+                }) {
                     current(input) && app.audioCoordinator.settings.config.value == service
                 }
             }
-            if (!current(input) || app.audioCoordinator.settings.config.value != service) return
+            if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
+            input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
             commit(input, outputs, claims, observed, policy, service)
             notice(if (outputs.isEmpty()) "当前采样未提取到可核查声明，不代表内容已被证明真实" else
                 "已处理 ${outputs.size} 个候选；未显示、未采样和超出候选上限的部分不在核查范围内")
+            return ProcessResult.DONE
         } catch (error: Exception) {
-            if (error is CancellationException) throw error
-            if (current(input)) unchecked(input, "核查未完成：${error.message?.take(140) ?: "服务暂不可用"}")
+            if (error is CancellationException || error is MonitorInputInvalidated) throw error
+            if (!current(input)) return ProcessResult.CANCELLED
+            val retryable = if (error is HttpFailure) error.status in setOf(408, 429) || error.status in 500..599
+                else error is java.io.IOException
+            if (input.lease != null && retryable) return ProcessResult.RETRY(if (error is HttpFailure) "http_${error.status}" else "network")
+            unchecked(input, if (retryable) "核查未完成：网络或服务暂不可用" else "核查未完成：服务返回内容无效或不支持当前请求")
+            return ProcessResult.FAILED(if (error is HttpFailure) "http_${error.status}" else "invalid_response")
         } finally { connection = null; mutableState.update { it.copy(busy = false) } }
     }
 
@@ -274,6 +395,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
                                 .any { row.optString(it).isBlank() }, input.encounter)
                     }
                 }
+                val unique = arguments.distinct()
+                arguments.clear(); arguments.addAll(unique)
                 while (arguments.size > 600) arguments.removeAt(0)
                 prefs.edit().putString("arguments", encodeArguments(arguments)).apply()
                 if (policy.cocoon) MonitorPolicy.repetition(arguments.toList(), System.currentTimeMillis()) else null
@@ -300,9 +423,9 @@ class MonitorRuntime(private val app: EmergeApplication) {
         }
         connection = http
         try {
-            if (!current(input)) throw CancellationException("Monitoring scope changed")
+            requireCurrentMonitorInput(current(input))
             http.outputStream.use { it.write(bytes) }
-            check(http.responseCode == 200) { "服务返回 ${http.responseCode}，请使用支持 /monitor 的新版网关" }
+            if (http.responseCode != 200) throw HttpFailure(http.responseCode)
             val response = http.inputStream.use { stream ->
                 val out = java.io.ByteArrayOutputStream(); val buffer = ByteArray(8192)
                 while (true) {
@@ -329,16 +452,23 @@ class MonitorRuntime(private val app: EmergeApplication) {
         synchronized(cache) { cache.clear() }; synchronized(arguments) { arguments.clear() }
         mutableState.update { it.copy(findings = emptyList(), busy = false, notice = "材料已变更，旧核查与比较结果已清除") }
         prefs.edit().remove("findings").remove("arguments").apply()
-        if (clearSemantics) scope.launch { app.repository.clearSemantics() }
+        if (clearSemantics) {
+            val next = Math.addExact(authorizationRevision, 1L)
+            check(prefs.edit().putLong("authorization_revision", next).commit())
+            authorizationRevision = next
+            scope.launch { tasks.cancelAll(); app.repository.clearSemantics() }
+        }
     }
     fun saveConfig(value: MonitorConfig) {
         val clean = value.bounded()
-        prefs.edit().putString("config", JSONObject().apply {
+        val next = if (clean == config.value) authorizationRevision else Math.addExact(authorizationRevision, 1L)
+        check(prefs.edit().putLong("authorization_revision", next).putString("config", JSONObject().apply {
             put("bubble", clean.bubble); put("cocoon", clean.cocoon); put("realtime", clean.realtime); put("visual", clean.visual)
             put("cooldown", clean.cooldownMinutes); put("alerts", clean.dailyAlerts); put("seconds", clean.displaySeconds)
             put("interval", clean.frameIntervalSeconds); put("frames", clean.dailyFrames); put("quiet", clean.quiet)
             put("start", clean.quietStart); put("end", clean.quietEnd); put("research", clean.researchMode)
-        }.toString()).apply()
+        }.toString()).commit())
+        authorizationRevision = next
         mutableConfig.value = clean
     }
     private fun readConfig() = runCatching {

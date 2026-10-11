@@ -38,7 +38,8 @@ class MonitorSemanticsIntegrationTest {
         val server = ServerSocket(0, 2, InetAddress.getByName("127.0.0.1")).apply { soTimeout = 10000 }
         val executor = Executors.newSingleThreadExecutor()
         val replies = executor.submit {
-            repeat(2) { index -> server.accept().use { socket ->
+            var retriedId = ""
+            repeat(3) { responseIndex -> server.accept().use { socket ->
                 socket.soTimeout = 10000
                 val input = socket.getInputStream()
                 assertTrue(line(input).startsWith("POST /monitor "))
@@ -53,6 +54,13 @@ class MonitorSemanticsIntegrationTest {
                 var read = 0
                 while (read < length) { val count = input.read(body, read, length - read); require(count > 0); read += count }
                 val request = JSONObject(String(body, Charsets.UTF_8))
+                if (responseIndex == 0) {
+                    retriedId = request.getString("id")
+                    socket.getOutputStream().write("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".toByteArray(Charsets.US_ASCII))
+                    return@use
+                }
+                if (responseIndex == 1) assertEquals(retriedId, request.getString("id"))
+                val index = responseIndex - 1
                 val evidence = "招聘数量同比减少${if (index == 0) 20 else 30}%"
                 assertTrue(request.getString("text").contains(evidence))
                 val claim = JSONObject().put("quote", "招聘岗位正在减少").put("topic", "就业")
@@ -86,10 +94,11 @@ class MonitorSemanticsIntegrationTest {
                 app.monitor.setScreen(row.packageName, row.visibleText, "fixture-$index")
                 app.monitor.submitCurrentText()
                 try {
-                    withTimeout(8000) { app.repository.semantics.first { rows -> rows.any { it.eventId == id } } }
+                    withTimeout(15000) { app.repository.semantics.first { rows -> rows.any { it.eventId == id } } }
                 } catch (error: Exception) { throw AssertionError(app.monitor.state.value.notice, error) }
             }
             replies.get(10, TimeUnit.SECONDS)
+            withTimeout(5000) { app.monitorTasks.counts.first { it.queued == 0 && it.running == 0 } }
             val events = app.repository.allEvents.first().filter { it.id in ids }
             val semantics = app.repository.semantics.first().filter { it.eventId in ids }
             val now = System.currentTimeMillis()

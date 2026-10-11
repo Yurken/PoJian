@@ -49,8 +49,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 15
-        versionName = "0.4.8"
+        versionCode = 16
+        versionName = "0.4.9"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -65,6 +65,20 @@ android {
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
+    sourceSets.getByName("test").java.srcDir(rootProject.file("evaluation/kotlin"))
+}
+
+// Uses the normal unit-test runtime, but invokes a dataset evaluator rather than a model or Android device.
+tasks.register<JavaExec>("evaluateHistoryQuality") {
+    group = "verification"
+    description = "Evaluate annotated structured viewpoints and historical increments entirely offline."
+    dependsOn("compileDebugUnitTestKotlin")
+    workingDir(rootProject.projectDir)
+    mainClass.set("com.emerge.app.evaluation.HistoryQualityEvaluator")
+    args("--dataset", providers.gradleProperty("quality.dataset").getOrElse(rootProject.file("evaluation/datasets/synthetic-v1").path),
+        "--output", providers.gradleProperty("quality.output").getOrElse(layout.buildDirectory.dir("reports/history-quality").get().asFile.path),
+        "--repository", rootProject.projectDir.path)
+    doFirst { classpath = tasks.named<Test>("testDebugUnitTest").get().classpath }
 }
 dependencies {
     implementation(files(sherpaAar).builtBy(prepareSherpa))

@@ -21,7 +21,7 @@ class SessionMigrationTest {
                 db.version = 1
             }
             val room = Room.databaseBuilder(context, BrowseDatabase::class.java, name)
-                .addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5).build()
+                .addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6).build()
                 try {
                     room.openHelper.writableDatabase.query("SELECT * FROM browse_events WHERE id=7").use { row ->
                         assertTrue(row.moveToFirst())

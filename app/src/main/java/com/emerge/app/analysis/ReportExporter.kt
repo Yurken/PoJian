@@ -30,6 +30,7 @@ object ReportExporter {
         }
         appendLine("范围内共 ${report.rawRecords} 条原始记录；合并内容相同的连续记录 ${report.mergedSnapshots} 条；跳过桌面和无正文的记录 ${report.skippedRecords} 条；保留有效记录 ${report.usableSnapshots} 条。跨越范围边界的记录按重叠部分计入。")
         appendLine("语义覆盖：${report.structuredAnalyzedRecords}/${report.usableSnapshots} 条有效记录具有通过原文校验的云端结构结果（${percent(report.structuredAnalyzedRecords, report.usableSnapshots)}）；${report.localFallbackRecords} 条使用本地规则；${report.rejectedSemanticsRecords} 条云端结构结果未通过校验并回退。覆盖包含模型未提取观点的记录，只表示该记录有采样结果，每次最多提取 3 个观点，不代表整条记录或全部设备浏览都已分析。")
+        appendLine("处理状态：范围内 ${report.pendingAnalysisRecords} 条记录已保存、等待或正在分析；${report.failedAnalysisRecords} 条最近未完成。任务状态保留 24 小时，原文记录独立保留；规则回顾不代表云端分析已经完成。")
         if (report.structuredAnalyzedRecords == 0) appendLine("当前没有有效云端结构结果；本报告中的观点和依据均为本地规则候选。")
         appendLine("有效记录共 ${report.coverageSessions} 条；范围内预计停留合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条未统计时长。显示为零只表示还没采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")

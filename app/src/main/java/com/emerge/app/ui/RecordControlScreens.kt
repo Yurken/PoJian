@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.emerge.app.capture.CaptureStatus
+import com.emerge.app.capture.VisibilityRegion
+import com.emerge.app.analysis.ObservationWindow
 import com.emerge.app.R
 import com.emerge.app.data.BrowseEvent
 import java.text.SimpleDateFormat
@@ -111,6 +113,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
             if (packageName in expandedPackages || hasFilter) items(records, key = { "event-${it.id}" }) { event ->
                 var expanded by rememberSaveable(event.id) { mutableStateOf(false) }
                 val fromAudio = event.sourceType.startsWith("audio_")
+                val durationKnown = ObservationWindow(0, Long.MAX_VALUE, zone).durationKnown(event)
                 WhiteCard(Modifier.padding(bottom = 12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -125,13 +128,16 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                             MetadataText("音频转写")
                             MetadataText("媒体偏移 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
                         }
-                    } else MetadataText(if (event.sampleCount > 0) "停留约 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品身份待确认"}"
+                    } else MetadataText(if (durationKnown) "停留约 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品身份待确认"}"
                         else "未统计时长")
                     if (expanded) {
                         QuoteBlock(event.visibleText)
                         MetadataText("记录 #${event.id} · ${event.packageName}")
                         if (fromAudio) MetadataText("媒体偏移用于定位转写，不计入浏览停留时长。")
-                        else if (event.sampleCount > 0) MetadataText("已检查 ${event.sampleCount} 次 · 停留时长不等于实际阅读时间")
+                        else {
+                            if (event.sampleCount > 0) MetadataText("已检查 ${event.sampleCount} 次 · 屏幕停留不等于实际注视、阅读或认同")
+                            CaptureVisibilityBreakdown(event, ObservationWindow(0, Long.MAX_VALUE, zone))
+                        }
                     } else Text(event.visibleText, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         color = Ink, style = MaterialTheme.typography.bodyMedium)
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -149,6 +155,26 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
     }
     if (showAppFilter) RecordAppFilterSheet(packages, packageCounts, appNames, selectedPackage,
         onSelect = { selectedPackage = it; showAppFilter = false }, onDismiss = { showAppFilter = false })
+}
+
+@Composable
+internal fun CaptureVisibilityBreakdown(event: BrowseEvent, window: ObservationWindow, hour: Int? = null) {
+    if (event.visibilityIntervals == null) {
+        if (event.sampleCount > 0) MetadataText("旧记录只有整次访问的时长估计，未区分正文和评论区。")
+        return
+    }
+    if (!window.durationKnown(event)) {
+        MetadataText("可见区间记录无法核对，停留时间待确认。")
+        return
+    }
+    val slices = window.slices(event).filter { hour == null || it.hour == hour }
+    Column(Modifier.testTag("capture-region-times-${event.id}"), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        VisibilityRegion.entries.forEach { region ->
+            val duration = slices.filter { it.region == region }.sumOf { it.durationMillis }
+            MetadataText("${region.label}：${formatDuration(duration)}")
+        }
+        MetadataText("只统计实际记录的可见区间；页面切换时段归为未定位，暂停和缺失窗口不计时。评论区停留尚未分配到单条评论。")
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

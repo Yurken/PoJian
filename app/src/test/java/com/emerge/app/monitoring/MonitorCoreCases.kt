@@ -16,6 +16,14 @@ object MonitorCoreCases {
             hour: Int = 12, used: Int = 0, last: Long? = null) = MonitorPolicy.mayAlert(f, c, token, time, hour, used, last)
         test("valid sourced contradiction alerts") { check(allowed()) }
         test("next screen suppresses stale verdict") { check(!allowed(token = "next")) }
+        test("recreated screen scope cannot alert a recovered verdict even with identical content") {
+            val scope = MonitorScreenScope()
+            val originalToken = scope.token("app", 7, 0, "同一份屏幕原文")
+            val originalFinding = finding.copy(contextToken = originalToken)
+            check(allowed(originalFinding, token = scope.token("app", 7, 0, "同一份屏幕原文")))
+            check(!allowed(originalFinding, token = MonitorScreenScope().token("app", 7, 0, "同一份屏幕原文")))
+            check(!allowed(originalFinding, token = scope.token("app", 7, 1, "同一份屏幕原文")))
+        }
         test("unbound result never auto alerts") { check(!allowed(finding.copy(contextToken = ""))) }
         test("future result is rejected") { check(!allowed(time = now - 1)) }
         test("old screen result is retained but not alerted") { check(!allowed(time = now + 120001)) }

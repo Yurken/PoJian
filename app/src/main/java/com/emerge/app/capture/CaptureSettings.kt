@@ -9,16 +9,18 @@ import kotlinx.coroutines.flow.asStateFlow
 class CaptureSettings(context: Context) {
     private val preferences = context.getSharedPreferences("capture", Context.MODE_PRIVATE)
     private val lock = Any()
-    private var revision = 0L
+    private var revision = preferences.getLong("authorization_revision", 0L)
     private val enabledState = MutableStateFlow(preferences.getBoolean("enabled", false))
     private val packagesState = MutableStateFlow(immutablePackages(preferences.getStringSet("allowed_packages", emptySet()).orEmpty()))
     val enabled: StateFlow<Boolean> = enabledState.asStateFlow()
     val allowedPackages: StateFlow<Set<String>> = packagesState.asStateFlow()
+    internal val authorizationRevision: Long get() = synchronized(lock) { revision }
 
     fun setEnabled(value: Boolean) = synchronized(lock) {
         if (enabledState.value != value) {
-            revision++
-            preferences.edit().putBoolean("enabled", value).apply()
+            val next = Math.addExact(revision, 1L)
+            check(preferences.edit().putBoolean("enabled", value).putLong("authorization_revision", next).commit())
+            revision = next
             enabledState.value = value
         }
     }
@@ -26,9 +28,11 @@ class CaptureSettings(context: Context) {
     fun setAllowedPackages(packages: Set<String>) = synchronized(lock) {
         val copy = immutablePackages(packages)
         if (packagesState.value != copy) {
-            revision++
+            val next = Math.addExact(revision, 1L)
             // SharedPreferences does not copy its string sets; never pass or expose caller-owned sets.
-            preferences.edit().putStringSet("allowed_packages", HashSet(copy)).apply()
+            check(preferences.edit().putStringSet("allowed_packages", HashSet(copy))
+                .putLong("authorization_revision", next).commit())
+            revision = next
             packagesState.value = copy
         }
     }

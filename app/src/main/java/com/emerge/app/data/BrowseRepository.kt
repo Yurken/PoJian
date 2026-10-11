@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.analysis.SemanticsCodec
 import com.emerge.app.capture.WorkIdentityExtractor
+import com.emerge.app.capture.VisibilityIntervals
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.atomic.AtomicLong
@@ -44,11 +45,15 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 val old = previous
                 val gap = if (old == null) Long.MAX_VALUE else event.timestamp - maxOf(old.timestamp, old.endTimestamp)
                 val identical = old != null && WorkIdentityExtractor.body(old.visibleText) == WorkIdentityExtractor.body(event.visibleText)
+                val mergedIntervals = if (old?.visibilityIntervals != null && event.visibilityIntervals != null)
+                    VisibilityIntervals.merge(old.visibilityIntervals, event.visibilityIntervals) else null
+                val canMergeIntervals = old != null &&
+                    ((old.visibilityIntervals == null && event.visibilityIntervals == null) || mergedIntervals != null)
                 if (old != null && key != null && old.workKey == event.workKey && old.packageName == event.packageName &&
-                    gap in 0..6000 && identical) {
+                    gap in 0..6000 && identical && canMergeIntervals) {
                     val merged = old.copy(endTimestamp = maxOf(old.endTimestamp, event.endTimestamp, event.timestamp),
                         durationMillis = old.durationMillis + event.durationMillis,
-                        sampleCount = old.sampleCount + event.sampleCount)
+                        sampleCount = old.sampleCount + event.sampleCount, visibilityIntervals = mergedIntervals)
                     dao.update(merged)
                     dao.moveSamples(event.id, old.id)
                     dao.deleteEvent(event.id)
@@ -88,17 +93,18 @@ class BrowseRepository(private val database: BrowseDatabase) {
         snapshot: BrowseEvent,
         semantics: EventSemantics,
         generation: Long,
+        transactionGuard: suspend () -> Boolean = { true },
         permitted: () -> Boolean
     ): Boolean = captureMutex.withLock {
         fun current() = deletionGeneration.get() == generation && permitted()
         if (!current() || !semantics.validFor(snapshot)) return@withLock false
         val saved = database.withTransaction {
-            if (!current()) return@withTransaction false
+            if (!current() || !transactionGuard()) return@withTransaction false
             val event = dao.event(snapshot.id) ?: return@withTransaction false
             if (!semantics.validFor(event)) return@withTransaction false
             val previous = dao.semanticsForEvent(snapshot.id)
             if (previous != null && previous.analyzedAt > semantics.analyzedAt) return@withTransaction false
-            if (!current()) return@withTransaction false
+            if (!current() || !transactionGuard()) return@withTransaction false
             dao.putSemantics(SemanticsCodec.encode(semantics))
             true
         }

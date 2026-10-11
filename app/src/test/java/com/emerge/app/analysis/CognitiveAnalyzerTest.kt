@@ -15,6 +15,16 @@ class CognitiveAnalyzerTest {
     private fun analyze(vararg events: BrowseEvent, period: StatisticsPeriod = StatisticsPeriod.DAY) =
         CognitiveAnalyzer().analyze(events.toList(), period, now, zone)
 
+    @Test fun unfinishedAnalysisCountsUseTheSelectedBrowsingWindow() {
+        val rows = listOf(event(1, now - 86_400_000, "当前就业形势很差"),
+            event(2, now - 1000, "当前就业形势很差"), event(3, now, "未来岗位数量可能恢复"))
+        val report = CognitiveAnalyzer().analyze(rows, StatisticsPeriod.DAY, now, zone,
+            analysisStatuses = mapOf(1L to "queued", 2L to "running", 3L to "failed", 99L to "queued"))
+        assertEquals(1, report.pendingAnalysisRecords)
+        assertEquals(1, report.failedAnalysisRecords)
+        assertTrue(ReportExporter.text(report).contains("1 条记录已保存、等待或正在分析"))
+    }
+
     @Test fun reportDoesNotInventATimeShareForLegacySnapshots() {
         val report = analyze(event(7, now, "当前就业形势很差，因为招聘岗位同比减少20%"))
         assertEquals(1, report.unknownDurationRecords)

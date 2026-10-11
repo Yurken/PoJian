@@ -31,6 +31,9 @@ fun MonitorOverviewCard(state: MonitorState, config: MonitorConfig, onDiscover: 
             Text("图文、短视频与文章共用分析入口。${if (config.visual) "关键画面按间隔采样。" else "画面分析未开启，图片中的信息可能未被覆盖。"}",
                 style = MaterialTheme.typography.bodySmall)
             Text(state.notice, style = MaterialTheme.typography.bodySmall)
+            if (state.pending > 0 || state.failed > 0) Text(
+                "已记录待分析 ${state.pending} 项${if (state.retrying > 0) "（${state.retrying} 项等待重试）" else ""} · 最近未完成 ${state.failed} 项",
+                style = MaterialTheme.typography.bodySmall)
             if (state.skipped > 0) Text("本次运行有 ${state.skipped} 次输入未完成核查；没有提醒不等于真实。", style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 TextButton(onClick = onDiscover) { Text("查看发现与证据") }
@@ -51,6 +54,10 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
     val displayed = state.findings.filter { filter == 0 || (filter == 1 && it.kind == "cocoon") || (filter == 2 && it.kind == "fact") }
     LazyColumn(modifier.testTag("monitor-discovery-list"), contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { Text("发现", style = MaterialTheme.typography.headlineMedium) }
+        if (state.pending > 0 || state.failed > 0) item {
+            Text("已记录待分析 ${state.pending} 项 · 等待重试 ${state.retrying} 项 · 最近未完成 ${state.failed} 项。结果会随处理完成更新。",
+                style = MaterialTheme.typography.bodySmall)
+        }
         item { Text("保留的事实候选中：$completed 条完成了取证流程，${facts.count { it.verdict == "not_checked" }} 条未核查。证据不足不代表真假已定。",
             style = MaterialTheme.typography.bodySmall) }
         item {

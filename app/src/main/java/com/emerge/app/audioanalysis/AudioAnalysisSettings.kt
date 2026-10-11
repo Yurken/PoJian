@@ -24,20 +24,26 @@ class AudioAnalysisSettings(context: Context) {
     private val preferences = context.getSharedPreferences("audio_analysis", Context.MODE_PRIVATE)
     private val state = MutableStateFlow(read())
     val config = state.asStateFlow()
+    @Volatile private var revision = preferences.getLong("authorization_revision", 0L)
+    internal val authorizationRevision: Long get() = revision
     private fun read() = TextServiceConfig(preferences.getBoolean("enabled", BuildConfig.POJIAN_SERVICE_TOKEN.isNotEmpty()),
         preferences.getString("endpoint", null).orEmpty().ifEmpty { TextServiceConfig.DEFAULT_ENDPOINT },
-        preferences.getString("token", null)?.let { runCatching { decrypt(it) }.getOrDefault("") }.orEmpty()
-            .ifEmpty { BuildConfig.POJIAN_SERVICE_TOKEN },
+        // An explicitly saved empty token must remain empty after restart; build defaults apply only before configuration.
+        if (preferences.contains("token")) preferences.getString("token", null)
+            ?.let { runCatching { decrypt(it) }.getOrDefault("") }.orEmpty() else BuildConfig.POJIAN_SERVICE_TOKEN,
         preferences.getInt("limit", 20).coerceIn(1, 100))
 
-    fun save(value: TextServiceConfig, allowLocalHttp: Boolean) {
+    @Synchronized fun save(value: TextServiceConfig, allowLocalHttp: Boolean) {
         val endpoint = if (value.endpoint.isBlank() && !value.enabled) "" else EndpointPolicy.validate(value.endpoint, allowLocalHttp)
         require(!value.enabled || endpoint.isNotBlank()) { "请先填写文字服务地址" }
         val clean = value.copy(endpoint = endpoint, token = value.token.trim(), dailyLimit = value.dailyLimit.coerceIn(1, 100))
         require(clean.token.length <= 512 && clean.token.all { it.code in 33..126 }) { "访问令牌只能是不含空格的 ASCII 字符，最多 512 个" }
         val token = if (clean.token.isEmpty()) "" else encrypt(clean.token)
+        val next = if (clean == state.value) revision else Math.addExact(revision, 1L)
         check(preferences.edit().putBoolean("enabled", clean.enabled).putString("endpoint", clean.endpoint)
-            .putString("token", token).putInt("limit", clean.dailyLimit).commit()) { "保存失败，请重试" }
+            .putString("token", token).putInt("limit", clean.dailyLimit)
+            .putLong("authorization_revision", next).commit()) { "保存失败，请重试" }
+        revision = next
         state.value = clean
     }
 

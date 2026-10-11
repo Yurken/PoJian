@@ -152,7 +152,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
             app.captureDiagnostics.update { it.copy(lastSaved = if (id == null) it.lastSaved else now,
                 result = when {
                     id == null -> "记录已删除或采集范围有变化，本次采样已丢弃"
-                    sample.continuing -> "同一内容仍在显示，停留时长已更新为 ${sample.event.durationMillis / 1000} 秒"
+                    sample.continuing -> "${sample.region.label}仍在显示，可见区间累计 ${sample.event.durationMillis / 1000} 秒"
                     else -> "已开始记录一段浏览"
                 }) }
 

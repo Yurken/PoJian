@@ -40,6 +40,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private val actions = mutableListOf<Button>()
     private var closePanel: Job? = null
     private var revision = 0L
+    private val screenScope = MonitorScreenScope()
     private var lastShot = 0L
     private var shotPending = false
     private var windowId = -1
@@ -108,7 +109,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             if (com.emerge.app.capture.WorkIdentityExtractor.isRecommendationList(name, text)) {
                 monitor.clearScreen(); hide(); return
             }
-            val token = MonitorPolicy.hash("$name|$windowId|$revision|$text")
+            val token = screenScope.token(name, windowId, revision, text)
             monitor.setScreen(name, text, token)
         } finally { root.recycle() }
     }

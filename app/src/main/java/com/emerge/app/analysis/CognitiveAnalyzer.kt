@@ -46,7 +46,8 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val comparisonStart: Long? = null, val comparisonRecords: Int = 0,
     val workStatistics: com.emerge.app.ui.BrowseStatistics? = null,
     val structuredAnalyzedRecords: Int = 0, val localFallbackRecords: Int = 0,
-    val rejectedSemanticsRecords: Int = 0)
+    val rejectedSemanticsRecords: Int = 0, val pendingAnalysisRecords: Int = 0,
+    val failedAnalysisRecords: Int = 0)
 
 class CognitiveAnalyzer {
     private companion object {
@@ -80,7 +81,8 @@ class CognitiveAnalyzer {
 
     fun analyze(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
         zone: ZoneId = ZoneId.systemDefault(), purpose: String = "未填写",
-        checkCancellation: () -> Unit = {}, semantics: List<EventSemantics> = emptyList()): CognitiveReport {
+        checkCancellation: () -> Unit = {}, semantics: List<EventSemantics> = emptyList(),
+        analysisStatuses: Map<Long, String> = emptyMap()): CognitiveReport {
         val window = ObservationWindow.forPeriod(period, now, zone)
         // Retained earlier history is compared in browsing order, never in analysis completion order.
         val ordered = events.filter { it.timestamp <= now }.sortedWith(compareBy<BrowseEvent> { it.timestamp }.thenBy { it.id })
@@ -272,7 +274,9 @@ class CognitiveAnalyzer {
             contentSignals = signals, comparisonStart = prior.firstOrNull()?.timestamp, comparisonRecords = prior.size,
             workStatistics = com.emerge.app.ui.calculateStatistics(events, period, now, zone),
             structuredAnalyzedRecords = structuredAnalyzed, localFallbackRecords = localFallback,
-            rejectedSemanticsRecords = rejectedSemantics)
+            rejectedSemanticsRecords = rejectedSemantics,
+            pendingAnalysisRecords = selected.count { analysisStatuses[it.id] in setOf("queued", "running") },
+            failedAnalysisRecords = selected.count { analysisStatuses[it.id] == "failed" })
     }
 
     private fun clean(event: BrowseEvent): List<String> {

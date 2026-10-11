@@ -22,5 +22,6 @@ data class BrowseEvent(
     @ColumnInfo(defaultValue = "0") val mediaStartMillis: Long = 0,
     @ColumnInfo(defaultValue = "0") val mediaEndMillis: Long = 0,
     @ColumnInfo(defaultValue = "NULL") val workKey: String? = null,
-    @ColumnInfo(defaultValue = "'unknown'") val identityMethod: String = "unknown"
+    @ColumnInfo(defaultValue = "'unknown'") val identityMethod: String = "unknown",
+    @ColumnInfo(defaultValue = "NULL") val visibilityIntervals: String? = null
 )

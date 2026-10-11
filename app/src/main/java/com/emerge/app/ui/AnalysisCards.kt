@@ -92,6 +92,7 @@ internal fun AnalysisCards(
             WhiteCard {
                 SectionTitle("分析覆盖", "${report.usableSnapshots} 条有效记录")
                 MetadataText("云端结构结果 ${report.structuredAnalyzedRecords} 条 · 本地规则 ${report.localFallbackRecords} 条")
+                MetadataText("已记录待分析 ${report.pendingAnalysisRecords} 条 · 最近未完成 ${report.failedAnalysisRecords} 条（任务状态保留 24 小时）")
                 MetadataText("有效结构结果覆盖 ${ReportExporter.percent(report.structuredAnalyzedRecords, report.usableSnapshots)}，包含未提取出观点的记录；每次最多提取 3 个观点，采样不代表整条记录或全部设备浏览都已分析。")
                 if (report.rejectedSemanticsRecords > 0) MetadataText("${report.rejectedSemanticsRecords} 条云端结果与当前原文不匹配或未通过校验，使用本地规则。")
                 if (report.structuredAnalyzedRecords == 0) MetadataText("当前回顾没有有效云端结构结果，观点与依据来自本地规则候选。")
@@ -343,6 +344,7 @@ internal fun AnalysisCards(
                             val duration = window.slices(event).filter { it.hour == value }.sumOf { it.durationMillis }
                             MetadataText(if (event.sourceType.startsWith("audio_")) "音频转写 · 未统计观看时长"
                                 else if (window.durationKnown(event)) "本时段预计停留 ${formatDuration(duration)}" else "未统计时长")
+                            if (event.sourceType == "accessibility") CaptureVisibilityBreakdown(event, window, value)
                             OriginalRecord(event, report.zone, appNames, "采集原文：")
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }

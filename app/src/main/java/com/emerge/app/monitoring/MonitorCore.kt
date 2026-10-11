@@ -4,6 +4,14 @@ import java.net.URI
 import java.security.MessageDigest
 import java.time.Instant
 import java.time.ZoneId
+import java.util.UUID
+
+/** A recreated accessibility bridge cannot reactivate a result bound to an earlier screen session. */
+class MonitorScreenScope {
+    private val nonce = UUID.randomUUID().toString()
+    fun token(packageName: String, windowId: Int, revision: Long, text: String): String =
+        MonitorPolicy.hash("$nonce|$packageName|$windowId|$revision|$text")
+}
 
 /** Product policy, deliberately independent of Android and model providers. */
 data class MonitorConfig(
