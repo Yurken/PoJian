@@ -1,5 +1,9 @@
 package com.emerge.app.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -10,6 +14,12 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
@@ -100,23 +110,43 @@ internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: Statistics
 private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names: Map<String, String>, key: String,
     initiallyExpanded: Boolean = false, headerColor: Color? = null, showPercent: Boolean = false) {
     var expanded by rememberSaveable(key, share.key) { mutableStateOf(initiallyExpanded) }
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable { expanded = !expanded },
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text((if (showPercent) "● " else "") + share.label, Modifier.weight(1f), color = headerColor ?: MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.titleSmall)
-            val amount = if (showPercent) "${share.items.size} 个 · ${String.format(Locale.CHINA, "%.1f", share.percent)}%" else "${share.items.size} 个作品"
-            Text("$amount ${if (expanded) "−" else "+"}", color = Accent, style = MaterialTheme.typography.labelMedium)
-        }
-        if (expanded) share.items.forEach { item ->
-            var raw by rememberSaveable(key, item.record.id) { mutableStateOf(false) }
-            Column(Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                MetadataText(names[item.record.packageName] ?: item.record.packageName)
-                MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
-                val duration = ObservationWindow(start, end, ZoneId.systemDefault()).durationMillis(item.record)
-                MetadataText(duration?.let { "本时段预计停留 ${formatDuration(it)}" } ?: "时长未统计")
-                item.quote?.takeIf { it != share.label }?.let { QuoteBlock(it) }
-                TextButton(onClick = { raw = !raw }) { Text(if (raw) "收起原文" else "查看原文 ›") }
-                if (raw) QuoteBlock(item.record.visibleText)
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp),
+        color = if (showPercent) scheme.surfaceVariant.copy(alpha = .45f) else Color.Transparent,
+        border = if (showPercent) BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = .4f)) else null
+    ) {
+        Column(Modifier.padding(if (showPercent) 12.dp else 0.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
+                .clickable(role = Role.Button) { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (showPercent) Box(Modifier.size(9.dp).clip(CircleShape).background(headerColor ?: Accent))
+                Text(share.label, Modifier.weight(1f), color = Ink,
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                val amount = if (showPercent) "${share.items.size} 个 · ${String.format(Locale.CHINA, "%.1f", share.percent)}%" else "${share.items.size} 个作品"
+                Text("$amount ${if (expanded) "−" else "+"}", modifier = Modifier.widthIn(max = 120.dp),
+                    color = Accent, style = MaterialTheme.typography.labelMedium)
+            }
+            if (expanded) share.items.forEach { item ->
+                var raw by rememberSaveable(key, item.record.id) { mutableStateOf(false) }
+                Surface(
+                    modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
+                    color = if (showPercent) scheme.surface else Color.Transparent,
+                    border = if (showPercent) BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = .35f)) else null
+                ) {
+                    Column(if (showPercent) Modifier.padding(10.dp) else Modifier.padding(start = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        MetadataText(names[item.record.packageName] ?: item.record.packageName)
+                        MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
+                        val duration = ObservationWindow(start, end, ZoneId.systemDefault()).durationMillis(item.record)
+                        MetadataText(duration?.let { "本时段预计停留 ${formatDuration(it)}" } ?: "时长未统计")
+                        item.quote?.takeIf { it != share.label }?.let { QuoteBlock(it) }
+                        TextButton(onClick = { raw = !raw }, modifier = Modifier.align(Alignment.End)) {
+                            Text(if (raw) "收起原文" else "查看原文 ›")
+                        }
+                        if (raw) QuoteBlock(item.record.visibleText)
+                    }
+                }
             }
         }
     }
@@ -128,7 +158,14 @@ private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names:
     val overlaps = groups.sumOf { it.items.size } > total
     val works = groups.flatMap { it.items }.distinctBy { it.record.packageName + "|" +
         (it.record.workKey ?: "record:${it.record.id}:${it.record.timestamp}") }
-    val colors = listOf(Color(0xFF3298F4), Color(0xFF42C587), Color(0xFFFFAA45), Color(0xFFB678DC), Color(0xFFEF729D), Color(0xFF35B9C9))
+    val scheme = MaterialTheme.colorScheme
+    val colors = if (scheme.background.luminance() < .5f) listOf(
+        Color(0xFF93C5FD), Color(0xFF5EEAD4), Color(0xFFFBBF24),
+        Color(0xFFC4B5FD), Color(0xFFFDA4AF), Color(0xFF7DD3FC)
+    ) else listOf(Color(0xFF2563EB), Color(0xFF0D9488), Color(0xFFD97706),
+        Color(0xFF7C3AED), Color(0xFFE11D48), Color(0xFF0284C7))
+    val unknownColor = scheme.outline
+    val emptyColor = scheme.outlineVariant
     WhiteCard {
         SectionTitle("观点分布", "$date · $total 个作品（估算）",
             help = "统计范围为当天 $total 个去重作品，含未识别部分；一部作品可含多个观点，各组比例之和可能超过 100%。${works.count { it.analysisSource == "structured_model" }}/$total 个作品有有效云端采样结果，其余使用本地识别。云端分析按主题、对象、维度、条件和立场归组；信息不明确时标为待确认，未提取观点时标为未识别。多观点用比例条表示。采样不代表整部作品已分析，音频和视觉文字不单独增加作品数或停留时长。")
@@ -138,29 +175,44 @@ private fun DailyViewpointPie(groups: List<ViewpointShare>, date: String, names:
         }
         if (overlaps) Column(chartSemantics, verticalArrangement = Arrangement.spacedBy(10.dp)) {
             groups.forEachIndexed { i, group ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(group.label, style = MaterialTheme.typography.bodySmall)
-                    LinearProgressIndicator(progress = { (group.percent / 100.0).toFloat() },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = if (group.label == "未识别") Muted else colors[i % colors.size],
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant)
+                Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp))
+                    .background(scheme.surfaceVariant.copy(alpha = .5f)).padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(group.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    LinearProgressIndicator(progress = { (group.percent / 100.0).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                        color = if (group.label == "未识别") unknownColor else colors[i % colors.size],
+                        trackColor = scheme.surfaceVariant)
                 }
             }
-        } else Canvas(chartSemantics.height(220.dp)) {
-            val diameter = minOf(size.width, size.height) * .9f
-            val origin = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
-            if (total == 0) drawCircle(Color.LightGray, diameter / 2)
-            var angle = -90f
-            groups.forEachIndexed { i, group ->
-                val sweep = group.items.size * 360f / total
-                drawArc(if (group.label == "未识别") Color.LightGray else colors[i % colors.size],
-                    angle, sweep, true, origin, Size(diameter, diameter))
-                angle += sweep
+        } else Box(chartSemantics.heightIn(min = 210.dp).padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.size(170.dp)) {
+                val strokeWidth = 22.dp.toPx().coerceAtMost(size.minDimension / 4)
+                val diameter = (size.minDimension - strokeWidth).coerceAtLeast(0f)
+                val origin = Offset((size.width - diameter) / 2, (size.height - diameter) / 2)
+                val arcSize = Size(diameter, diameter)
+                val stroke = Stroke(width = strokeWidth)
+                if (total == 0) {
+                    drawArc(emptyColor, 0f, 360f, false, origin, arcSize, style = stroke)
+                } else {
+                    var angle = -90f
+                    groups.forEachIndexed { i, group ->
+                        val sweep = group.items.size * 360f / total
+                        // Keep small shares visible and avoid a decorative gap for a single category.
+                        val gap = if (groups.size > 1) minOf(2f, sweep * .2f) else 0f
+                        drawArc(if (group.label == "未识别") unknownColor else colors[i % colors.size],
+                            angle + gap / 2, sweep - gap, false, origin, arcSize, style = stroke)
+                        angle += sweep
+                    }
+                }
             }
+            Text(total.toString(), color = Ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         }
-        groups.forEachIndexed { i, group ->
-            ViewpointGroup(group, start, end, names, "pie-$date", headerColor =
-                if (group.label == "未识别") Muted else colors[i % colors.size], showPercent = true)
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            groups.forEachIndexed { i, group ->
+                ViewpointGroup(group, start, end, names, "pie-$date", headerColor =
+                    if (group.label == "未识别") unknownColor else colors[i % colors.size], showPercent = true)
+            }
         }
         if (total == 0) MetadataText("当天没有保存的浏览作品。")
     }

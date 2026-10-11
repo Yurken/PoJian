@@ -71,14 +71,11 @@ internal fun AnalysisCards(
                     Icon(Icons.Outlined.Edit, contentDescription = "编辑浏览目的")
                 }
             }
-            Button(
+            PojianPrimaryButton(
+                text = if (state.running) "正在整理…" else if (!state.active) "生成${period.label}回顾" else "更新回顾",
                 onClick = { onAnalyze(state.purpose) },
-                enabled = !state.running && !state.exporting && events.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(if (state.running) "正在整理…" else if (!state.active) "生成${period.label}回顾" else "更新回顾")
-            }
+                enabled = !state.running && !state.exporting && events.isNotEmpty()
+            )
             state.status?.let { MetadataText(it) }
             if (state.running) LinearProgressIndicator(Modifier.fillMaxWidth())
             if (state.stale && report != null) MetadataText("正在更新，以下为上次结果")
@@ -126,7 +123,7 @@ internal fun AnalysisCards(
                                 MetadataText("另有 ${review.unknownDurationRecords} 条时长未统计")
                             }
                         }
-                        TextButton(onClick = { detailHour = value }) { Text("查看原文 ›") }
+                        PojianActionChip(text = "查看原文 ›", onClick = { detailHour = value })
                     }
                 }
             }
@@ -189,8 +186,9 @@ internal fun AnalysisCards(
                             val referenced = report.claims.filter {
                                 it.eventId in finding.eventIds && (finding.topic == "全部" || it.topic == finding.topic)
                             }
-                            if (referenced.isNotEmpty()) TextButton(onClick = { selectedClaims = referenced },
-                                contentPadding = PaddingValues(horizontal = 0.dp)) { Text("查看原文 ›") }
+                            if (referenced.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                PojianActionChip(text = "查看原文 ›", onClick = { selectedClaims = referenced })
+                            }
                             HelpLink("依据与范围", finding.explanation)
                         }
                     }
@@ -417,7 +415,9 @@ private fun GroupRow(index: Int, group: ClaimGroup, onClick: () -> Unit) {
         Text(group.quote, color = Ink, fontSize = 13.sp, lineHeight = 21.sp,
             maxLines = 2, overflow = TextOverflow.Ellipsis)
         EvidenceRatioBar(group.observations)
-        Text("查看原文 ›", color = Accent, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            PojianActionChip(text = "查看原文 ›", onClick = onClick)
+        }
     }
 }
 

@@ -181,9 +181,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     onExport = { report, pdf -> if (model.prepareExport(report)) {
                         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
                         if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
-                    } },
-                    // Keep the optional slot's old name for source compatibility; it no longer hosts recording controls.
-                    audioContent = { MonitorOverviewCard(monitor, monitorConfig, { tab = 1 }, { tab = 2 }) }, semantics = semantics)
+                    } }, semantics = semantics)
                 tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
                     onRecords = { showRecords = true }, onClear = { app.monitor.invalidate() }, events = all)
                 else -> SettingsScreen(permission, enabled, count, { value ->

@@ -52,4 +52,22 @@ class RecentContentWordsTest {
         assertEquals(2, words(events, results, StatisticsPeriod.WEEK).size)
         assertTrue(words(events, results, StatisticsPeriod.WEEK).all { it.recordCount == 1 })
     }
+
+    @Test fun wordRecordsMatchCountsWithoutRawSubstringMatchesAndRejectStaleSources() {
+        val current = event(1)
+        val yesterday = event(2, now - 86_400_000)
+        val unrelated = event(3).copy(visibleText = "求职准备仅出现在原文里")
+        val events = listOf(current, current, yesterday, unrelated)
+        val results = listOf(result(current, " 职业发展 ", " 求职准备 "), result(yesterday),
+            result(unrelated, "阅读", "资料"))
+        fun sources(records: List<BrowseEvent> = events, model: List<EventSemantics> = results,
+            period: StatisticsPeriod = StatisticsPeriod.DAY) =
+            recentContentWordRecords("求职准备", records, period, now, model, zone)
+        assertEquals(listOf(1L), sources().map { it.id })
+        assertEquals(listOf(1L, 2L), sources(period = StatisticsPeriod.WEEK).map { it.id })
+        assertEquals(words(events, results).first { it.text == "求职准备" }.recordCount, sources().size)
+        assertTrue(sources(records = listOf(yesterday, unrelated)).isEmpty())
+        assertTrue(sources(records = listOf(current.copy(visibleText = "已修订"))).isEmpty())
+        assertTrue(sources(model = results + result(current, at = now + 1).copy(inputText = "过期输入")).isEmpty())
+    }
 }

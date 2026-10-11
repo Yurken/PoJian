@@ -63,6 +63,49 @@ class RecentContentCloudTest {
         screenshot("pojian-word-cloud-dark-large.png")
     }
 
+    @Test fun referenceCompositionKeepsWordsSeparateAndOpensMatchingOriginals() {
+        val counts = listOf("求职竞争" to 12, "招聘需求" to 9, "教育与升学" to 6,
+            "大模型" to 5, "薪资待遇" to 4, "人工智能" to 3, "职业规划" to 2,
+            "考研政策" to 2, "技能门槛" to 1, "工作环境" to 1, "行业前景" to 1)
+        val events = (1..12).map { event(it.toLong(), "第${it}条采集原文：保留数据来源与适用条件。") }
+        val assignments = List(events.size) { mutableListOf<String>() }
+        counts.forEach { (word, count) ->
+            assignments.indices.sortedBy { assignments[it].size }.take(count).forEach { assignments[it] += word }
+        }
+        val semantics = events.mapIndexed { index, e ->
+            EventSemantics(e.id, e.visibleText, now, assignments[index].chunked(2).map {
+                ArgumentUnit(e.visibleText, it[0], it.getOrElse(1) { "" }, "", "")
+            })
+        }
+        render(events, mutableStateOf(StatisticsPeriod.DAY), semantics = semantics)
+        awaitWord("求职竞争，12 条记录")
+        val bounds = counts.map { (word, count) ->
+            compose.onNodeWithContentDescription("$word，$count 条记录")
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                .assertIsDisplayed()
+                .fetchSemanticsNode().boundsInRoot
+        }
+        bounds.forEachIndexed { index, rect ->
+            bounds.drop(index + 1).forEach { other -> assertFalse("Word touch targets must not overlap", rect.overlaps(other)) }
+        }
+        screenshot("pojian-word-cloud-reference-light.png")
+        compose.onNodeWithContentDescription("招聘需求，9 条记录").performClick()
+        compose.waitUntil(5000) { compose.onAllNodesWithText("今天 · 9 条相关记录").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("recent-content-details").performScrollToNode(hasTestTag("recent-content-original-9"))
+        compose.onNodeWithText(events[8].visibleText).assertIsDisplayed()
+        compose.onNodeWithTag("recent-content-original-10").assertDoesNotExist()
+        screenshot("pojian-word-cloud-originals.png")
+        compose.onNodeWithText("关闭").performClick()
+        compose.onNodeWithTag("recent-content-details").assertDoesNotExist()
+        render(events, mutableStateOf(StatisticsPeriod.DAY), dark = true, semantics = semantics)
+        awaitWord("求职竞争，12 条记录")
+        counts.forEach { (word, count) ->
+            compose.onNodeWithContentDescription("$word，$count 条记录").performScrollTo().assertIsDisplayed()
+        }
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今日观察"))
+        screenshot("pojian-word-cloud-reference-dark-large.png")
+    }
+
     private fun concepts(event: BrowseEvent, topic: String, subject: String) = EventSemantics(
         event.id, event.visibleText, now, listOf(ArgumentUnit(event.visibleText, topic, subject, "", "")))
 

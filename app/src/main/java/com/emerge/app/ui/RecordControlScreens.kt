@@ -1,15 +1,20 @@
 package com.emerge.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -134,11 +139,11 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                         }
                     } else Text(event.visibleText, maxLines = 2, overflow = TextOverflow.Ellipsis,
                         color = Ink, style = MaterialTheme.typography.bodyMedium)
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        TextButton(onClick = { expanded = !expanded }, modifier = Modifier.heightIn(min = 48.dp),
-                            contentPadding = PaddingValues(horizontal = 0.dp)) {
-                            Text(if (expanded) "收起原文" else "查看原文 ›")
-                        }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        PojianActionChip(
+                            text = if (expanded) "收起原文" else "查看原文 ›",
+                            onClick = { expanded = !expanded }
+                        )
                         TextButton(onClick = { onDelete(event) }, modifier = Modifier.heightIn(min = 48.dp)) {
                             Text("删除", color = MaterialTheme.colorScheme.error)
                         }
@@ -232,21 +237,34 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
             SectionTitle("采集与数据")
         }
         item {
-            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.medium) {
-                Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text("采集开关", color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.titleMedium)
-                            Text(captureState, color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+            WhiteCard {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(9.dp)
+                                    .clip(CircleShape)
+                                    .background(if (selectedApps.isNotEmpty() && enabled && permission && diagnostics.connected) {
+                                        if (MaterialTheme.colorScheme.background.luminance() < 0.5f) Color(0xFF6EE7B7) else Color(0xFF15803D)
+                                    } else Muted)
+                            )
+                            Text("采集开关", color = Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
-                        Switch(checked = enabled, onCheckedChange = onCapture, enabled = selectedApps.isNotEmpty(),
-                            modifier = Modifier.testTag("capture-toggle").semantics { contentDescription = "开启采集"; stateDescription = captureState })
+                        Text(captureState, color = Muted,
+                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                     }
-                    message?.let { Text(it, color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp)) }
+                    Switch(checked = enabled, onCheckedChange = onCapture, enabled = selectedApps.isNotEmpty(),
+                        modifier = Modifier.testTag("capture-toggle").semantics { contentDescription = "开启采集"; stateDescription = captureState })
                 }
+                message?.let { Text(it, color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp)) }
             }
         }
         item {
@@ -278,7 +296,6 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text(if (permission) "查看系统辅助功能授权" else "前往系统授权")
                 }
-
             }
         }
         item {
@@ -291,7 +308,6 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                     Text("清空全部记录",
                         color = if (count > 0) MaterialTheme.colorScheme.error else Muted)
                 }
-
             }
         }
         item {

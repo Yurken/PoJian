@@ -4,8 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,8 +13,11 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -23,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
 import com.emerge.app.analysis.CognitiveReport
 import com.emerge.app.analysis.EventSemantics
-import com.emerge.app.analysis.ObservationWindow
 import com.emerge.app.data.BrowseEvent
 import java.time.Instant
 import java.time.ZoneId
@@ -50,7 +51,12 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         StatisticsPeriod.WEEK -> "${today.minusDays(6).format(DateTimeFormatter.ofPattern("M月d日"))} — ${today.format(DateTimeFormatter.ofPattern("M月d日"))}"
     }
     var showSources by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val cocoonVisible by remember { derivedStateOf {
+        listState.layoutInfo.visibleItemsInfo.any { it.key == "cocoon" }
+    } }
     LazyColumn(modifier.fillMaxSize().testTag("overview-list"),
+        state = listState,
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item(key = "overview-header") {
@@ -64,7 +70,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                 PeriodSelector(period, onPeriod)
             }
         }
-        item(key = "recent-content") { RecentContentCloud(rawEvents, period, now, semantics) }
+        item(key = "recent-content") { RecentContentCloud(rawEvents, period, now, semantics, appNames) }
         item(key = "overview-statistics") {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onSettings),
@@ -87,6 +93,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
         }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
+        item(key = "cocoon") { CocoonCard(analysis, period, visible = cocoonVisible) }
         if (rawEvents.isNotEmpty()) item(key = "viewpoint-timeline") {
             ViewpointTimelineCard(rawEvents, period, now, analysis.report?.takeUnless { analysis.stale }, appNames, semantics)
         }
@@ -128,26 +135,46 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
         }
     }
-
 }
 
+/**
+ * 现代分段控制器（Segmented Control）
+ */
 @Composable
 private fun PeriodSelector(period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit) {
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-        .background(MaterialTheme.colorScheme.surfaceVariant).padding(3.dp).selectableGroup()) {
-        StatisticsPeriod.entries.forEach { option ->
-            val selected = period == option
-            Box(Modifier.weight(1f).clip(RoundedCornerShape(9.dp))
-                .background(if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.surfaceVariant)
-                .selectable(selected = selected, role = Role.Tab, onClick = { onPeriod(option) })
-                .heightIn(min = 48.dp).padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
-                val label = when (option) {
-                    StatisticsPeriod.DAY -> "今天"
-                    StatisticsPeriod.HOURS24 -> "24 小时"
-                    StatisticsPeriod.WEEK -> "7 天"
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+    ) {
+        Row(Modifier.padding(3.dp).selectableGroup()) {
+            StatisticsPeriod.entries.forEach { option ->
+                val selected = period == option
+                Surface(
+                    shape = RoundedCornerShape(9.dp),
+                    color = if (selected) MaterialTheme.colorScheme.surface else Color.Transparent,
+                    shadowElevation = if (selected) 2.dp else 0.dp,
+                    modifier = Modifier
+                        .weight(1f)
+                        .semantics { role = Role.Tab }
+                        .heightIn(min = 48.dp),
+                    selected = selected,
+                    onClick = { onPeriod(option) }
+                ) {
+                    Box(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), contentAlignment = Alignment.Center) {
+                        val label = when (option) {
+                            StatisticsPeriod.DAY -> "今天"
+                            StatisticsPeriod.HOURS24 -> "24 小时"
+                            StatisticsPeriod.WEEK -> "7 天"
+                        }
+                        Text(
+                            text = label,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
                 }
-                Text(label, color = if (selected) Accent else Muted, style = MaterialTheme.typography.labelLarge,
-                    fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal)
             }
         }
     }

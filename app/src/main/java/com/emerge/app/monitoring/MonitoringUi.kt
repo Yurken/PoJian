@@ -18,26 +18,6 @@ import com.emerge.app.ui.SectionTitle
 import com.emerge.app.audioanalysis.TextServiceConfig
 
 @Composable
-fun MonitorOverviewCard(state: MonitorState, config: MonitorConfig, onDiscover: () -> Unit, onSettings: () -> Unit) {
-    OutlinedCard(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SectionTitle("监测总览", help = "画面分析${if (config.visual) "已开启" else "未开启"}。仅核查已采样并处理的内容，证据不足时保留待确认状态。")
-            Text("观点观察 · ${if (config.cocoon) "开" else "关"} · 实时核查 · ${if (config.realtime) "开" else "关"}")
-            if (state.notice.isNotBlank() && state.notice != MonitorState().notice)
-                Text(state.notice, style = MaterialTheme.typography.bodySmall)
-            if (state.pending > 0 || state.retrying > 0) Text(
-                "待分析 ${state.pending} 项${if (state.retrying > 0) "（含 ${state.retrying} 项待重试）" else ""}",
-                style = MaterialTheme.typography.bodySmall)
-            if (state.skipped > 0) Text("${state.skipped} 次核查未完成", style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Button(onClick = onDiscover) { Text("查看发现") }
-                TextButton(onClick = onSettings) { Text("监测设置") }
-            }
-        }
-    }
-}
-
-@Composable
 fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> Unit,
     requestCount: Int, frameCount: Int, onCloud: () -> Unit, onCaptureTools: () -> Unit,
     cloudEnabled: Boolean = false, onCloudEnabledChange: (Boolean) -> Unit = {}) {

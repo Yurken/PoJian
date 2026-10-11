@@ -12,6 +12,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.Density
@@ -33,6 +35,56 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class InterfaceUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun reviewButtonPreservesDisabledSemanticsAndOnlyStartsWhenReady() {
+        val state = mutableStateOf(AnalysisState(purpose = "核查招聘数字的来源"))
+        val records = mutableStateOf(emptyList<BrowseEvent>())
+        val requests = mutableListOf<String>()
+        render {
+            EmergeTheme {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    AnalysisCards(state.value, StatisticsPeriod.DAY, records.value,
+                        { requests += it }, { _, _ -> })
+                }
+            }
+        }
+        val button = compose.onNodeWithText("生成今天回顾")
+        button.assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+            .assertIsNotEnabled().performClick()
+        compose.runOnIdle {
+            assertTrue(requests.isEmpty())
+            records.value = listOf(measured(1, todayStart(), "招聘岗位同比减少20%", 10_000))
+            state.value = state.value.copy(running = true)
+        }
+        compose.onNodeWithText("正在整理…").assertIsNotEnabled().performClick()
+        compose.runOnIdle { state.value = state.value.copy(running = false, exporting = true) }
+        button.assertIsNotEnabled().performClick()
+        compose.runOnIdle {
+            assertTrue(requests.isEmpty())
+            state.value = state.value.copy(exporting = false)
+        }
+        button.assertIsEnabled().performClick()
+        compose.runOnIdle { assertEquals(listOf(state.value.purpose), requests) }
+    }
+
+    @Test fun periodSegmentsKeepTabRoleAndSelection() {
+        val period = mutableStateOf(StatisticsPeriod.DAY)
+        render {
+            EmergeTheme {
+                OverviewScreen(calculateStatistics(emptyList(), period.value, todayStart()), period.value,
+                    { period.value = it }, active = false, statusLabel = "已暂停",
+                    appNames = emptyMap(), onRecords = {}, onSettings = {})
+            }
+        }
+        compose.onNodeWithText("今天").assertIsSelected()
+        listOf("24 小时", "7 天", "今天").forEach { label ->
+            compose.onNodeWithText(label)
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab))
+                .performClick().assertIsSelected()
+        }
+        compose.onNodeWithText("24 小时").assertIsNotSelected()
+        compose.onNodeWithText("7 天").assertIsNotSelected()
+    }
 
     @Test fun purposePresetsPreserveCustomTextAndCancelDoesNotApplyDraft() {
         val initial = "比较嵌入式岗位的要求"

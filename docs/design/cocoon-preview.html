@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>破茧 · 动效预览</title>
+  <style>
+    :root { color-scheme: light; --bg:#f8fafc; --surface:#fff; --ink:#0f172a; --muted:#596b80; --line:#e2e8f0; --accent:#2563eb; --selected:#eff6ff; }
+    [data-theme=dark] { color-scheme:dark; --bg:#090e17; --surface:#111927; --ink:#f8fafc; --muted:#94a3b8; --line:#1e293b; --accent:#60a5fa; --selected:#1e2e4a; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100svh; display:grid; place-items:center; padding:24px; background:var(--bg); color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
+    main { width:min(100%,460px); }
+    header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+    h1 { font-size:18px; font-weight:700; margin:0; letter-spacing:.02em; }
+    h1::before { content:"✦"; color:var(--accent); margin-right:8px; }
+    button { font:inherit; cursor:pointer; color:var(--muted); background:none; border:0; border-radius:10px; min-height:44px; padding:0 14px; font-size:13px; }
+    button:hover { background:var(--selected); }
+    :focus-visible { outline:2px solid var(--accent); outline-offset:4px; }
+    .stage { position:relative; background:var(--surface); border:1px solid var(--line); border-radius:28px; overflow:hidden; aspect-ratio:1.05; box-shadow:0 20px 45px -15px rgba(0,0,0,.3); }
+    canvas { touch-action:pan-y; display:block; width:100%; height:100%; }
+    .play { position:absolute; right:14px; bottom:14px; background:var(--surface); border:1px solid var(--line); }
+    .controls { padding:22px 4px 0; }
+    .range-label { display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-size:13px; margin-bottom:12px; color:var(--muted); }
+    output { font-size:24px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--ink); }
+    input { display:block; width:100%; height:44px; margin:0; accent-color:var(--accent); cursor:ew-resize; }
+    .presets { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px; margin-top:14px; }
+    .presets button { padding:6px 4px; border:1px solid var(--line); }
+    .presets button[aria-pressed=true] { color:var(--accent); background:var(--selected); border-color:var(--accent); }
+    @media(max-width:420px) { .presets { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media(max-width:380px) { body { padding:16px; } .controls { padding-top:20px; } }
+    @media(prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header><h1>破茧 · 动效预览</h1><button id="theme" type="button" aria-label="切换浅色背景">浅色</button></header>
+    <div class="stage">
+      <canvas id="cocoon" role="img" aria-label="丝网缠绕预览，密度 0%"></canvas>
+      <button id="play" class="play" type="button" aria-pressed="false">暂停</button>
+    </div>
+    <div class="controls">
+      <div class="range-label"><label for="closure">丝线密度（预览）</label><output id="value" for="closure">0%</output></div>
+      <input id="closure" type="range" min="0" max="100" value="0" aria-valuetext="密度 0%">
+      <div class="presets" role="group" aria-label="丝线密度预设">
+        <button type="button" data-value="0" aria-pressed="true">0% 裸露</button>
+        <button type="button" data-value="25" aria-pressed="false">25% 稀疏</button>
+        <button type="button" data-value="60" aria-pressed="false">60% 结网</button>
+        <button type="button" data-value="85" aria-pressed="false">85% 密集</button>
+        <button type="button" data-value="100" aria-pressed="false">100% 闭合</button>
+      </div>
+    </div>
+  </main>
+  <script>
+    'use strict';
+    // closure is a visual control only. No inferred risk or user data is involved.
+    const canvas = document.querySelector('#cocoon');
+    const ctx = canvas.getContext('2d');
+    const slider = document.querySelector('#closure');
+    const output = document.querySelector('#value');
+    const play = document.querySelector('#play');
+    const theme = document.querySelector('#theme');
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    const presets = [...document.querySelectorAll('[data-value]')];
+    let target = 0, closure = 0, phase = 0, paused = false, dark = true;
+    let tiltX = 0, tiltY = 0, targetTiltX = 0, targetTiltY = 0;
+    let frame = 0, previous = 0, visible = true, width = 0, height = 0;
+    const TAU = Math.PI * 2;
+    const mix = (a,b,t) => a+(b-a)*t;
+
+    // Visual density only: golden-angle strands wrap the reference ellipsoid.
+    const TOTAL_STRANDS = 150;
+    const strands = Array.from({length:TOTAL_STRANDS}, (_,i) => ({
+      phi:i*2.399963, speed:.4+(i%7)*.12, isBright:i%5===0
+    }));
+
+    function draw() {
+      if (!width || !height) return;
+      ctx.clearRect(0, 0, width, height);
+
+      const unit = Math.min(width, height);
+      const cx = width / 2 + tiltX * unit * 0.04;
+      const cy = height / 2 + tiltY * unit * 0.04;
+      const rx = unit * 0.22;
+      const ry = unit * 0.32;
+
+      const breath = reduced.matches ? 0 : Math.sin(phase * 1.5) * unit * .007;
+
+      const visibility = Math.max(0, 1.0 - closure);
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(-0.06 + tiltX * 0.05);
+
+      if (visibility > 0.005) {
+        ctx.save();
+        const coreR = (rx * 0.72 + breath) * (0.85 + visibility * 0.2);
+        const radGrad = ctx.createRadialGradient(0, 0, 4, 0, 0, coreR * 1.4);
+
+        const goldRgb = dark ? '251, 191, 36' : '217, 119, 6';
+        const tealRgb = dark ? '45, 212, 191' : '13, 148, 136';
+
+        radGrad.addColorStop(0, `rgba(${goldRgb}, ${visibility * 0.95})`);
+        radGrad.addColorStop(0.45, `rgba(${tealRgb}, ${visibility * 0.7})`);
+        radGrad.addColorStop(1, `rgba(${tealRgb}, 0)`);
+
+        ctx.fillStyle = radGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, coreR * 1.4, 0, TAU);
+        ctx.fill();
+
+        ctx.fillStyle = `rgba(255, 255, 255, ${visibility * 0.95})`;
+        ctx.font = `bold ${Math.round(unit * 0.08)}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('✦', 0, 0);
+
+        ctx.restore();
+      }
+
+      const activeCount = Math.floor(closure * TOTAL_STRANDS);
+
+      const silkRgb = dark ? '203, 213, 225' : '51, 65, 85';
+      const brightSilkRgb = dark ? '254, 240, 138' : '30, 58, 138';
+
+      for (const frontPass of [false, true]) {
+        for (let i = 0; i < activeCount; i++) {
+          const s = strands[i];
+          const dynamicAngle = s.phi + phase * s.speed * 0.42 + tiltX * 0.4;
+
+          ctx.beginPath();
+          let penDown = false;
+
+          for (let j = 0; j <= 36; j++) {
+            const t = (j / 36) * Math.PI;
+            const y = -Math.cos(t) * ry;
+
+            const waist = Math.sin(t) * (1 - 0.12 * Math.cos(t));
+            const currentR = rx * waist;
+
+            const u = dynamicAngle + t * 2.2;
+            const x = Math.cos(u) * currentR;
+            const z = Math.sin(u) * currentR;
+
+            const isFront = z >= 0;
+            if (isFront !== frontPass) {
+              penDown = false;
+              continue;
+            }
+
+            if (!penDown) {
+              ctx.moveTo(x, y);
+              penDown = true;
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+
+          const baseAlpha = frontPass ? (0.35 + closure * 0.55) : 0.15;
+          const strokeWidth = frontPass ? (unit * (0.0018 + closure * 0.002)) : (unit * 0.0012);
+
+          ctx.strokeStyle = `rgba(${s.isBright ? brightSilkRgb : silkRgb}, ${baseAlpha})`;
+          ctx.lineWidth = strokeWidth;
+          ctx.lineCap = 'round';
+          ctx.stroke();
+        }
+
+        if (!frontPass && closure > 0.7) {
+          ctx.save();
+          const solidAlpha = ((closure - 0.7) / 0.3);
+          const shellColor = dark ? `rgba(17, 24, 39, ${solidAlpha * 0.95})` : `rgba(241, 245, 249, ${solidAlpha * 0.92})`;
+          ctx.fillStyle = shellColor;
+          ctx.beginPath();
+          ctx.ellipse(0, 0, rx * 0.95, ry * 0.98, 0, 0, TAU);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+    }
+
+
+    function tick(now) {
+      frame=0;
+      const dt=previous ? Math.min((now-previous)/1000,.05) : 1/60;
+      previous=now;
+      if (!paused && !reduced.matches) phase+=dt;
+      closure=reduced.matches ? target : mix(closure,target,1-Math.exp(-dt*12));
+      if(Math.abs(target-closure)<.0005) closure=target;
+      const follow = 1-Math.exp(-dt*10);
+      if (!paused && !reduced.matches) {
+        tiltX=mix(tiltX,targetTiltX,follow); tiltY=mix(tiltY,targetTiltY,follow);
+      }
+      draw();
+      if(visible && !document.hidden && ((!paused && !reduced.matches) || closure!==target)) frame=requestAnimationFrame(tick);
+      else previous=0;
+    }
+    function wake() {
+      if(reduced.matches) { closure=target; draw(); }
+      if(!frame && visible && !document.hidden) frame=requestAnimationFrame(tick);
+    }
+    function update(value) {
+      slider.value=value; target=Number(value)/100;
+      output.value=`${value}%`;
+      slider.setAttribute('aria-valuetext',`密度 ${value}%`);
+      canvas.setAttribute('aria-label',`丝网缠绕预览，密度 ${value}%`);
+      presets.forEach(button=>button.setAttribute('aria-pressed',String(Number(button.dataset.value)===Number(value))));
+      wake();
+    }
+    canvas.addEventListener('pointermove',event=> {
+      if(paused || reduced.matches) return;
+      const rect=canvas.getBoundingClientRect();
+      targetTiltX=((event.clientX-rect.left)/rect.width-.5)*2;
+      targetTiltY=((event.clientY-rect.top)/rect.height-.5)*2;
+    });
+    function resetTilt() { targetTiltX=0; targetTiltY=0; }
+    canvas.addEventListener('pointerleave',resetTilt);
+    canvas.addEventListener('pointerup',event=> { if(event.pointerType!=='mouse') resetTilt(); });
+    canvas.addEventListener('pointercancel',resetTilt);
+    slider.addEventListener('input',()=>update(slider.value));
+    presets.forEach(button=>button.addEventListener('click',()=>update(button.dataset.value)));
+    play.addEventListener('click',()=> {
+      paused=!paused; play.textContent=paused?'播放':'暂停';
+      play.setAttribute('aria-pressed',String(paused)); wake();
+    });
+    theme.addEventListener('click',()=> {
+      dark=!dark; document.documentElement.dataset.theme=dark?'dark':'light';
+      theme.textContent=dark?'浅色':'深色';
+      theme.setAttribute('aria-label',dark?'切换浅色背景':'切换深色背景'); draw();
+    });
+    function motionPreference() {
+      play.hidden=reduced.matches;
+      if(reduced.matches) { cancelAnimationFrame(frame); frame=0; previous=0; tiltX=tiltY=targetTiltX=targetTiltY=0; }
+      wake();
+    }
+    reduced.addEventListener('change',motionPreference);
+    document.addEventListener('visibilitychange',()=> {
+      if(document.hidden) { cancelAnimationFrame(frame); frame=0; previous=0; }
+      else wake();
+    });
+    new IntersectionObserver(entries=> {
+      visible=entries[0].isIntersecting;
+      if(!visible) { cancelAnimationFrame(frame); frame=0; previous=0; }
+      else wake();
+    }).observe(canvas);
+    new ResizeObserver(()=> {
+      const bounds=canvas.getBoundingClientRect();
+      width=bounds.width; height=bounds.height;
+      const dpr=Math.min(devicePixelRatio||1,2);
+      canvas.width=Math.round(width*dpr); canvas.height=Math.round(height*dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0); draw();
+    }).observe(canvas);
+    motionPreference();
+  </script>
+</body>
+</html>

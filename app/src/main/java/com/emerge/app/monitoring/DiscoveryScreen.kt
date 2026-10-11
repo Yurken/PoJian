@@ -3,6 +3,7 @@ package com.emerge.app.monitoring
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.*
@@ -10,16 +11,22 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.ui.HelpButton
 import com.emerge.app.ui.MetadataText
+import com.emerge.app.ui.PojianActionChip
 import com.emerge.app.ui.QuoteBlock
+import com.emerge.app.ui.WhiteCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -88,20 +95,72 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
 }
 
 @Composable
+private fun VerdictBadge(verdict: String) {
+    val scheme = MaterialTheme.colorScheme
+    val dark = scheme.background.luminance() < 0.5f
+    val (bgColor, textColor) = when (verdict) {
+        "supported" -> if (dark) Color(0xFF143D2C) to Color(0xFF86EFAC)
+            else Color(0xFFDCFCE7) to Color(0xFF15803D)
+        "contradicted" -> scheme.errorContainer to scheme.onErrorContainer
+        "conflicting" -> scheme.tertiaryContainer to scheme.onTertiaryContainer
+        "opinion" -> scheme.primaryContainer to scheme.onPrimaryContainer
+        else -> scheme.surfaceVariant to scheme.onSurfaceVariant
+    }
+    Surface(shape = RoundedCornerShape(6.dp), color = bgColor) {
+        Text(
+            text = discoveryVerdict(verdict),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+            color = textColor
+        )
+    }
+}
+
+@Composable
 private fun DiscoveryCard(finding: MonitorFinding, onOpen: () -> Unit) {
     val repetition = finding.kind == "cocoon"
-    OutlinedCard(onClick = onOpen, modifier = Modifier.fillMaxWidth().testTag("discovery-${finding.id}")) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(if (repetition) finding.topic.ifBlank { "重复观点" } else discoveryVerdict(finding.verdict),
-                style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text("“${finding.claim}”", style = MaterialTheme.typography.titleMedium,
-                maxLines = 4, overflow = TextOverflow.Ellipsis)
-            if (finding.explanation.isNotBlank()) Text(finding.explanation,
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3, overflow = TextOverflow.Ellipsis)
-            TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 0.dp)) {
-                Text(if (repetition) "查看原文与对比" else "查看核查依据")
+    WhiteCard(
+        modifier = Modifier.fillMaxWidth().testTag("discovery-${finding.id}"),
+        onClick = onOpen
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (repetition) {
+                Surface(shape = RoundedCornerShape(6.dp), color = MaterialTheme.colorScheme.primaryContainer) {
+                    Text(
+                        text = finding.topic.ifBlank { "重复观点" },
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                    )
+                }
+            } else {
+                VerdictBadge(finding.verdict)
             }
+        }
+        Text(
+            text = "“${finding.claim}”",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold, lineHeight = 24.sp),
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (finding.explanation.isNotBlank()) {
+            Text(
+                text = finding.explanation,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            PojianActionChip(
+                text = if (repetition) "查看原文与对比" else "查看核查依据",
+                onClick = onOpen
+            )
         }
     }
 }

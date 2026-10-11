@@ -1,0 +1,146 @@
+package com.emerge.app.analysis
+
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.emerge.app.MainActivity
+import com.emerge.app.ui.*
+import com.emerge.app.ui.theme.EmergeTheme
+import java.io.File
+import org.junit.Assert.*
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class CocoonUiTest {
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    private fun state(repeated: Int, total: Int = 5): AnalysisState {
+        val report = CognitiveAnalyzer().analyze(emptyList(), StatisticsPeriod.DAY, 1_792_000_000_000L)
+        return AnalysisState(report = report.copy(claims = (0 until total).map { i ->
+            ClaimObservation(i.toLong(), report.end, "test", "主题", "观点", emptyList(), "", false,
+                if (i < repeated) Increment.REPEATED else Increment.NEW, null)
+        }))
+    }
+
+    @Test fun overviewShowsActualShareAndDoesNotReuseStaleOrWrongPeriodData() {
+        val analysis = mutableStateOf(state(3))
+        val period = mutableStateOf(StatisticsPeriod.DAY)
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                EmergeTheme {
+                    OverviewScreen(calculateStatistics(emptyList(), period.value, 1_792_000_000_000L),
+                        period.value, { period.value = it }, false, "已暂停", emptyMap(), {}, {}, analysis = analysis.value)
+                }
+            }
+        }
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("cocoon-card"))
+        compose.onNodeWithText("重复依据").assertIsDisplayed()
+        compose.onNodeWithTag("cocoon-share").assertTextEquals("60.0%")
+        compose.onNodeWithText("3/5 个观点").assertIsDisplayed()
+        compose.onNodeWithTag("cocoon-density").assertDoesNotExist()
+        compose.runOnIdle { analysis.value = analysis.value.copy(stale = true) }
+        compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
+        compose.onNodeWithText("待更新").assertIsDisplayed()
+        compose.runOnIdle { analysis.value = state(3); period.value = StatisticsPeriod.WEEK }
+        compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
+        compose.onNodeWithText("暂无分析").assertIsDisplayed()
+    }
+
+    @Test fun fourDirectionWeaveSupportsDarkLargeTextAndDataExtremes() {
+        val analysis = mutableStateOf(state(0))
+        for (dark in listOf(false, true)) {
+            compose.runOnUiThread {
+                compose.activity.setContent {
+                    EmergeTheme(darkTheme = dark) {
+                        CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, if (dark) 1.5f else 1f)) {
+                            Surface(color = MaterialTheme.colorScheme.background) {
+                                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
+                                    CocoonCard(analysis.value, StatisticsPeriod.DAY, visible = false)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for (repeated in listOf(0, 3, 5)) {
+                compose.runOnIdle { analysis.value = state(repeated) }
+                compose.onNodeWithTag("cocoon-share").performScrollTo().assertTextEquals("${repeated * 20}.0%")
+                screenshot("cocoon-${if(dark) "dark-large" else "light"}-${repeated * 20}.png")
+            }
+            compose.runOnIdle { analysis.value = state(0, 0) }
+            compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
+            compose.onNodeWithContentDescription("暂无依据占比").assertExists()
+        }
+    }
+
+    @Test fun motionAdvancesAndPauseStopsTheWeave() {
+        val moving = mutableStateOf(true)
+        compose.mainClock.autoAdvance = false
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                EmergeTheme { CocoonVisual(.6f, true, moving.value, Modifier.size(280.dp)) }
+            }
+        }
+        compose.mainClock.advanceTimeBy(100)
+        val first = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
+        compose.mainClock.advanceTimeBy(600)
+        val next = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
+        assertFalse("Silk should move while playing", first.sameAs(next))
+        compose.runOnUiThread { moving.value = false }
+        compose.mainClock.advanceTimeBy(400)
+        val paused = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
+        compose.mainClock.advanceTimeBy(600)
+        assertTrue("Paused silk should stay still", paused.sameAs(compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()))
+    }
+
+    @Test fun systemMotionSwitchImmediatelyStopsAnimationAndRemovesPlaybackControl() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val resolver = instrumentation.targetContext.contentResolver
+        val key = android.provider.Settings.Global.ANIMATOR_DURATION_SCALE
+        val original = android.provider.Settings.Global.getFloat(resolver, key, 1f)
+        fun setScale(value: Float) {
+            val descriptor = instrumentation.uiAutomation.executeShellCommand("settings put global animator_duration_scale $value")
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
+        }
+        try {
+            setScale(1f)
+            compose.runOnUiThread {
+                compose.activity.setContent { EmergeTheme { CocoonCard(state(3), StatisticsPeriod.DAY, true) } }
+            }
+            compose.onNodeWithTag("cocoon-play").assertIsDisplayed().performClick()
+            compose.onNodeWithText("播放").assertIsDisplayed().performClick()
+            setScale(0f)
+            compose.waitUntil(5_000) { compose.onAllNodesWithTag("cocoon-play").fetchSemanticsNodes().isEmpty() }
+            compose.onNodeWithTag("cocoon-share").assertTextEquals("60.0%")
+            val still = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
+            compose.mainClock.advanceTimeBy(600)
+            assertTrue(still.sameAs(compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()))
+        } finally { setScale(original) }
+    }
+
+    private fun screenshot(name: String) {
+        compose.waitForIdle()
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        instrumentation.waitForIdleSync()
+        android.os.SystemClock.sleep(250)
+        val bitmap = instrumentation.uiAutomation.takeScreenshot()
+        File(instrumentation.targetContext.cacheDir, name).outputStream().use {
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+        bitmap.recycle()
+    }
+}
