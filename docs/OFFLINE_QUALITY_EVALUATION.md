@@ -98,29 +98,17 @@ TSV 第一行必须严格匹配列名。单元格使用 `\\n`、`\\r`、`\\t`、
 
 `summary.json` 同时保存数据文件和分析源码的 SHA-256。结果不写运行时间，因此同一数据与源码可逐字复跑比较。变更分析逻辑、标注协议或数据时应保留旧结果，建立新的基线；不能把修改后的固定集合分数当作独立测试集的进步。
 
-## 0.4.9 固定合成基线
+## 已保存的回归基线
 
-本次已保存 [完整报告](../evaluation/baselines/synthetic-v1-0.4.9/report.md)、[机器指标与文件校验](../evaluation/baselines/synthetic-v1-0.4.9/summary.json)、[逐单元预测](../evaluation/baselines/synthetic-v1-0.4.9/predictions.tsv) 和 [逐窗口预测](../evaluation/baselines/synthetic-v1-0.4.9/window-predictions.tsv)。四个文件经过独立重复运行后逐字相同；评测器的四项 JVM 测试通过。
+各版本的指标、错分变化和历史验证集中在[更新日志：固定诊断集对照](CHANGELOG.md#quality-baselines)。原始结果保留，四类产物可直接核对：
 
-信息增量判对 94/112（83.93%），macro-F1 为 0.8016；窗口判对 5/6（83.33%），macro-F1 为 0.8222。增量可判断覆盖为 93/112（83.04%），负类窗口误提醒为 1/3，证据不足窗口未触发提醒。两个本地就业样本采用正确的连续主张匹配：规则输出的整句包含行内依据，不能因输出范围较长被误算成漏提取。运行器已修复该匹配偏差，这份基线使用修正后的结果，输入和预期标签保持不变。
+| 版本 | 完整报告 | 指标与 SHA-256 | 逐单元预测 | 逐窗口预测 |
+| --- | --- | --- | --- | --- |
+| 0.4.9 | [报告](../evaluation/baselines/synthetic-v1-0.4.9/report.md) | [校验](../evaluation/baselines/synthetic-v1-0.4.9/summary.json) | [单元](../evaluation/baselines/synthetic-v1-0.4.9/predictions.tsv) | [窗口](../evaluation/baselines/synthetic-v1-0.4.9/window-predictions.tsv) |
+| 0.4.10 | [报告](../evaluation/baselines/synthetic-v1-0.4.10/report.md) | [校验](../evaluation/baselines/synthetic-v1-0.4.10/summary.json) | [单元](../evaluation/baselines/synthetic-v1-0.4.10/predictions.tsv) | [窗口](../evaluation/baselines/synthetic-v1-0.4.10/window-predictions.tsv) |
+| 0.4.11 | [报告](../evaluation/baselines/synthetic-v1-0.4.11/report.md) | [校验](../evaluation/baselines/synthetic-v1-0.4.11/summary.json) | [单元](../evaluation/baselines/synthetic-v1-0.4.11/predictions.tsv) | [窗口](../evaluation/baselines/synthetic-v1-0.4.11/window-predictions.tsv) |
 
-该版本错误集中于同义数字和立场、同义条件、论据换序、旧材料联合覆盖，以及不同当事人使用相似句式。其中不同求职者的独立经历有 11 次新增被判为重复，并造成唯一一次窗口误提醒；水质主题的本地词表缺失造成一次漏提取。这些结果保留在基线中，后续应优先改进事实与来源身份、同义规范化及跨历史单元覆盖，再用独立复核数据验证。窗口仅六个、CONDITIONS 金标仅一个，比例不能用于估计真实场景的风险水平。
-
-## 0.4.10 身份比较回归基线
-
-保留 0.4.9 结果，并新增 [完整报告](../evaluation/baselines/synthetic-v1-0.4.10/report.md)、[机器指标与文件校验](../evaluation/baselines/synthetic-v1-0.4.10/summary.json)、[逐单元预测](../evaluation/baselines/synthetic-v1-0.4.10/predictions.tsv) 和 [逐窗口预测](../evaluation/baselines/synthetic-v1-0.4.10/window-predictions.tsv)。输入及标签四个文件的 SHA-256 与旧基线完全相同；新运行器记录包含 `EvidenceIdentity.kt` 在内的五个源码哈希。四个结果文件复跑逐字一致。
-
-不同具名当事对象的相似个人记录现在保留为新增个体事实，11 条 REPEATED 改为 NEW，相关持续浏览窗口不再误提醒。其余单元和窗口预测保持不变。增量判对为 105/112（93.75%），macro-F1 为 0.8554，可判断覆盖仍为 93/112（83.04%）；窗口判对 6/6，负类窗口误提醒 0/3，证据不足仍提醒 0/2。中文数量、同义立场和条件、论据换序、旧材料联合覆盖以及水质词表缺失仍造成七条错分。
-
-这份固定集已经用于定位问题和调整实现，属于回归诊断集，不能作为独立测试集或泛化改善的证据。输入提供的结构字段和有限本地身份提取也不能验证云端角色抽取、现实来源独立性或真实平台准确率。身份字段的保存链、拒收规则及工程验证见 [0.4.10 验证记录](VALIDATION-0.4.10.md)。
-
-## 0.4.11 有限同义与逐项覆盖回归基线
-
-保留此前基线，并新增 [完整报告](../evaluation/baselines/synthetic-v1-0.4.11/report.md)、[机器指标与文件校验](../evaluation/baselines/synthetic-v1-0.4.11/summary.json)、[逐单元预测](../evaluation/baselines/synthetic-v1-0.4.11/predictions.tsv) 和 [逐窗口预测](../evaluation/baselines/synthetic-v1-0.4.11/window-predictions.tsv)。输入、标签、元数据及窗口文件的 SHA-256 与 0.4.10 相同；包含三个新比较模块的 8 个源码哈希与最终源码匹配，四个结果文件经独立复跑逐字一致。
-
-本轮修复固定集中的七条错分：两个数量改写、立场同义、季度条件同义、事实换序、跨记录联合覆盖，以及水质主题的本地提取。其余单元和全部窗口预测不变。增量判对为 112/112（100%），macro-F1 为 1.0000，可判断覆盖为 94/112（83.93%）；窗口判对 6/6，负类窗口误提醒 0/3，证据不足仍提醒 0/2。
-
-这份固定集由编码助手编写、没有人工复核，并已反复用于定位和调整实现；全部判对仅说明这些回归样本通过，不能作为独立测试、真实平台准确率或泛化改善的证据。数量、立场和条件同义仅覆盖有限表达，逐项联合覆盖仅处理可安全拆分的明确数量事实；没有实现通用语义模型。实际行为、原文引用、日历范围保护和设备验证见 [0.4.11 验证记录](VALIDATION-0.4.11.md)。
+三版使用相同的输入、标签、元数据和窗口文件，并记录各自分析源码的校验值。这个固定集已反复用于定位和修改规则，属于回归诊断集；其结果不能作为独立测试、真实平台准确率或泛化改善的证据。
 
 ## 转为真实标注工作流
 

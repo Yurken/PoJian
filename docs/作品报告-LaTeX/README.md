@@ -8,8 +8,7 @@
 - `setting/cgscic.cls`：由用户粘贴的模板整理的文档类。
 - `chapters/chapter-1.tex` 至 `chapter-4.tex`：分章正文。
 - `references.bib`：统一书目，键为 `ref1` 至 `ref33`。
-- `figures/`：各章高清 PNG 及可编辑 SVG；排版使用 PNG。
-- `sources/`：保留的原始 Markdown 稿件。
+- `figures/`：正文引用的 13 张 PNG 配图。
 
 需要安装含 `ctex`、`gbt7714` 和 Fandol 字体的 TeX Live / MacTeX。使用 XeLaTeX 和 BibTeX，由 latexmk 自动完成多轮编译。无需系统安装宋体字体，也无需联网或启用 shell escape。
 
@@ -29,7 +28,7 @@ latexmk -xelatex -jobname=pojian-report main.tex
 
 模板来自用户在对话中提供的 `cgscic` 文档类及示例入口，原始链接为[模板文章](https://mp.weixin.qq.com/s/KNSGo92cgprgGlF7LCt2rA)。本文采用 A4，左/右页边距 2.86/2.59 cm，上/下 2.5 cm，宋体小四、1.5 倍行距，保留模板的填写说明页与“第 x 页 共 y 页”页脚。Fandol 中文字体和 TeX Gyre 西文字体随 TeX 发行版加载，便于跨平台编译；三级目录编号栏加宽以容纳 `2.10.4` 等编号。
 
-第一、二章来自《破茧作品报告第一二章合订版》，第三章来自《破茧第三章作品测试与分析》，第四章来自《破茧作品报告第四章创新性说明》。原稿保存在 `sources/`，未修改其内容；附件说明未收入正文。报告覆盖目前提供的四章，未补造第五章或未提供的实验。
+第一、二章来自《破茧作品报告第一二章合订版》，第三章来自《破茧第三章作品测试与分析》，第四章来自《破茧作品报告第四章创新性说明》。附件说明未收入正文。报告覆盖目前提供的四章，未补造第五章或未提供的实验。
 
 ## 合并调整
 
@@ -41,4 +40,4 @@ latexmk -xelatex -jobname=pojian-report main.tex
 
 ## 编辑正文
 
-直接编辑 `chapters/` 中对应的 `.tex` 文件，再运行 `bash build.sh`。正文以 LaTeX 文件为准，`sources/` 中的 Markdown 仅供核对来源。工程不包含生成正文的 Python 脚本，编辑和编译不依赖 Python 或 Pandoc。
+直接编辑 `chapters/` 中对应的 `.tex` 文件，再运行 `bash build.sh`。正文直接维护在 LaTeX 文件中，编辑和编译不依赖 Python 或 Pandoc。

@@ -52,7 +52,7 @@ bash scripts/check-monitor-core.sh
 
 这是工程原型，不是已经验证准确率的信息茧房诊断器或视频鉴伪系统。当前仍缺少完整的跨页笔记归并、可靠的推荐流/搜索入口识别、精确声画对齐、连续视频时序推理和经过标注校准的提醒阈值。视觉文字由模型提取，可能有错；不能用引文字符串检查替代真实性验证。
 
-[产品规划](docs/PRD-Multimodal.md) · [设计与实现对照](docs/IMPLEMENTATION.md) · [0.4.11 验证记录](docs/VALIDATION-0.4.11.md) · [实时监测架构与验证](docs/REALTIME_MONITORING.md) · [历史比较优化](docs/DESIGN_ALIGNMENT_HISTORY.md) · [既有构建记录](BUILD_VALIDATION.md) · [作品概述](docs/破茧_第一章_作品概述.md)
+[文档目录](docs/README.md) · [更新日志](docs/CHANGELOG.md) · [产品规划](docs/PRD-Multimodal.md) · [设计与实现对照](docs/IMPLEMENTATION.md) · [实时监测架构](docs/REALTIME_MONITORING.md) · [作品报告 LaTeX 工程](docs/作品报告-LaTeX/README.md)
 
 ## GitHub APK 打包
 

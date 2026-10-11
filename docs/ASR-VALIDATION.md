@@ -1,4 +1,4 @@
-# 本地语音转写验证
+# 本地语音转写：配置与验证方法
 
 音频引擎使用官方 [sherpa-onnx v1.13.8 Android AAR](https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.13.8)，构建时下载到 `app/build/asr-dependencies` 并检查 SHA-256。中文模型是 [14M 流式 Zipformer](https://huggingface.co/csukuangfj/sherpa-onnx-streaming-zipformer-zh-14M-2023-02-23)，固定到 `204ad334e2e683fd295359930cc16fc0432a23ac`。所用 encoder/joiner 为 int8、decoder 为 float32，四个文件共 30,975,688 字节。
 
@@ -20,10 +20,6 @@ ANDROID_SERIAL=emulator-5562 ./gradlew :app:connectedDebugAndroidTest
 
 真实内录还需验证来源应用是否允许 AudioPlaybackCapture：系统授权后仅匹配用户所选的单个应用 UID；通知栏可暂停、继续、停止；最长 5 分钟。语音处理落后超过有界 PCM 队列时会明确停止。系统撤销投影授权时释放采集器，不重用旧授权。全程没有麦克风输入、视频帧或持久音频文件。
 
-## 已执行的验证（2026-10-08）
+## 历史验证结果
 
-在独立 API 37 / arm64 / 16 KB 页大小模拟器上，验证了公开中文 WAV 和 AAC 文件的解码、真实 Zipformer 识别与媒体时间范围。`AudioCoordinatorInstrumentedTest` 进一步走 `Runtime.events → Coordinator → Room`，检查终态前文字已持久化、原文保留、删除后不复活。原生测试使用的模型也经过 App 实际下载：点击下载收到 13% 时取消，确认界面回到未安装状态；再次点击完整下载成功，逐文件校验通过并生成安装标记。
-
-另安装了仅播放官方公开 WAV 样例的 QA 播放器，通过实际系统授权选择该应用，验证单 UID 内录、后台前台服务、真实文字落库、暂停、继续和停止。服务运行类型为 `mediaProjection`，停止后服务被释放。此结果覆盖测试播放器；短视频平台是否允许内部声音捕获仍需逐平台、真机验证。5 分钟截断由样本边界测试验证，本轮没有连续等待 5 分钟或模拟原生识别器性能落后。
-
-用户日常模拟器未被清空、卸载或修改设置。所有测试操作都在独立 QA 模拟器完成。
+2026-10-08 的公开音频、模型下载及 QA 播放器内录验证见[更新日志：本地语音转写](CHANGELOG.md#asr-2026-10-08)。后续版本缺少真实模型或音频夹具时跳过的原生识别用例，在各版本条目中单独列出；历史验证不自动覆盖新版本。
