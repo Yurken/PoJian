@@ -7,6 +7,7 @@ import binascii
 import datetime as dt
 import hmac
 import ipaddress
+import io
 import json
 import os
 from html.parser import HTMLParser
@@ -229,6 +230,163 @@ def normalize_endpoint(url: str) -> str:
     if trimmed.endswith("/chat/completions") or not trimmed.endswith("/v1"):
         return url
     return trimmed + "/chat/completions"
+
+
+APP_UPDATE_REPO_DEFAULT = "baijiamin/PoJian"
+APP_UPDATE_APK_ASSET = "PoJian.apk"
+APP_UPDATE_MANIFEST_ASSET = "update.json"
+APP_UPDATE_CACHE_SECONDS = 60.0
+APP_UPDATE_MAX_APK_BYTES = 512 * 1024 * 1024
+GITHUB_API_BASE = "https://api.github.com"
+GITHUB_ACCEPT = "application/vnd.github+json"
+
+
+class _BufferedAsset(io.BytesIO):
+    """In-memory asset that exposes the same headers/read/close surface as a response stream."""
+
+    def __init__(self, body: bytes, headers):
+        super().__init__(body)
+        self.headers = headers
+
+
+class AppUpdateSource:
+    """In-app update metadata proxied from a private GitHub repository.
+
+    The endpoints exposing this data stay public on purpose: version numbers, a
+    checksum and the signed APK are distributed to users anyway, while the
+    repository source remains private and the server-side token never ships in
+    the app. Asset requests follow GitHub's redirect manually so the token is
+    never forwarded to the signed CDN URL.
+    """
+
+    def __init__(self, repo: str, token: str):
+        self._repo = repo.strip().strip("/")
+        self._token = token.strip()
+        self._lock = threading.Lock()
+        self._cached_at = 0.0
+        self._assets: dict | None = None
+
+    @classmethod
+    def from_env(cls) -> "AppUpdateSource":
+        return cls(os.getenv("EMERGE_APP_UPDATE_REPO", APP_UPDATE_REPO_DEFAULT),
+                   os.getenv("EMERGE_APP_UPDATE_TOKEN", ""))
+
+    @property
+    def configured(self) -> bool:
+        parts = self._repo.split("/")
+        return bool(self._token) and len(parts) == 2 and all(parts) and \
+            all(char.isalnum() or char in "-_." for part in parts for char in part)
+
+    def _headers(self, accept: str) -> dict:
+        return {"Authorization": "Bearer " + self._token, "Accept": accept,
+                "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "pojian-update-proxy"}
+
+    def _api_get(self, url: str, accept: str = GITHUB_ACCEPT):
+        """Authenticated GET without following redirects: (status, headers, body)."""
+        try:
+            with build_opener(NoRedirect()).open(Request(url, headers=self._headers(accept)), timeout=15) as response:
+                return response.status, response.headers, response.read(MAX_REPLY + 1)
+        except HTTPError as error:
+            try:
+                body = error.read(MAX_REPLY + 1)
+            except Exception:
+                body = b""
+            error.close()
+            return error.code, error.headers or {}, body
+        except (TimeoutError, socket.timeout):
+            raise UpstreamError("Update provider timed out", 504) from None
+        except (URLError, HTTPException, OSError):
+            raise UpstreamError("Update provider connection failed") from None
+
+    def _public_get(self, url: str, timeout: float = 15):
+        """Unauthenticated GET that follows redirects to the signed CDN URL."""
+        try:
+            return build_opener().open(url, timeout=timeout)
+        except HTTPError as error:
+            error.close()
+            raise UpstreamError("Update asset rejected") from None
+        except (TimeoutError, socket.timeout):
+            raise UpstreamError("Update provider timed out", 504) from None
+        except (URLError, HTTPException, OSError):
+            raise UpstreamError("Update asset download failed") from None
+
+    def _latest_assets(self) -> dict:
+        """Cached release asset map of the latest GitHub release."""
+        now = time.monotonic()
+        with self._lock:
+            if self._assets is not None and now - self._cached_at < APP_UPDATE_CACHE_SECONDS:
+                return dict(self._assets)
+        status, _, body = self._api_get(f"{GITHUB_API_BASE}/repos/{self._repo}/releases/latest")
+        if status == 404:
+            raise UpstreamError("没有已发布的应用更新", 404)
+        if status != 200:
+            raise UpstreamError("Update provider rejected the request")
+        try:
+            release = decode_json(body)
+        except (ValueError, UnicodeError, RecursionError):
+            raise UpstreamError("Update provider returned invalid JSON") from None
+        if not isinstance(release, dict) or not isinstance(release.get("assets"), list):
+            raise UpstreamError("Update provider returned invalid JSON")
+        assets = {row["name"]: row for row in release["assets"]
+                  if isinstance(row, dict) and isinstance(row.get("name"), str)}
+        if not isinstance(assets.get(APP_UPDATE_APK_ASSET), dict) or \
+                not isinstance(assets.get(APP_UPDATE_MANIFEST_ASSET), dict):
+            raise UpstreamError("最新发布缺少更新信息", 404)
+        with self._lock:
+            self._assets = dict(assets)
+            self._cached_at = time.monotonic()
+        return assets
+
+    def _asset_url(self, asset: dict) -> str:
+        url = asset.get("browser_download_url")
+        if not isinstance(url, str) or not url.startswith("https://github.com/"):
+            raise UpstreamError("Update provider returned invalid JSON")
+        return url
+
+    def _redirect_target(self, status: int, headers) -> str:
+        if status not in {301, 302, 303, 307, 308}:
+            raise UpstreamError("Update asset rejected")
+        location = headers.get("Location")
+        if not isinstance(location, str) or not location.startswith("https://"):
+            raise UpstreamError("Update asset redirect rejected")
+        return location
+
+    def manifest(self) -> dict:
+        """{version_code, version_name, sha256, apk_size} for the app update manifest."""
+        assets = self._latest_assets()
+        status, headers, body = self._api_get(self._asset_url(assets[APP_UPDATE_MANIFEST_ASSET]),
+                                              accept="application/octet-stream")
+        if status in {301, 302, 303, 307, 308}:
+            with self._public_get(self._redirect_target(status, headers)) as stream:
+                body = stream.read(MAX_REPLY + 1)
+        elif status != 200:
+            raise UpstreamError("更新信息暂不可用")
+        if len(body) > MAX_REPLY:
+            raise UpstreamError("更新信息格式无效")
+        try:
+            value = decode_json(body)
+        except (ValueError, UnicodeError, RecursionError):
+            raise UpstreamError("更新信息格式无效") from None
+        if not isinstance(value, dict):
+            raise UpstreamError("更新信息格式无效")
+        code, name, digest = value.get("version_code"), value.get("version_name"), value.get("sha256")
+        if not integer(code, 1) or not isinstance(name, str) or not 0 < len(name) <= 64 or \
+                not isinstance(digest, str) or len(digest) != 64 or \
+                not all(char in "0123456789abcdefABCDEF" for char in digest):
+            raise UpstreamError("更新信息格式无效")
+        size = assets[APP_UPDATE_APK_ASSET].get("size")
+        if not integer(size, 1) or size > APP_UPDATE_MAX_APK_BYTES:
+            raise UpstreamError("更新包过大")
+        return {"version_code": code, "version_name": name, "sha256": digest.lower(), "apk_size": size}
+
+    def open_apk(self):
+        """Open the APK byte stream; returns the response object which the caller must close."""
+        assets = self._latest_assets()
+        status, headers, body = self._api_get(self._asset_url(assets[APP_UPDATE_APK_ASSET]),
+                                              accept="application/octet-stream")
+        if status == 200:
+            return _BufferedAsset(body, headers)
+        return self._public_get(self._redirect_target(status, headers), timeout=60)
 
 
 class RuntimeConfig:
@@ -912,7 +1070,8 @@ def analyze_monitor(source: dict, providers: Providers) -> dict:
 
 
 def make_handler(config: Config, options: Options, budget: DailyBudget, providers: Providers | None = None,
-                 stats: admin.Stats | None = None, runtime: RuntimeConfig | None = None):
+                 stats: admin.Stats | None = None, runtime: RuntimeConfig | None = None,
+                 updates: AppUpdateSource | None = None):
     parent = legacy_handler(config, stats)
     slots = threading.BoundedSemaphore(config.concurrency)
     runtime = runtime or RuntimeConfig(config, options, ":memory:")
@@ -993,11 +1152,60 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
                 raise ClientError("Invalid monitor request")
             return payload
 
+        def _app_update_manifest(self):
+            if updates is None or not updates.configured:
+                return self.send_json(404, {"error": "Not found"})
+            try:
+                info = updates.manifest()
+            except UpstreamError as error:
+                return self.send_json(error.status, {"error": "更新信息暂不可用"})
+            host = (self.headers.get("Host") or "").split(",")[0].strip()
+            if not host:
+                return self.send_json(500, {"error": "更新地址不可用"})
+            apk_url = "https://" + host + self.path.split("?")[0] + "/download"
+            return self.send_json(200, {"versionCode": info["version_code"], "versionName": info["version_name"],
+                                        "apkUrl": apk_url, "sha256": info["sha256"]})
+
+        def _app_update_download(self):
+            if updates is None or not updates.configured:
+                return self.send_json(404, {"error": "Not found"})
+            try:
+                stream = updates.open_apk()
+            except UpstreamError as error:
+                return self.send_json(error.status, {"error": "更新暂不可用"})
+            length = stream.headers.get("Content-Length")
+            self._record(200)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/vnd.android.package-archive")
+            if length and length.isdigit():
+                self.send_header("Content-Length", length)
+            self.send_header("Content-Disposition", 'attachment; filename="PoJian.apk"')
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            total = 0
+            try:
+                while True:
+                    block = stream.read(256 * 1024)
+                    if not block:
+                        break
+                    total += len(block)
+                    if total > APP_UPDATE_MAX_APK_BYTES:
+                        break
+                    self.wfile.write(block)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                stream.close()
+
         def do_GET(self):
             self._mark()
             path = self.path.split("?")[0]
             if path == "/admin":
                 return self.send_html(admin.admin_html().encode("utf-8"))
+            if path == "/app-update":
+                return self._app_update_manifest()
+            if path == "/app-update/download":
+                return self._app_update_download()
             if path == "/status":
                 if not self._console_authorized():
                     return self.send_json(401, {"error": "Invalid service token"})
@@ -1105,7 +1313,8 @@ def main():
     except (ValueError, OSError, sqlite3.Error):
         raise SystemExit("Invalid monitor configuration; check docs/REALTIME_MONITORING.md") from None
     server = ThreadingHTTPServer((os.getenv("EMERGE_HOST", "127.0.0.1"), int(os.getenv("EMERGE_PORT", "8787"))),
-                                 make_handler(config, options, budget, stats=admin.Stats(), runtime=runtime))
+                                 make_handler(config, options, budget, stats=admin.Stats(), runtime=runtime,
+                                              updates=AppUpdateSource.from_env()))
     server.daemon_threads = True
     print("Pojian monitor gateway is ready. Content and credential logging is disabled.", flush=True)
     try:

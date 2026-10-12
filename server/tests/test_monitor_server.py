@@ -929,4 +929,236 @@ class BuiltinSearchTests(unittest.TestCase):
             server.shutdown(); server.server_close(); thread.join()
 
 
+class _FakeAssetStream:
+    """Minimal response-stream double: headers, read(count), close, context manager."""
+
+    def __init__(self, body: bytes):
+        self._body = body
+        self.headers = {"Content-Length": str(len(body))}
+
+    def read(self, count: int = -1) -> bytes:
+        if not self._body:
+            return b""
+        if count is None or count < 0:
+            chunk, self._body = self._body, b""
+        else:
+            chunk, self._body = self._body[:count], self._body[count:]
+        return chunk
+
+    def close(self):
+        self._body = b""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+        return False
+
+
+class AppUpdateEndpointTests(unittest.TestCase):
+    def setUp(self):
+        self.config = legacy.Config("https://example.org/v1/chat/completions", "fixture-model",
+                                    "sk-test-secret-key", "test-token")
+        self.options = m.Options()
+        self.runtime = m.RuntimeConfig(self.config, self.options, ":memory:")
+        self.budget = m.DailyBudget(":memory:", 5)
+        self.updates = m.AppUpdateSource("octo/repo", "ghp_test-token")
+        self.server = m.ThreadingHTTPServer(("127.0.0.1", 0),
+                                            m.make_handler(self.config, self.options, self.budget,
+                                                           runtime=self.runtime, updates=self.updates))
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown(); self.server.server_close(); self.thread.join(); self.budget.close()
+
+    def get(self, path):
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        connection.request("GET", path)
+        reply = connection.getresponse()
+        headers = {"Content-Type": reply.getheader("Content-Type"),
+                   "Content-Disposition": reply.getheader("Content-Disposition"),
+                   "Content-Length": reply.getheader("Content-Length")}
+        status, data = reply.status, reply.read()
+        connection.close()
+        return status, headers, data
+
+    def start_server(self, updates):
+        server = m.ThreadingHTTPServer(("127.0.0.1", 0),
+                                       m.make_handler(self.config, self.options, m.DailyBudget(":memory:", 5),
+                                                      runtime=self.runtime, updates=updates))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread
+
+    def test_disabled_or_unconfigured_source_hides_endpoints(self):
+        for updates in (None, m.AppUpdateSource("octo/repo", ""), m.AppUpdateSource("bad-repo", "tok")):
+            server, thread = self.start_server(updates)
+            try:
+                port = server.server_port
+                for path in ("/app-update", "/app-update/download"):
+                    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+                    connection.request("GET", path)
+                    reply = connection.getresponse()
+                    self.assertEqual(reply.status, 404)
+                    reply.read(); connection.close()
+            finally:
+                server.shutdown(); server.server_close(); thread.join()
+
+    def test_manifest_maps_release_info(self):
+        self.updates.manifest = lambda: {"version_code": 41, "version_name": "0.5.7",
+                                         "sha256": "ab" * 32, "apk_size": 500}
+        status, _, body = self.get("/app-update")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {
+            "versionCode": 41, "versionName": "0.5.7",
+            "apkUrl": f"https://127.0.0.1:{self.server.server_port}/app-update/download",
+            "sha256": "ab" * 32})
+
+    def test_manifest_upstream_error_stays_generic(self):
+        def fail():
+            raise m.UpstreamError("没有已发布的应用更新", 404)
+        self.updates.manifest = fail
+        status, _, body = self.get("/app-update")
+        self.assertEqual(status, 404)
+        self.assertEqual(json.loads(body), {"error": "更新信息暂不可用"})
+        self.assertNotIn("已发布", json.loads(body)["error"])
+
+    def test_download_streams_apk_with_install_headers(self):
+        self.updates.open_apk = lambda: _FakeAssetStream(b"apk-bytes")
+        status, headers, data = self.get("/app-update/download")
+        self.assertEqual(status, 200)
+        self.assertEqual(data, b"apk-bytes")
+        self.assertEqual(headers["Content-Type"], "application/vnd.android.package-archive")
+        self.assertIn('filename="PoJian.apk"', headers["Content-Disposition"])
+        self.assertEqual(headers["Content-Length"], "9")
+
+    def test_download_upstream_error_stays_generic(self):
+        def fail():
+            raise m.UpstreamError("Update provider connection failed", 502)
+        self.updates.open_apk = fail
+        status, _, body = self.get("/app-update/download")
+        self.assertEqual(status, 502)
+        self.assertEqual(json.loads(body), {"error": "更新暂不可用"})
+
+
+class AppUpdateSourceTests(unittest.TestCase):
+    def source(self, api_responses):
+        value = m.AppUpdateSource("octo/repo", "ghp_test-token")
+        calls = []
+
+        def fake_api_get(url, accept=m.GITHUB_ACCEPT):
+            calls.append((url, accept))
+            return api_responses(url, accept)
+
+        value._api_get = fake_api_get
+        return value, calls
+
+    def release_assets(self, code=41, name="0.5.7", digest="AB" * 32, size=500):
+        return {"assets": [
+            {"name": "PoJian.apk", "size": size,
+             "browser_download_url": "https://github.com/octo/repo/releases/download/v0.5.7/PoJian.apk"},
+            {"name": "update.json", "size": 100,
+             "browser_download_url": "https://github.com/octo/repo/releases/download/v0.5.7/update.json"}]}
+
+    def test_configured_requires_token_and_repo_pair(self):
+        self.assertFalse(m.AppUpdateSource("octo/repo", "").configured)
+        self.assertFalse(m.AppUpdateSource("missing-slash", "tok").configured)
+        self.assertFalse(m.AppUpdateSource("bad repo/x", "tok").configured)
+        self.assertTrue(m.AppUpdateSource("octo/repo", "tok").configured)
+
+    def test_manifest_follows_signed_redirect_without_token(self):
+        manifest = json.dumps({"version": 1, "version_code": 41, "version_name": "0.5.7",
+                               "sha256": "AB" * 32}).encode()
+
+        def responses(url, accept):
+            if url.endswith("/releases/latest"):
+                return 200, {}, json.dumps(self.release_assets()).encode()
+            if url.endswith("/update.json"):
+                self.assertEqual(accept, "application/octet-stream")
+                return 302, {"Location": "https://cdn.example.net/update.json"}, b""
+            raise AssertionError(url)
+
+        source, _ = self.source(responses)
+        seen = []
+        source._public_get = lambda url, timeout=15: (seen.append(url), _FakeAssetStream(manifest))[1]
+        self.assertEqual(source.manifest(), {"version_code": 41, "version_name": "0.5.7",
+                                             "sha256": "ab" * 32, "apk_size": 500})
+        self.assertEqual(seen, ["https://cdn.example.net/update.json"])
+
+    def test_open_apk_streams_from_signed_redirect(self):
+        def responses(url, accept):
+            if url.endswith("/releases/latest"):
+                return 200, {}, json.dumps(self.release_assets()).encode()
+            if url.endswith("/PoJian.apk"):
+                return 302, {"Location": "https://cdn.example.net/PoJian.apk"}, b""
+            raise AssertionError(url)
+
+        source, _ = self.source(responses)
+        source._public_get = lambda url, timeout=15: _FakeAssetStream(b"apk-bytes")
+        stream = source.open_apk()
+        try:
+            self.assertEqual(stream.read(), b"apk-bytes")
+            self.assertEqual(stream.headers.get("Content-Length"), "9")
+        finally:
+            stream.close()
+
+    def test_release_without_update_assets_is_unavailable(self):
+        def responses(url, accept):
+            return 200, {}, json.dumps({"assets": []}).encode()
+
+        source, _ = self.source(responses)
+        with self.assertRaises(m.UpstreamError) as caught:
+            source.manifest()
+        self.assertEqual(caught.exception.status, 404)
+
+    def test_no_published_release_is_a_404(self):
+        def responses(url, accept):
+            return 404, {}, b"{}"
+
+        source, _ = self.source(responses)
+        with self.assertRaises(m.UpstreamError) as caught:
+            source.manifest()
+        self.assertEqual(caught.exception.status, 404)
+
+    def test_invalid_manifest_fields_are_rejected(self):
+        for bad in ({"version_code": 0, "version_name": "0.5.7", "sha256": "ab" * 32},
+                    {"version_code": 41, "version_name": "", "sha256": "ab" * 32},
+                    {"version_code": 41, "version_name": "0.5.7", "sha256": "zz" * 32},
+                    {"version_code": 41, "version_name": "0.5.7", "sha256": "ab" * 16}):
+            def responses(url, accept, bad=bad):
+                if url.endswith("/releases/latest"):
+                    return 200, {}, json.dumps(self.release_assets()).encode()
+                return 200, {}, json.dumps(bad).encode()
+
+            source, _ = self.source(responses)
+            with self.assertRaises(m.UpstreamError):
+                source.manifest()
+
+    def test_oversized_apk_is_rejected(self):
+        def responses(url, accept):
+            if url.endswith("/releases/latest"):
+                return 200, {}, json.dumps(self.release_assets(size=m.APP_UPDATE_MAX_APK_BYTES + 1)).encode()
+            return 200, {}, json.dumps({"version_code": 41, "version_name": "0.5.7",
+                                        "sha256": "ab" * 32}).encode()
+
+        source, _ = self.source(responses)
+        with self.assertRaises(m.UpstreamError):
+            source.manifest()
+
+    def test_release_metadata_is_cached(self):
+        def responses(url, accept):
+            if url.endswith("/releases/latest"):
+                return 200, {}, json.dumps(self.release_assets()).encode()
+            return 200, {}, json.dumps({"version_code": 41, "version_name": "0.5.7",
+                                        "sha256": "ab" * 32}).encode()
+
+        source, calls = self.source(responses)
+        source.manifest()
+        source.open_apk()
+        latest_calls = [url for url, _ in calls if url.endswith("/releases/latest")]
+        self.assertEqual(len(latest_calls), 1)
+
+
 if __name__ == "__main__": unittest.main()

@@ -95,10 +95,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 29
-        versionName = "0.5.7"
-        // HTTPS JSON manifest endpoint. Empty disables update checks and network requests.
-        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"\"")
+        versionCode = 30
+        versionName = "0.5.8"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -115,6 +113,15 @@ android {
         require(pojianServiceToken.length <= 512 && pojianServiceToken.all { it.code in 33..126 }) { "Invalid service token format" }
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
+        // HTTPS JSON manifest for in-app auto-updates. The production gateway serves it at
+        // /app-update and proxies the APK from the private release repository server-side.
+        // Override with the pojian.updateManifestUrl Gradle property, or set it empty in
+        // local.properties to disable update checks and network requests.
+        val updateManifestUrl = providers.gradleProperty("pojian.updateManifestUrl").orNull
+            ?: localServiceProperties.getProperty("pojian.updateManifestUrl", "https://xiaoyan.net.cn/pojian/app-update")
+        require(updateManifestUrl.length <= 300 && updateManifestUrl.all { it.code in 32..126 }) { "Invalid update manifest URL format" }
+        val escapedUpdateManifestUrl = updateManifestUrl.replace("\\", "\\\\").replace("\"", "\\\"")
+        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$escapedUpdateManifestUrl\"")
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

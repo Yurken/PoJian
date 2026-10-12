@@ -1,6 +1,8 @@
 # 应用自动更新
 
-配置入口：`app/build.gradle.kts` 中的 `BuildConfig.UPDATE_MANIFEST_URL`，当前为空。为空时不会检查更新、发送更新请求或显示更新弹窗。填写 HTTPS JSON 地址并重新构建后生效，不依赖 Git Tag 或 GitHub Release。
+配置入口：`app/build.gradle.kts` 中的 `BuildConfig.UPDATE_MANIFEST_URL`，默认 `https://xiaoyan.net.cn/pojian/app-update`（生产网关清单端点）。为空时不会检查更新、发送更新请求或显示更新弹窗。可用 `pojian.updateManifestUrl` Gradle 属性或在 `local.properties` 中置空来覆盖。
+
+清单与安装包由网关 `/app-update`、`/app-update/download` 代理：服务端持有 `EMERGE_APP_UPDATE_TOKEN`（只需私有仓库 Contents 只读权限的 GitHub 令牌），从 `EMERGE_APP_UPDATE_REPO`（默认 `baijiamin/PoJian`）最新 Release 的 `update.json` 与 `PoJian.apk` 生成；Release 由 CI 在打 `v<versionName>` Tag 时发布。令牌只存在于服务端，不进入 APK；端点公开，源码仓库保持私有。
 
 App 启动／返回前台时检查，成功后 6 小时内不重复检查，网络或数据错误后至少间隔 15 分钟重试。自动检查失败保持静默。「稍后」关闭本次提示；更高 `versionCode` 才会触发提示，版本名称只用于显示。无后台定时任务。
 

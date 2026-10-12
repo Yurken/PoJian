@@ -22,7 +22,7 @@ SSH 端口和身份文件通过自己的 `~/.ssh/config` 配置；先验证 `ssh
 
 首次部署前，按 [配置示例](../deploy/linux/backend.env.example) 创建远程配置。`EMERGE_SERVICE_TOKEN` 需另行生成，用于手机访问网关；模型 API Key 只放在服务器配置中。不要提交真实配置或将密钥写入日志。
 
-模型 API 的 `EMERGE_UPSTREAM_URL` 必须是完整 Chat Completions 请求地址，通常由供应商基础 URL 追加 `/chat/completions`；填写实际可用的模型名称和 Key。图片分析另填 `EMERGE_VISION_MODEL`，视觉 URL/Key 未填时继承文字服务；外部证据检索另填 `TAVILY_API_KEY`。
+模型 API 的 `EMERGE_UPSTREAM_URL` 必须是完整 Chat Completions 请求地址，通常由供应商基础 URL 追加 `/chat/completions`；填写实际可用的模型名称和 Key。图片分析另填 `EMERGE_VISION_MODEL`，视觉 URL/Key 未填时继承文字服务；外部证据检索另填 `TAVILY_API_KEY`。应用自动更新另填 `EMERGE_APP_UPDATE_TOKEN`（私有发布仓库 Contents 只读的 GitHub 令牌），未配置时 `/pojian/app-update` 清单与安装包端点返回 404，见 [应用自动更新](app-updates.md)。
 
 需要以后再配置 API 时，可显式设置 `EMERGE_ALLOW_UNCONFIGURED=1` 并留空模型 Key。健康与能力接口会返回 `model_configured=false`；未认证分析返回 `401`，认证后返回 `503`，不调用模型或消耗监测额度。服务令牌仍必须配置。填写真实 API 配置后可改为 `EMERGE_ALLOW_UNCONFIGURED=0` 并重启服务，重新验证真实调用。
 
