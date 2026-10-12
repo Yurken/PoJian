@@ -338,6 +338,12 @@ class AppUpdateSource:
         return assets
 
     def _asset_url(self, asset: dict) -> str:
+        # Prefer the API asset endpoint: it redirects straight to the signed CDN URL, which
+        # stays reachable from networks where github.com itself stalls. The browser_download_url
+        # first hop is github.com and is only a fallback for payloads missing the API link.
+        url = asset.get("url")
+        if isinstance(url, str) and url.startswith(GITHUB_API_BASE + "/"):
+            return url
         url = asset.get("browser_download_url")
         if not isinstance(url, str) or not url.startswith("https://github.com/"):
             raise UpstreamError("Update provider returned invalid JSON")

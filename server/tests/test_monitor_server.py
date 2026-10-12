@@ -1057,9 +1057,11 @@ class AppUpdateSourceTests(unittest.TestCase):
 
     def release_assets(self, code=41, name="0.5.7", digest="AB" * 32, size=500):
         return {"assets": [
-            {"name": "PoJian.apk", "size": size,
+            {"name": "PoJian.apk", "size": size, "id": 2,
+             "url": "https://api.github.com/repos/octo/repo/releases/assets/2",
              "browser_download_url": "https://github.com/octo/repo/releases/download/v0.5.7/PoJian.apk"},
-            {"name": "update.json", "size": 100,
+            {"name": "update.json", "size": 100, "id": 1,
+             "url": "https://api.github.com/repos/octo/repo/releases/assets/1",
              "browser_download_url": "https://github.com/octo/repo/releases/download/v0.5.7/update.json"}]}
 
     def test_configured_requires_token_and_repo_pair(self):
@@ -1075,7 +1077,7 @@ class AppUpdateSourceTests(unittest.TestCase):
         def responses(url, accept):
             if url.endswith("/releases/latest"):
                 return 200, {}, json.dumps(self.release_assets()).encode()
-            if url.endswith("/update.json"):
+            if url == "https://api.github.com/repos/octo/repo/releases/assets/1":
                 self.assertEqual(accept, "application/octet-stream")
                 return 302, {"Location": "https://cdn.example.net/update.json"}, b""
             raise AssertionError(url)
@@ -1091,7 +1093,8 @@ class AppUpdateSourceTests(unittest.TestCase):
         def responses(url, accept):
             if url.endswith("/releases/latest"):
                 return 200, {}, json.dumps(self.release_assets()).encode()
-            if url.endswith("/PoJian.apk"):
+            if url == "https://api.github.com/repos/octo/repo/releases/assets/2":
+                self.assertEqual(accept, "application/octet-stream")
                 return 302, {"Location": "https://cdn.example.net/PoJian.apk"}, b""
             raise AssertionError(url)
 
@@ -1103,6 +1106,14 @@ class AppUpdateSourceTests(unittest.TestCase):
             self.assertEqual(stream.headers.get("Content-Length"), "9")
         finally:
             stream.close()
+
+    def test_asset_url_falls_back_to_browser_download_url(self):
+        source, _ = self.source(lambda url, accept: (200, {}, b"{}"))
+        asset = {"browser_download_url": "https://github.com/octo/repo/releases/download/v0.5.7/PoJian.apk"}
+        self.assertEqual(source._asset_url(asset),
+                         "https://github.com/octo/repo/releases/download/v0.5.7/PoJian.apk")
+        with self.assertRaises(m.UpstreamError):
+            source._asset_url({})
 
     def test_release_without_update_assets_is_unavailable(self):
         def responses(url, accept):
