@@ -318,6 +318,8 @@ class AppUpdateSource:
 
     @classmethod
     def from_env(cls) -> "AppUpdateSource":
+        if os.getenv("EMERGE_APP_UPDATE_PUBLIC_REPO", "").strip():
+            return PublicAppUpdateSource(os.environ["EMERGE_APP_UPDATE_PUBLIC_REPO"])
         if os.getenv("EMERGE_APP_UPDATE_R2_BASE", "").strip():
             return R2UpdateSource(os.environ["EMERGE_APP_UPDATE_R2_BASE"])
         return cls(os.getenv("EMERGE_APP_UPDATE_REPO", APP_UPDATE_REPO_DEFAULT),
@@ -445,7 +447,13 @@ class AppUpdateSource:
         size = assets[APP_UPDATE_APK_ASSET].get("size")
         if not integer(size, 1) or size > APP_UPDATE_MAX_APK_BYTES:
             raise UpstreamError("更新包过大")
-        return {"version_code": code, "version_name": name, "sha256": digest.lower(), "apk_size": size}
+        result = {"version_code": code, "version_name": name, "sha256": digest.lower(), "apk_size": size}
+        if isinstance(self, PublicAppUpdateSource):
+            url = assets[APP_UPDATE_APK_ASSET].get("browser_download_url", "")
+            if not url.startswith(f"https://github.com/{self._repo}/releases/download/"):
+                raise UpstreamError("Invalid public APK URL")
+            result.update(apk_url=url, patches=value.get("patches", []))
+        return result
 
     def open_apk(self):
         """Open the APK byte stream; returns the response object which the caller must close."""
@@ -455,6 +463,19 @@ class AppUpdateSource:
         if status == 200:
             return _BufferedAsset(body, headers)
         return self._public_get(self._redirect_target(status, headers), timeout=60)
+
+
+class PublicAppUpdateSource(AppUpdateSource):
+    def __init__(self, repo: str):
+        super().__init__(repo, "")
+
+    @property
+    def configured(self) -> bool:
+        parts = self._repo.split("/")
+        return len(parts) == 2 and all(parts) and all(c.isalnum() or c in "-_." for p in parts for c in p)
+
+    def _headers(self, accept: str) -> dict:
+        return {"Accept": accept, "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "pojian-update-proxy"}
 
 
 class R2UpdateSource(AppUpdateSource):
@@ -1409,7 +1430,7 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
         def _app_update_download(self):
             if updates is None or not updates.configured:
                 return self.send_json(404, {"error": "Not found"})
-            if isinstance(updates, R2UpdateSource):
+            if isinstance(updates, (R2UpdateSource, PublicAppUpdateSource)):
                 try:
                     info = updates.manifest()
                 except UpstreamError as error:

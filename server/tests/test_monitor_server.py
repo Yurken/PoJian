@@ -1123,6 +1123,21 @@ class AppUpdateEndpointTests(unittest.TestCase):
 
 
 class AppUpdateSourceTests(unittest.TestCase):
+    def test_public_source_uses_no_auth_and_returns_version_pinned_asset(self):
+        source = m.PublicAppUpdateSource("octo/repo")
+        self.assertTrue(source.configured)
+        self.assertNotIn("Authorization", source._headers(m.GITHUB_ACCEPT))
+        assets = self.release_assets()
+        value = {"version_code": 41, "version_name": "0.5.7", "sha256": "ab" * 32,
+                 "patches": [{"format": "pjdiff1"}]}
+        source._api_get = lambda url, accept=m.GITHUB_ACCEPT: (200, {}, json.dumps(
+            assets if url.endswith("/releases/latest") else value).encode())
+        result = source.manifest()
+        self.assertEqual("https://github.com/octo/repo/releases/download/v0.5.7/PoJian.apk", result["apk_url"])
+        self.assertEqual(value["patches"], result["patches"])
+        with patch.dict(os.environ, {"EMERGE_APP_UPDATE_PUBLIC_REPO": "octo/repo"}):
+            self.assertIsInstance(m.AppUpdateSource.from_env(), m.PublicAppUpdateSource)
+
     def test_r2_source_reads_bounded_public_manifest_and_rejects_external_apk(self):
         source = m.R2UpdateSource("https://updates.example.com/")
         self.assertTrue(source.configured)

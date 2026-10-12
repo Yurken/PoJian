@@ -16,6 +16,8 @@ on:
       - 'scripts/apk_delta.py'
       - 'scripts/publish_r2.py'
       - 'scripts/tests/test_r2_updates.py'
+      - 'scripts/publish_public_apk.py'
+      - 'scripts/tests/test_public_apk.py'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -66,16 +68,12 @@ jobs:
       - name: Build signed release APK
         env:
           ORG_GRADLE_PROJECT_pojian.serviceToken: ${{ secrets.POJIAN_SERVICE_TOKEN }}
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
-          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          APK_RELEASE_REPOSITORY: ${{ vars.APK_RELEASE_REPOSITORY || 'baijiamin/PoJian-Releases' }}
         run: |
           python3 -c 'import os, sys; sys.exit(0 if os.environ.get("ORG_GRADLE_PROJECT_pojian.serviceToken") else "POJIAN_SERVICE_TOKEN is missing")'
-          UPDATE_ARGS=()
-          if [ -n "$R2_BUCKET" ]; then
-            PYTHONPATH=scripts python3 -c 'import os; from publish_r2 import public_base; public_base(os.environ["R2_PUBLIC_BASE_URL"])'
-            UPDATE_ARGS+=("-Ppojian.updateManifestUrl=${R2_PUBLIC_BASE_URL%/}/updates/latest.json")
-          fi
-          bash ./gradlew :app:assembleRelease --no-daemon --console=plain "${UPDATE_ARGS[@]}"
+          PYTHONPATH=scripts python3 -c 'import os; from publish_public_apk import validate_repo; validate_repo(os.environ["APK_RELEASE_REPOSITORY"])'
+          bash ./gradlew :app:assembleRelease --no-daemon --console=plain \
+            "-Ppojian.updateManifestUrl=https://github.com/${APK_RELEASE_REPOSITORY}/releases/latest/download/update.json"
 
       - name: Verify APK signature
         run: |
@@ -142,18 +140,20 @@ jobs:
       - name: Test R2 publisher and delta format
         run: python3 -m unittest discover -s scripts/tests -p test_r2_updates.py
 
-      - name: Publish APK and incremental update to Cloudflare R2
-        if: github.ref == 'refs/heads/main' && steps.release.outputs.published == 'true' && vars.R2_BUCKET != ''
+      - name: Test public release publisher
+        run: python3 -m unittest discover -s scripts/tests -p test_public_apk.py
+
+      - name: Publish APK and incremental update to public repository
+        if: github.ref == 'refs/heads/main' && steps.release.outputs.published == 'true'
         env:
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ vars.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          GH_TOKEN: ${{ secrets.APK_RELEASE_TOKEN }}
+          APK_RELEASE_REPOSITORY: ${{ vars.APK_RELEASE_REPOSITORY || 'baijiamin/PoJian-Releases' }}
         run: |
-          python3 -c 'import os; required=["R2_ACCOUNT_ID","R2_BUCKET","R2_PUBLIC_BASE_URL","R2_ACCESS_KEY_ID","R2_SECRET_ACCESS_KEY"]; assert all(os.environ.get(k) for k in required), "R2 configuration incomplete"'
-          python3 -m pip install 'boto3>=1.35,<2'
-          python3 scripts/publish_r2.py
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::warning::APK_RELEASE_TOKEN is not configured; public publication skipped."
+            exit 0
+          fi
+          python3 scripts/publish_public_apk.py
 
   cleanup:
     needs: apk

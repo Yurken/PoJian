@@ -95,8 +95,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 40
-        versionName = "0.5.18"
+        versionCode = 41
+        versionName = "0.5.19"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -113,11 +113,11 @@ android {
         require(pojianServiceToken.length <= 512 && pojianServiceToken.all { it.code in 33..126 }) { "Invalid service token format" }
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
-        // CI injects the public R2 manifest URL; existing builds can migrate via the gateway.
+        // Public release metadata is readable without any download token.
         // Override with the pojian.updateManifestUrl Gradle property, or set it empty in
         // local.properties to disable update checks and network requests.
         val updateManifestUrl = providers.gradleProperty("pojian.updateManifestUrl").orNull
-            ?: localServiceProperties.getProperty("pojian.updateManifestUrl", "https://xiaoyan.net.cn/pojian/app-update")
+            ?: localServiceProperties.getProperty("pojian.updateManifestUrl", "https://github.com/baijiamin/PoJian-Releases/releases/latest/download/update.json")
         require(updateManifestUrl.length <= 300 && updateManifestUrl.all { it.code in 32..126 }) { "Invalid update manifest URL format" }
         val escapedUpdateManifestUrl = updateManifestUrl.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$escapedUpdateManifestUrl\"")

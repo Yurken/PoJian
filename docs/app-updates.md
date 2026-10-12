@@ -1,5 +1,7 @@
 # 应用自动更新
 
+当前使用独立公开 GitHub 仓库分发 APK，配置见 [公开 APK 发布](PUBLIC_APK_RELEASES.md)。App 默认从公开 Release 的 `update.json` 检测版本，下载无需令牌；R2 为保留的旧方案，不再是当前发布流程。
+
 支持 Cloudflare R2 发布与差分更新，配置步骤见 [R2 自动更新](R2_UPDATES.md)。CI 配置 `R2_PUBLIC_BASE_URL` 后，构建直接使用 R2 清单地址；服务器配置 `EMERGE_APP_UPDATE_R2_BASE` 后，旧客户端的网关清单也返回 R2 下载地址。上传密钥仅保存在 GitHub Secrets。未配置 R2 时继续使用下述 GitHub 网关方式。
 
 配置入口：`app/build.gradle.kts` 中的 `BuildConfig.UPDATE_MANIFEST_URL`，默认 `https://xiaoyan.net.cn/pojian/app-update`（生产网关清单端点）。为空时不会检查更新、发送更新请求或显示更新弹窗。可用 `pojian.updateManifestUrl` Gradle 属性或在 `local.properties` 中置空来覆盖。
