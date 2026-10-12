@@ -30,10 +30,15 @@ class CocoonUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private fun state(repeated: Int, total: Int = 5): AnalysisState {
         val report = CognitiveAnalyzer().analyze(emptyList(), StatisticsPeriod.DAY, 1_792_000_000_000L)
-        return AnalysisState(report = report.copy(claims = (0 until total).map { i ->
+        val claims = (0 until total).map { i ->
             ClaimObservation(i.toLong(), report.end, "test", "主题", "观点", emptyList(), "", false,
                 if (i < repeated) Increment.REPEATED else Increment.NEW, null)
-        }))
+        }
+        val dist = ExposureDistribution(total * 6, 1, total * 6, mapOf("主题" to 1.0), mapOf("test" to total * 6))
+        val views = claims.firstOrNull()?.let { listOf(ViewpointExposure("fixture", "主题", "对象", "维度", "支持", dist,
+            repeated.toDouble() / total, null, null, 1, false, it, listOf(it.eventId))) }.orEmpty()
+        return AnalysisState(report = report.copy(claims = claims,
+            exposure = ExposureAssessment(report.end - 7 * 86_400_000L, report.end, dist, "主题", null, views, claims)))
     }
 
     @Test fun overviewShowsActualShareAndDoesNotReuseStaleOrWrongPeriodData() {
@@ -48,9 +53,9 @@ class CocoonUiTest {
             }
         }
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("cocoon-card"))
-        compose.onNodeWithText("重复依据").assertIsDisplayed()
+        compose.onNodeWithText("观点集中度").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("60.0%")
-        compose.onNodeWithText("3/5 个观点").assertIsDisplayed()
+        compose.onNodeWithText("30次接触 · 1天").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-density").assertDoesNotExist()
         compose.runOnIdle { analysis.value = analysis.value.copy(stale = true) }
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
@@ -83,7 +88,7 @@ class CocoonUiTest {
             }
             compose.runOnIdle { analysis.value = state(0, 0) }
             compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
-            compose.onNodeWithContentDescription("暂无依据占比").assertExists()
+            compose.onNodeWithContentDescription("观察不足").assertExists()
         }
     }
 

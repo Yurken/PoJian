@@ -59,7 +59,7 @@ internal fun CocoonVisual(density: Float?, dark: Boolean, playing: Boolean, modi
     val strandPath = remember { Path() }
     val star = remember { Path() }
     Canvas(modifier.testTag("cocoon-visual").semantics {
-        contentDescription = density?.let { "重复依据占比 ${String.format(java.util.Locale.CHINA, "%.1f", it * 100)}%" } ?: "暂无依据占比"
+        contentDescription = density?.let { "观点集中度 ${String.format(java.util.Locale.CHINA, "%.1f", it * 100)}%" } ?: "观察不足"
     }.pointerInput(moving) {
         if (moving) detectTapGestures(onPress = { point ->
             touch = Offset((point.x / size.width - .5f) * 2, (point.y / size.height - .5f) * 2)

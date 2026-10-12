@@ -64,12 +64,16 @@ class CognitiveAnalyzerTest {
         assertEquals(Increment.REPEATED, report.claims.last().increment)
         assertEquals(1L, report.claims.last().previousEventId)
     }
-    @Test fun persistentRepeatRequiresSeveralDaysAndEnoughDistinctEvents() {
-        val events = List(12) { index -> event(index + 1L, now - (index % 3) * 86_400_000L - (index / 3) * 300_000L,
-            "当前就业形势很差，因为招聘岗位同比减少20%") }
-        val report = CognitiveAnalyzer().analyze(events, StatisticsPeriod.WEEK, now, zone)
-        assertEquals(3, report.observedDays)
-        assertTrue(report.findings.any { it.title.contains("观察到持续低增量") })
+    @Test fun oneDayConcentrationUsesStanceRatherThanEvidenceReuse() {
+        val events = List(36) { index -> event(index + 1L, now - index * 300_000L,
+            "当前就业形势很差，因为招聘岗位同比减少${index + 1}%").copy(workKey = "post-$index", identityMethod = "content_id") }
+        val semantics = events.map { event -> EventSemantics(event.id, event.visibleText, now, listOf(
+            ArgumentUnit("当前就业形势很差", "就业与职场", "就业形势", "招聘难度", "困难",
+                event.visibleText.substringAfter("因为"), "当前", false))) }
+        val report = CognitiveAnalyzer().analyze(events, StatisticsPeriod.WEEK, now, zone, semantics = semantics)
+        assertEquals(1, report.observedDays)
+        assertTrue(report.claims.none { it.increment == Increment.REPEATED })
+        assertTrue(report.exposure!!.signals.isNotEmpty())
         assertTrue(report.findings.first().eventIds.isNotEmpty())
     }
     @Test fun sameDayConcentrationIsNotCalledACocoon() {

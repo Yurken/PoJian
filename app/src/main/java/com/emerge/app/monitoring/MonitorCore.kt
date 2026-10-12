@@ -60,6 +60,7 @@ data class MonitorFinding(
         "insufficient" -> "证据不足"
         "not_checked" -> "未完成核查"
         "repetition" -> "观点与依据重复线索"
+        "concentration" -> "观点集中线索"
         else -> "待核查"
     }
 }
@@ -90,14 +91,15 @@ object MonitorPolicy {
         if (now < finding.capturedAt || now - finding.capturedAt > 120_000) return false
         if (lastAlertAt != null && (now < lastAlertAt || now - lastAlertAt < config.cooldownMinutes * 60_000L)) return false
         return when (finding.kind) {
-            "cocoon" -> config.cocoon && !config.researchMode && finding.verdict == "repetition"
+            "cocoon" -> config.cocoon && !config.researchMode && finding.verdict == "concentration"
             "fact" -> config.realtime && finding.verdict == "contradicted" &&
                 finding.sources.isNotEmpty() && finding.sources.all { it.valid() }
             else -> false
         }
     }
 
-    /** Same topic is not same stance; several fragments from one audio session are one encounter. */
+    /** Legacy evidence-reuse diagnostic, not the production concentration/alert decision. */
+    @Deprecated("Use ExposureAnalyzer for concentration; evidence reuse is only an auxiliary signal.")
     fun repetition(history: List<ObservedArgument>, now: Long, zone: ZoneId = ZoneId.systemDefault()): ObservedArgument? {
         val eligible = history.filter { !it.uncertain && it.topic.isNotBlank() && it.subject.isNotBlank() &&
             it.dimension.isNotBlank() && it.stance.isNotBlank() &&

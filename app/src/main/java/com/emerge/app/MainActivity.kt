@@ -191,7 +191,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                             app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { /* 网关配置见服务端管理台 */ }, { showCaptureTools = true },
                             cloudEnabled = audioConfig.enabled, onCloudEnabledChange = { value ->
                                 audioModel.saveConfig(audioConfig.copy(enabled = value), {}, { error -> app.monitor.notice(error) })
-                            })
+                            }, cloudConfig = audioConfig)
                     })
             }
         }

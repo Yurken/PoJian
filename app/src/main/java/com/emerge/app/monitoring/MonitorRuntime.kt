@@ -71,12 +71,11 @@ class MonitorRuntime(private val app: EmergeApplication) {
     val config = mutableConfig.asStateFlow()
     private val mutableState = MutableStateFlow(MonitorState(findings = readFindings()))
     val state = mutableState.asStateFlow()
-    private val arguments = readArguments().toMutableList()
     private val cache = linkedMapOf<String, Pair<Long, JSONObject>>()
     private var previousEvents: Map<Long, BrowseEvent>? = null
     @Volatile private var connection: HttpURLConnection? = null
     @Volatile private var manualHandler: (() -> Unit)? = null
-    private var lastLocalAnalysis = 0L
+    private var exposureJob: Job? = null
 
     init {
         scope.launch {
@@ -163,25 +162,32 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     updated == null || (updated.visibleText != old.visibleText && !MonitorInputs.isAppend(old, updated))
                 }) invalidate(clearSemantics = false)
                 textWake.trySend(Unit)
-                if (config.value.cocoon && app.captureSettings.enabled.value && rows.isNotEmpty() &&
-                    System.currentTimeMillis() - lastLocalAnalysis >= 30_000) {
-                    lastLocalAnalysis = System.currentTimeMillis()
-                    val analysisGeneration = app.repository.captureGeneration
-                    val report = CognitiveAnalyzer().analyze(rows, StatisticsPeriod.WEEK, lastLocalAnalysis,
-                        checkCancellation = { scope.coroutineContext.ensureActive() }, semantics = semantics)
-                    val repeated = report.findings.firstOrNull { it.title.startsWith("观察到持续低增量重复") }
-                    if (repeated != null && analysisGeneration == app.repository.captureGeneration && config.value.cocoon && app.captureSettings.enabled.value) {
-                        val members = report.groups.firstOrNull { it.topic == repeated.topic }?.observations.orEmpty()
-                        val distinctEncounters = members.map { claim -> rows.firstOrNull { it.id == claim.eventId }
-                            ?.let { it.audioSessionId ?: "event:${it.id}" } }.filterNotNull().distinct()
-                        // One long recording must never manufacture eight independent encounters.
-                        if (distinctEncounters.size >= 8) {
-                            val latest = members.maxByOrNull { it.timestamp }!!
-                            publish(MonitorFinding("local:" + MonitorPolicy.hash(repeated.topic), "event:${latest.eventId}",
-                                latest.packageName, latest.timestamp, "cocoon", "repetition", latest.quote,
-                                repeated.explanation, topic = repeated.topic, contextToken =
-                                state.value.contextToken.takeIf { state.value.currentPackage == latest.packageName &&
-                                    state.value.screenText.contains(latest.quote) }.orEmpty()))
+                exposureJob?.cancel()
+                if (config.value.cocoon && app.captureSettings.enabled.value && rows.isNotEmpty()) {
+                    exposureJob = scope.launch {
+                        delay(500)
+                        val analysisGeneration = app.repository.captureGeneration
+                        val analysisEpoch = epoch.get()
+                        val report = CognitiveAnalyzer().analyze(rows, StatisticsPeriod.WEEK, System.currentTimeMillis(),
+                            checkCancellation = { coroutineContext.ensureActive() }, semantics = semantics)
+                        coroutineContext.ensureActive()
+                        if (analysisEpoch == epoch.get() && analysisGeneration == app.repository.captureGeneration && config.value.cocoon && app.captureSettings.enabled.value) {
+                            val exposure = report.exposure ?: return@launch
+                            val findings = exposure.viewpoints.zip(exposure.findings()).toMap()
+                            val signals = exposure.signals
+                            val ids = signals.map { "exposure:" + MonitorPolicy.hash(it.key) }.toSet()
+                            mutableState.update { state -> state.copy(findings = state.findings.filter {
+                                it.kind != "cocoon" || it.id in ids
+                            }) }
+                            signals.forEach { signal ->
+                                val latest = signal.latest
+                                publish(MonitorFinding("exposure:" + MonitorPolicy.hash(signal.key), "event:${latest.eventId}",
+                                    latest.packageName, latest.timestamp, "cocoon", "concentration", latest.quote,
+                                    findings.getValue(signal).explanation, topic = "${signal.topic} · ${signal.subject} · ${signal.dimension}", contextToken =
+                                    state.value.contextToken.takeIf { state.value.currentPackage == latest.packageName &&
+                                        state.value.screenText.contains(latest.quote) }.orEmpty()))
+                            }
+                            prefs.edit().putString("findings", JSONArray().apply { state.value.findings.forEach { put(encode(it)) } }.toString()).apply()
                         }
                     }
                 }
@@ -438,7 +444,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
             }
             if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
             input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
-            commit(input, outputs, claims, units, observed, policy, service)
+            commit(input, outputs, service)
             val retryableFactFailure = checkFacts && (0 until claims.length()).any { index ->
                 val claim = claims.getJSONObject(index)
                 claim.optString("verdict") == "not_checked" && claim.optJSONObject("check_error")?.optBoolean("retryable", false) == true
@@ -467,36 +473,10 @@ class MonitorRuntime(private val app: EmergeApplication) {
         } finally { connection = null; mutableState.update { it.copy(busy = false) } }
     }
 
-    @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, claims: JSONArray,
-        units: List<ArgumentUnit>, observed: String,
-        policy: MonitorConfig, service: TextServiceConfig) {
+    @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, service: TextServiceConfig) {
         if (!current(input) || app.audioCoordinator.settings.config.value != service) return
         outputs.forEach(::publish)
-        val repeated = synchronized(arguments) {
-                (0 until claims.length()).forEach { index ->
-                    val row = claims.getJSONObject(index)
-                    val evidence = row.optString("evidence", "")
-                    if (evidence.isNotBlank() && (input.text.contains(evidence) || observed.contains(evidence))) {
-                        arguments += ObservedArgument(input.key, input.packageName, input.at,
-                            row.optString("topic", ""), row.optString("subject", ""), row.optString("dimension", ""),
-                            row.optString("stance", ""), evidence, row.optString("conditions", ""),
-                            row.optBoolean("uncertain", true) || listOf("topic", "subject", "dimension", "stance")
-                                .any { row.optString(it).isBlank() }, input.encounter,
-                            units[index].evidenceActors, units[index].evidenceOrigins)
-                    }
-                }
-                val unique = arguments.distinct()
-                arguments.clear(); arguments.addAll(unique)
-                while (arguments.size > 600) arguments.removeAt(0)
-                prefs.edit().putString("arguments", encodeArguments(arguments)).apply()
-                if (policy.cocoon) MonitorPolicy.repetition(arguments.toList(), System.currentTimeMillis()) else null
-            }
-            repeated?.let { a ->
-                    publish(MonitorFinding("repeat:" + MonitorPolicy.hash(a.topic + a.subject + a.dimension), input.key,
-                        input.packageName, input.at, "cocoon", "repetition", a.stance,
-                        "同一议题、对象和条件下的观点与依据持续重复。仅反映采样内容，不代表你的认同或平台推荐意图。",
-                        topic = a.topic + " · " + a.subject + " · " + a.dimension, contextToken = input.token, inputKind = input.kind))
-            }
+        // Longitudinal findings are rebuilt from retained Room records by the exposure observer.
     }
 
     private suspend fun request(input: MonitorInput, endpoint: String, token: String, checkFacts: Boolean): JSONObject {
@@ -539,7 +519,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     }
     @Synchronized fun invalidate(clearSemantics: Boolean = true) {
         epoch.incrementAndGet(); connection?.disconnect()
-        synchronized(cache) { cache.clear() }; synchronized(arguments) { arguments.clear() }
+        synchronized(cache) { cache.clear() }; exposureJob?.cancel()
         mutableState.update { it.copy(findings = emptyList(), busy = false, notice = "材料已更新，旧核查与比对结果已清除") }
         prefs.edit().remove("findings").remove("arguments").apply()
         if (clearSemantics) {
@@ -583,31 +563,6 @@ class MonitorRuntime(private val app: EmergeApplication) {
         .put("topic", f.topic).put("input", f.inputKind).put("sources", JSONArray().apply { f.sources.forEach {
             put(JSONObject().put("url", it.url).put("title", it.title).put("quote", it.quote).put("excerpt", it.excerpt))
         } })
-    private fun encodeArguments(rows: List<ObservedArgument>) = JSONArray().apply { rows.forEach { a ->
-        put(JSONObject().put("key", a.contentKey).put("package", a.packageName).put("at", a.capturedAt)
-            .put("topic", a.topic).put("subject", a.subject).put("dimension", a.dimension).put("stance", a.stance)
-            .put("evidence", a.evidence).put("conditions", a.conditions).put("uncertain", a.uncertain).put("encounter", a.encounterKey)
-            .put("evidence_actors", JSONArray(a.evidenceActors)).put("evidence_origins", JSONArray(a.evidenceOrigins)))
-    } }.toString()
-    private fun readArguments(): List<ObservedArgument> = runCatching {
-        val rows = JSONArray(prefs.getString("arguments", "[]"))
-        (0 until minOf(600, rows.length())).map { i -> rows.getJSONObject(i).let { j ->
-            fun identity(name: String): List<String> {
-                if (!j.has(name)) return emptyList()
-                val values = j.get(name) as? JSONArray ?: error("Invalid evidence identity")
-                require(values.length() <= 4)
-                return (0 until values.length()).map { index ->
-                    val value = values.get(index) as? String ?: error("Invalid evidence identity")
-                    require(value.isNotBlank() && value.length <= 80 && j.getString("evidence").contains(value))
-                    value
-                }.also { require(it.distinct().size == it.size) }
-            }
-            ObservedArgument(j.getString("key"), j.getString("package"), j.getLong("at"), j.getString("topic"),
-                j.getString("subject"), j.getString("dimension"), j.getString("stance"), j.getString("evidence"),
-                j.getString("conditions"), j.getBoolean("uncertain"), j.getString("encounter"),
-                identity("evidence_actors"), identity("evidence_origins"))
-        } }
-    }.getOrDefault(emptyList())
     private fun readFindings(): List<MonitorFinding> = runCatching {
         val rows = JSONArray(prefs.getString("findings", "[]"))
         (0 until minOf(rows.length(), 80)).map { i -> rows.getJSONObject(i).let { j ->
@@ -617,5 +572,5 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 (0 until minOf(s.length(), 4)).map { n -> s.getJSONObject(n).let { WebEvidence(it.getString("url"), it.getString("title"), it.getString("quote"), it.getString("excerpt")) } },
                 topic = j.optString("topic", ""), inputKind = j.optString("input", "text"))
         } }
-    }.getOrDefault(emptyList())
+    }.getOrDefault(emptyList()).filter { it.kind != "cocoon" }
 }

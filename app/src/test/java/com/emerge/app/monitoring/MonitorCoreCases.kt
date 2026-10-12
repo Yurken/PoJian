@@ -61,7 +61,7 @@ object MonitorCoreCases {
         test("conditions remain separate") { check(MonitorPolicy.repetition(argsHistory.mapIndexed { i, a -> a.copy(conditions = "条件$i") }, now) == null) }
         test("opposing stances not collapsed") { check(MonitorPolicy.repetition(argsHistory.mapIndexed { i, a -> a.copy(stance = if (i % 2 == 0) "支持" else "反对") }, now) == null) }
         test("topic alone never establishes a cocoon") { check(MonitorPolicy.repetition(argsHistory.map { it.copy(evidence = "") }, now) == null) }
-        test("research mode silences only cocoon hints") { check(!allowed(finding.copy(kind = "cocoon", verdict = "repetition"), config.copy(researchMode = true))); check(allowed(c = config.copy(researchMode = true))) }
+        test("research mode silences only cocoon hints") { check(allowed(finding.copy(kind = "cocoon", verdict = "concentration"))); check(!allowed(finding.copy(kind = "cocoon", verdict = "concentration"), config.copy(researchMode = true))); check(allowed(c = config.copy(researchMode = true))) }
         test("cross app claim cooldown shared") { check(MonitorPolicy.alertKey(finding) == MonitorPolicy.alertKey(finding.copy(packageName = "other"))) }
         println("$count/$count core cases passed")
     }

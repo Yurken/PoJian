@@ -208,13 +208,13 @@ internal fun AnalysisCards(
                     }
 
                     WhiteCard {
-                        CollapsibleReportSection("长期观察") {
+                        CollapsibleReportSection("长期观察 · 近7天") {
                             report.findings.forEach { finding ->
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     MetadataText(finding.topic)
                                     Text(finding.title, color = Ink, fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold, lineHeight = 22.sp)
-                                    val referenced = report.claims.filter {
+                                    val referenced = (report.claims + report.exposure?.claims.orEmpty()).distinctBy { it.eventId to it.quote }.filter {
                                         it.eventId in finding.eventIds && (finding.topic == "全部" || it.topic == finding.topic)
                                     }
                                     if (referenced.isNotEmpty()) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {

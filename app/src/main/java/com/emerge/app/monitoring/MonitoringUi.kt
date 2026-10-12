@@ -7,6 +7,7 @@ import com.emerge.app.ui.PojianSwitch
 import com.emerge.app.ui.PojianTextField
 import com.emerge.app.ui.PojianSlider
 import com.emerge.app.ui.PojianDialog
+import com.emerge.app.ui.ServiceConnectionTest
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -24,7 +25,8 @@ import com.emerge.app.audioanalysis.TextServiceConfig
 @Composable
 fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> Unit,
     requestCount: Int, frameCount: Int, onCloud: () -> Unit, onCaptureTools: () -> Unit,
-    cloudEnabled: Boolean = false, onCloudEnabledChange: (Boolean) -> Unit = {}) {
+    cloudEnabled: Boolean = false, onCloudEnabledChange: (Boolean) -> Unit = {},
+    cloudConfig: TextServiceConfig? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("监测与提醒", help = "悬浮球：在所选应用内点击核查。\n观点重复观察：比较议题、观点与依据。\n实时事实核查：自动核查新增文字与口播。\n关键画面分析：采样当前画面，需 Android 11 及以上。\n专题研究模式：保留统计，暂缓重复提醒。\n夜间免打扰：${config.quietStart}:00—${config.quietEnd}:00 不主动提醒，提醒始终静音。")
         MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
@@ -41,6 +43,7 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         MonitorSlider("自动提示停留", config.displaySeconds, 2..8, "秒") { onChange(config.copy(displaySeconds = it)) }
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Text("今日云端请求 $requestCount 次（含画面 $frameCount 次）", style = MaterialTheme.typography.bodySmall)
+        cloudConfig?.let { ServiceConnectionTest(it) }
         PojianTextButton(onClick = onCaptureTools) { Text("采集工具") }
     }
 }

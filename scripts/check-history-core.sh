@@ -29,10 +29,10 @@ TEST="$ROOT/app/src/test/java/com/emerge/app/analysis"
 kotlinc "$WORK/RoomAnnotations.kt" "$WORK/AudioSessionType.kt" \
     "$MAIN/data/BrowseEvent.kt" "$MAIN/capture/ContentContinuity.kt" \
     "$MAIN/capture/WorkIdentity.kt" "$MAIN/capture/VisibilityIntervals.kt" \
-    "$MAIN/ui/BrowseStatistics.kt" "$MAIN/analysis/ObservationWindow.kt" \
+    "$MAIN/ui/BrowseStatistics.kt" "$MAIN/analysis/ObservationWindow.kt" "$MAIN/analysis/BrowseWorkKey.kt" \
     "$MAIN/analysis/StructuredSemantics.kt" "$MAIN/analysis/EvidenceIdentity.kt" \
     "$MAIN/analysis/EvidenceAtoms.kt" "$MAIN/analysis/EvidenceTextCanonicalizer.kt" "$MAIN/analysis/SemanticFieldKeys.kt" \
-    "$MAIN/analysis/CognitiveAnalyzer.kt" "$MAIN/audioanalysis/AudioInsights.kt" \
+    "$MAIN/analysis/CognitiveAnalyzer.kt" "$MAIN/analysis/ExposureAnalyzer.kt" "$MAIN/audioanalysis/AudioInsights.kt" \
     "$TEST/HistoryComparisonCases.kt" "$TEST/StructuredSemanticsCases.kt" -include-runtime -d "$WORK/history-core.jar"
 java -cp "$WORK/history-core.jar" com.emerge.app.analysis.HistoryComparisonCases
 java -cp "$WORK/history-core.jar" com.emerge.app.analysis.StructuredSemanticsCases

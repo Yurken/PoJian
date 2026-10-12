@@ -50,13 +50,17 @@ object ReportExporter {
         if (report.claims.isEmpty()) appendLine("未识别到可回查的观点，无法据此判断是否存在信息同质化。")
         appendLine("观点比例的统计范围为识别出的 ${report.claims.size} 个观点，不代表全部内容或停留时间。云端分析的主题和立场需核对；本地识别只覆盖预设词表，立场未经语义模型确认。")
         appendLine()
-        appendLine("## 3. 长期观察与表达特征")
+        appendLine("## 3. 长期观察（近7天）与表达特征")
         report.findings.forEach {
             appendLine("${it.topic}：${it.title}")
             appendLine(it.explanation)
             appendLine("核查事件：${it.eventIds.joinToString().ifBlank { "无" }}")
+            val ids = it.eventIds.toSet()
+            report.exposure?.claims.orEmpty().filter { claim -> claim.eventId in ids }.forEach { claim ->
+                appendLine("记录 #${claim.eventId} | ${time(claim.timestamp)} | ${claim.packageName} | 原句：${claim.quote}")
+            }
         }
-        appendLine("判定规则：同一主题至少 8 条不同记录、覆盖至少 3 天；最大的一组相似说法占比至少 70%，且依据重复的记录占比至少 60%。同一条记录里的多个观点不增加次数或时长权重。这是未经校准的工程阈值，不是科学诊断，也不是认知风险评分。")
+        appendLine("判定规则：回查近7天，同一议题、对象、评价维度和条件至少30次已识别接触，总体及比较范围内的明确立场识别覆盖率均至少60%，同一立场占比至少75%。不设最低天数，一天内样本充足也可判断集中。同次接触的多种立场平分权重，不要求依据重复。与前7天比较时，两期均须满足样本门槛、应用集合相同，识别覆盖率及各应用份额变化不超过20个百分点；同向占比上升至少15个百分点且多样性指数下降至少0.1才标为收窄线索。多样性为1减各立场份额平方和。跨应用要求至少2个应用各有10次已识别接触、覆盖率至少60%、同向占比至少75%。这些是未经校准的工程阈值，不是科学诊断或认知风险评分。")
         appendLine("不满足上述规则不代表没有信息同质化；应用数量、主题集中、情绪倾向和观点一致都不能单独得出结论。时长不足或缺失时，也不能凭次数判断主要精力花在了哪里。")
         val signalLimit = if (appendixLimit == Int.MAX_VALUE) Int.MAX_VALUE else 20
         report.contentSignals.take(signalLimit).forEach {

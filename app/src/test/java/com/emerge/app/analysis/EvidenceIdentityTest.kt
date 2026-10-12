@@ -18,7 +18,7 @@ class EvidenceIdentityTest {
     private fun report(evidence: List<String>, actors: List<List<String>> = List(evidence.size) { emptyList() },
         origins: List<List<String>> = List(evidence.size) { emptyList() }, conditions: List<String> = List(evidence.size) { "当前" }): CognitiveReport {
         val events = evidence.mapIndexed { i, value -> BrowseEvent(i + 1L, "reader.${i % 3}",
-            now - 4 * 86_400_000L + i * 30_000_000L, 32, "$quote，因为$value", sampleCount = 1,
+            now - 4 * 86_400_000L + i * minOf(30_000_000L, 4 * 86_400_000L / evidence.size.coerceAtLeast(1)), 32, "$quote，因为$value", sampleCount = 1,
             workKey = "publisher-post-$i") }
         val semantics = events.mapIndexed { i, event -> EventSemantics(event.id, event.visibleText, now,
             listOf(ArgumentUnit(quote, "就业与职场", "互联网招聘需求", "岗位数量", "下降", evidence[i],
@@ -27,7 +27,7 @@ class EvidenceIdentityTest {
     }
     private fun live(evidence: List<String>, actors: List<List<String>> = List(evidence.size) { emptyList() }) =
         evidence.mapIndexed { i, value -> ObservedArgument("content-$i", "reader.${i % 3}",
-            now - 4 * 86_400_000L + i * 30_000_000L, "就业与职场", "互联网招聘需求", "岗位数量", "下降",
+            now - 4 * 86_400_000L + i * minOf(30_000_000L, 4 * 86_400_000L / evidence.size.coerceAtLeast(1)), "就业与职场", "互联网招聘需求", "岗位数量", "下降",
             value, "当前", encounterKey = "post-$i", evidenceActors = actors[i]) }
 
     @Test fun differentNamedCasesKeepOneViewpointButAddIndividualFacts() {
@@ -124,17 +124,17 @@ class EvidenceIdentityTest {
             listOf(listOf("工程师李青"), listOf("李青"))).claims.last().increment)
     }
 
-    @Test fun sustainedDistinctCasesDoNotTriggerReportOrLiveRepetitionAlerts() {
-        val evidence = (0 until 12).map { story("当事对象${('A'.code + it).toChar()}") }
+    @Test fun sustainedDistinctCasesCanConcentrateStanceWithoutReusingEvidence() {
+        val evidence = (0 until 36).map { story("当事对象$it") }
         val result = report(evidence)
-        assertEquals(11, result.claims.count { it.increment == Increment.NEW })
-        assertTrue(result.findings.none { it.title.contains("持续低增量重复") })
+        assertEquals(35, result.claims.count { it.increment == Increment.NEW })
+        assertTrue(result.exposure!!.signals.isNotEmpty())
         assertNull(MonitorPolicy.repetition(live(evidence), now, zone))
     }
 
     @Test fun sustainedRepostsStillTriggerTheExistingReviewHint() {
-        val evidence = List(12) { story("工程师李青") }
-        assertTrue(report(evidence).findings.any { it.title.contains("持续低增量重复") })
+        val evidence = List(36) { story("工程师李青") }
+        assertTrue(report(evidence).exposure!!.signals.isNotEmpty())
         assertNotNull(MonitorPolicy.repetition(live(evidence), now, zone))
     }
 

@@ -49,7 +49,7 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val workStatistics: com.emerge.app.ui.BrowseStatistics? = null,
     val structuredAnalyzedRecords: Int = 0, val localFallbackRecords: Int = 0,
     val rejectedSemanticsRecords: Int = 0, val pendingAnalysisRecords: Int = 0,
-    val failedAnalysisRecords: Int = 0)
+    val failedAnalysisRecords: Int = 0, val exposure: ExposureAssessment? = null)
 
 class CognitiveAnalyzer {
     private companion object {
@@ -126,14 +126,14 @@ class CognitiveAnalyzer {
                 if (within) merged++
                 return@forEach
             }
+            eventTopics[event] = structured?.claims?.firstOrNull { it.topic.isNotBlank() }?.topic?.trim()
+                ?: detectTopic(lines.joinToString(" ")) ?: "未分类"
             if (within) {
                 usableEvents += event
                 if (structured != null) structuredAnalyzed++ else {
                     localFallback++
                     if (supplied != null) rejectedSemantics++
                 }
-                eventTopics[event] = structured?.claims?.firstOrNull { it.topic.isNotBlank() }?.topic?.trim()
-                    ?: detectTopic(lines.joinToString(" ")) ?: "未分类"
                 lines.filter { emotionalExpression.containsMatchIn(it) }.take(2).forEach {
                     signals += ContentSignal(event.id, "原文含焦虑或紧迫的表达", it)
                 }
@@ -227,42 +227,12 @@ class CognitiveAnalyzer {
         val groups = grouped.map { ClaimGroup(it.first().topic, it.first().quote, it.toList()) }
             .sortedByDescending { it.observations.mapNotNull { candidate -> contactId(candidate.eventId) }.distinct().size }
         val topicCounts = current.groupingBy { it.topic }.eachCount().map { TopicCount(it.key, it.value) }.sortedByDescending { it.count }
-        val currentEventsById = usableEvents.associateBy { it.id }
         val slicesByEvent = usableEvents.associateWith { checkCancellation(); window.slices(it) }
         fun dates(ids: Set<Long>) = usableEvents.filter { it.id in ids }.flatMap { slicesByEvent[it].orEmpty() }
             .map { Instant.ofEpochMilli(it.start).atZone(zone).toLocalDate() }.distinct().size
-        val findings = topicCounts.map { topic ->
-            checkCancellation()
-            val members = current.filter { it.topic == topic.topic }
-            val ids = members.map { it.eventId }.toSet()
-            val major = groups.first { it.topic == topic.topic }
-            val majorIds = major.observations.map { it.eventId }.toSet()
-            val repeated = members.filter { it.increment == Increment.REPEATED }.map { it.eventId }.distinct().size
-            val majorRepeated = major.observations.filter { it.increment == Increment.REPEATED }
-                .map { it.eventId }.distinct().size
-            val truncatedComparisons = members.count { it.historyComparisonTruncated }
-            val topicDays = dates(ids)
-            val contacts = ids.mapNotNull(::contactId).toSet()
-            val majorContacts = majorIds.mapNotNull(::contactId).toSet()
-            val repeatedContacts = major.observations.filter { it.increment == Increment.REPEATED }
-                .mapNotNull { contactId(it.eventId) }.toSet()
-            val title = when {
-                contacts.size < 8 || topicDays < 3 -> "观察不足，暂时无法判断是否收窄"
-                majorContacts.size.toDouble() / contacts.size >= 0.7 && repeatedContacts.size.toDouble() / contacts.size >= 0.6 -> "观察到持续低增量重复，建议回查来源"
-                members.none { it.increment == Increment.NEW || it.increment == Increment.REPEATED } -> "依据或比较历史不足，暂时无法判断是否收窄"
-                members.any { it.increment == Increment.NEW } -> "观察到依据有补充，仍需核实内容"
-                else -> "暂未发现重复线索，不代表不存在信息同质化"
-            }
-            val knownDuration = ids.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
-            val majorDuration = majorIds.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
-            val unknown = ids.count { currentEventsById[it]?.let { event -> !window.durationKnown(event) } == true }
-            ObservationFinding(topic.topic, title,
-                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条，该组依据重复 $majorRepeated 条；全主题依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录停留时长共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条时长未统计。停留按记录去重；没有时长数据时无法判断是否阅读集中。有 $truncatedComparisons 个观点达到历史候选上限，未匹配部分保留为待定。片段新增只相对于本次可比历史，不证明事实真实或来源独立。" +
-                    if (members.any { it.analysisSource == "structured_model" })
-                        "部分观点来自云端分析，引用已通过原文校验；对象、维度、立场和归属仍需核实。历史对照使用本地识别，未经模型训练或校准。"
-                    else "内容的作者、立场和材料来源尚未做模型验证。",
-                majorIds.take(8))
-        }.ifEmpty { listOf(ObservationFinding("全部", "没有识别到可分析的观点", "当前内容可能只有界面按钮、娱乐内容、短评，或缺少明确的判断句。娱乐内容仍计入接触统计；这不能用来推断信息同质化。", emptyList())) }
+        val exposure = ExposureAnalyzer.analyze(ordered, observations.map { it.second }, now, zone,
+            eventTopics.mapKeys { it.key.id }, checkCancellation)
+        val findings = exposure.findings()
         val exposures = usableEvents.groupBy { eventTopics[it] ?: "未分类" }.map { (topic, entries) ->
             TopicExposure(topic, entries.size, entries.sumOf { window.durationMillis(it) ?: 0 })
         }.sortedWith(compareByDescending<TopicExposure> { it.durationMillis }.thenByDescending { it.recordCount }.thenBy { it.topic })
@@ -291,7 +261,7 @@ class CognitiveAnalyzer {
             structuredAnalyzedRecords = structuredAnalyzed, localFallbackRecords = localFallback,
             rejectedSemanticsRecords = rejectedSemantics,
             pendingAnalysisRecords = selected.count { analysisStatuses[it.id] in setOf("queued", "running") },
-            failedAnalysisRecords = selected.count { analysisStatuses[it.id] == "failed" })
+            failedAnalysisRecords = selected.count { analysisStatuses[it.id] == "failed" }, exposure = exposure)
     }
 
     private fun clean(event: BrowseEvent): List<String> {
