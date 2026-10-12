@@ -20,6 +20,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: apk-${{ github.ref }}
@@ -38,7 +39,9 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -151,3 +154,27 @@ jobs:
           python3 -c 'import os; required=["R2_ACCOUNT_ID","R2_BUCKET","R2_PUBLIC_BASE_URL","R2_ACCESS_KEY_ID","R2_SECRET_ACCESS_KEY"]; assert all(os.environ.get(k) for k in required), "R2 configuration incomplete"'
           python3 -m pip install 'boto3>=1.35,<2'
           python3 scripts/publish_r2.py
+
+  cleanup:
+    needs: apk
+    if: github.ref == 'refs/heads/main' && needs.apk.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Prune stale Gradle caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          IDS=$(gh api "repos/{owner}/{repo}/actions/caches?per_page=100" \
+            --jq '[.actions_caches[]
+                   | {id, created_at, family: (.key | sub("-[0-9a-f]{16,}.*$"; ""))}]
+                  | group_by(.family)
+                  | map(sort_by(.created_at) | reverse | .[1:])
+                  | flatten
+                  | map(.id)')
+          echo "Stale cache ids: $IDS"
+          for id in $(echo "$IDS" | jq -r '.[]'); do
+            gh api -X DELETE "repos/{owner}/{repo}/actions/caches/$id" --silent
+            echo "Deleted cache $id"
+          done
