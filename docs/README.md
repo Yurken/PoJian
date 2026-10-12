@@ -12,6 +12,7 @@
 | [离线标注评测](OFFLINE_QUALITY_EVALUATION.md) | 数据协议、评测命令、指标分母与真实标注流程 |
 | [本地语音转写](ASR-VALIDATION.md) | 模型配置、公开夹具和测试复现方法 |
 | [后端部署](DEPLOYMENT.md) | 部署脚本、服务配置、更新验证和 HTTPS |
+| [Android 固定签名](ANDROID_SIGNING.md) | 本地与 CI 共用密钥、证书校验、备份和旧版升级限制 |
 | [音频组件来源](THIRD_PARTY_AUDIO.md) | 上游版本、许可证和实现归属 |
 | [Logo v1](brand/pojian-logo-v1.md) · [方案探索](brand/pojian-logo-alternatives.md) | 品牌配图及设计来源 |
 | [作品报告 LaTeX 工程](作品报告-LaTeX/README.md) | 第一至第四章源码、书目、13 张必要配图及编译方法 |

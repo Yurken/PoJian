@@ -3,6 +3,7 @@ import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
+import java.security.KeyStore
 import java.util.Properties
 
 plugins {
@@ -11,6 +12,37 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.kapt")
 }
+
+// Both local builds and CI use the same private key; no temporary debug fallback.
+val signingProperties = Properties().apply {
+    val path = providers.environmentVariable("POJIAN_SIGNING_PROPERTIES").orNull
+    (path?.let { rootProject.file(it) } ?: rootProject.file("keystore.properties"))
+        .takeIf { it.isFile }?.inputStream()?.use { load(it) }
+}
+val verifySigningIdentity by tasks.registering {
+    group = "verification"
+    doLast {
+        val required = listOf("storeFile", "storePassword", "keyAlias", "keyPassword", "storeType")
+        check(required.all { !signingProperties.getProperty(it).isNullOrBlank() }) {
+            "Fixed signing configuration missing. See docs/ANDROID_SIGNING.md; temporary signing is disabled."
+        }
+        val keyStore = KeyStore.getInstance(signingProperties.getProperty("storeType"))
+        rootProject.file(signingProperties.getProperty("storeFile")).inputStream().use {
+            keyStore.load(it, signingProperties.getProperty("storePassword").toCharArray())
+        }
+        val alias = signingProperties.getProperty("keyAlias")
+        check(keyStore.getKey(alias, signingProperties.getProperty("keyPassword").toCharArray()) is java.security.PrivateKey) {
+            "Signing alias does not contain a private key."
+        }
+        val actual = MessageDigest.getInstance("SHA-256").digest(keyStore.getCertificate(alias).encoded)
+            .joinToString("") { "%02x".format(it) }
+        val expected = file("signing-certificate.sha256").readText().trim()
+        check(expected.matches(Regex("[0-9a-f]{64}")) && actual == expected) {
+            "Signing certificate does not match the project's fixed identity. Refusing to build."
+        }
+    }
+}
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(verifySigningIdentity) }
 
 // The upstream Android AAR is published as a GitHub release asset. Pin and verify it
 // rather than depending on a moving JitPack build or committing native binaries.
@@ -45,13 +77,26 @@ val prepareSherpa by tasks.registering {
 android {
     namespace = "com.emerge.app"
     compileSdk = 34
+    signingConfigs {
+        create("pojian") {
+            storeFile = signingProperties.getProperty("storeFile")?.let { rootProject.file(it) }
+            storePassword = signingProperties.getProperty("storePassword")
+            keyAlias = signingProperties.getProperty("keyAlias")
+            keyPassword = signingProperties.getProperty("keyPassword")
+            storeType = signingProperties.getProperty("storeType", "PKCS12")
+        }
+    }
+    buildTypes {
+        getByName("debug") { signingConfig = signingConfigs.getByName("pojian") }
+        getByName("release") { signingConfig = signingConfigs.getByName("pojian") }
+    }
     defaultConfig {
         // Stable install identity lets existing users keep their local records on upgrade.
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 25
-        versionName = "0.5.3"
+        versionCode = 26
+        versionName = "0.5.4"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }

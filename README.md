@@ -34,6 +34,8 @@
 
 ## 构建与测试
 
+Android 构建前先按[固定签名配置](docs/ANDROID_SIGNING.md)恢复项目密钥和本地 `keystore.properties`。Debug 与 Release 共用同一签名；配置缺失时构建会失败。
+
 ```sh
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 python -m unittest discover -s server/tests -v
@@ -56,8 +58,8 @@ bash scripts/check-monitor-core.sh
 
 ## GitHub APK 打包
 
-GitHub Actions 的 **Build APK** 流水线只执行 `:app:assembleDebug`，上传可安装的通用 Debug APK；不运行测试、不部署服务器。主分支构建成功后自动创建 GitHub Release，并附上可直接下载的 `PoJian.apk`；开发分支仅上传 Actions 产物。主分支或 `dev/**` 分支修改 Android 构建相关文件时自动触发，也支持手动运行。
+GitHub Actions 的 **Build APK** 流水线验证签名配置脚本、执行 `:app:assembleRelease`，校验 APK 证书后上传通用 Release APK；不运行 Android 设备测试、不部署服务器。主分支存在指向当前提交的 `v<versionName>` Tag 时发布 GitHub Release，附上 `PoJian.apk`；没有 Tag 或在开发分支时仅上传 Actions 产物。主分支或 `dev/**` 分支修改 Android 构建相关文件时自动触发，也支持手动运行。
 
-优先在仓库 **Releases → 最新版本 → Assets** 下载 `PoJian.apk`。也可在 **Actions → Build APK → 成功的运行 → Artifacts** 下载 `PoJian-apk-运行编号`，解压后得到 APK，保留14天。可选仓库 Secret `POJIAN_SERVICE_TOKEN` 用于注入已有的网关访问令牌，未设置时为空；模型与检索密钥仍留在服务端。
+优先在仓库 **Releases → 最新版本 → Assets** 下载 `PoJian.apk`。也可在 **Actions → Build APK → 成功的运行 → Artifacts** 下载 `PoJian-apk-运行编号`，解压后得到 APK，保留14天。CI 必须配置仓库 Secret `POJIAN_SERVICE_TOKEN` 及[四项签名 Secrets](docs/ANDROID_SIGNING.md)，缺失时停止构建；模型与检索密钥仍留在服务端。
 
-流水线使用 GitHub 临时环境自动生成的 Debug 签名，未配置持久签名，因此不同运行的 APK、与本地签名 APK 之间可能无法覆盖安装。需要持续升级并保留数据时，应另行配置固定签名；遇到签名冲突不要直接卸载有数据的旧版本。
+从 `0.5.4` 起，本地与 CI 使用同一项目固定签名，支持后续版本覆盖升级。此前 CI 临时 Debug 签名的私钥未找到，旧版不能保证直接覆盖安装；保留旧应用及数据，完成并验证备份迁移前不要卸载。

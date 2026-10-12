@@ -10,6 +10,9 @@ on:
       - 'gradlew'
       - '*.gradle.kts'
       - 'gradle.properties'
+      - 'scripts/*android-signing*'
+      - 'scripts/verify-apk-signing.py'
+      - 'scripts/tests/test_android_signing.py'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -43,16 +46,39 @@ jobs:
       - name: Install Android SDK packages
         run: sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
 
-      - name: Build installable debug APK
+      - name: Restore fixed signing identity
+        env:
+          POJIAN_SIGNING_KEYSTORE_BASE64: ${{ secrets.POJIAN_SIGNING_KEYSTORE_BASE64 }}
+          POJIAN_SIGNING_STORE_PASSWORD: ${{ secrets.POJIAN_SIGNING_STORE_PASSWORD }}
+          POJIAN_SIGNING_KEY_ALIAS: ${{ secrets.POJIAN_SIGNING_KEY_ALIAS }}
+          POJIAN_SIGNING_KEY_PASSWORD: ${{ secrets.POJIAN_SIGNING_KEY_PASSWORD }}
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s scripts/tests -p test_android_signing.py
+          python3 scripts/prepare-android-signing.py "$RUNNER_TEMP/pojian-signing"
+          echo "POJIAN_SIGNING_PROPERTIES=$RUNNER_TEMP/pojian-signing/keystore.properties" >> "$GITHUB_ENV"
+
+      - name: Build signed release APK
         env:
           ORG_GRADLE_PROJECT_pojian.serviceToken: ${{ secrets.POJIAN_SERVICE_TOKEN }}
-        run: bash ./gradlew :app:assembleDebug --no-daemon --console=plain
+        run: |
+          python3 -c 'import os, sys; sys.exit(0 if os.environ.get("ORG_GRADLE_PROJECT_pojian.serviceToken") else "POJIAN_SERVICE_TOKEN is missing")'
+          bash ./gradlew :app:assembleRelease --no-daemon --console=plain
+
+      - name: Verify APK signature
+        run: |
+          python3 scripts/verify-apk-signing.py \
+            "$ANDROID_HOME/build-tools/34.0.0/apksigner" \
+            app/build/outputs/apk/release/app-release.apk app/signing-certificate.sha256
+
+      - name: Remove temporary signing files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/pojian-signing"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: PoJian-apk-${{ github.run_number }}
-          path: app/build/outputs/apk/debug/*.apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
@@ -81,7 +107,7 @@ jobs:
             exit 1
           fi
           mkdir -p release-apk
-          cp app/build/outputs/apk/debug/app-debug.apk release-apk/PoJian.apk
+          cp app/build/outputs/apk/release/app-release.apk release-apk/PoJian.apk
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release-apk/PoJian.apk --clobber
           else
@@ -89,6 +115,6 @@ jobs:
               --verify-tag \
               --target "$RELEASE_SHA" \
               --title "破茧 v${VERSION}" \
-              --notes "主分支自动构建的 Debug APK。下载 Assets 中的 PoJian.apk 安装。使用临时 Debug 签名，与旧版本可能无法覆盖安装；请先保留旧应用及数据。" \
+              --notes "使用项目固定签名的 Release APK，本地与 CI 共用同一签名。固定签名版本之间支持覆盖升级。此前临时 Debug 签名版本不兼容，请保留旧应用及数据，完成备份迁移前不要卸载。" \
               --latest
           fi
