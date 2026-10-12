@@ -1016,6 +1016,14 @@ class AppUpdateEndpointTests(unittest.TestCase):
             "apkUrl": f"https://127.0.0.1:{self.server.server_port}/app-update/download",
             "sha256": "ab" * 32})
 
+    def test_manifest_apk_url_honours_public_base_override(self):
+        self.updates.manifest = lambda: {"version_code": 41, "version_name": "0.5.7",
+                                         "sha256": "ab" * 32, "apk_size": 500}
+        with patch.dict(os.environ, {"EMERGE_APP_UPDATE_BASE": "https://updates.example.cn/pojian/"}):
+            status, _, body = self.get("/app-update")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body)["apkUrl"], "https://updates.example.cn/pojian/app-update/download")
+
     def test_manifest_upstream_error_stays_generic(self):
         def fail():
             raise m.UpstreamError("没有已发布的应用更新", 404)
@@ -1114,6 +1122,57 @@ class AppUpdateSourceTests(unittest.TestCase):
                          "https://github.com/octo/repo/releases/download/v0.5.7/PoJian.apk")
         with self.assertRaises(m.UpstreamError):
             source._asset_url({})
+
+    def test_api_get_retries_connection_failure_once(self):
+        from urllib.error import URLError
+
+        class FakeResponse:
+            status = 200
+            headers = {}
+
+            def read(self, _):
+                return b"{}"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+        class FlakyOpener:
+            def __init__(self):
+                self.failed = False
+
+            def open(self, *args, **kwargs):
+                if not self.failed:
+                    self.failed = True
+                    raise URLError("transient")
+                return FakeResponse()
+
+        opener = FlakyOpener()
+        with patch.object(m, "build_opener", return_value=opener), \
+                patch.object(m.time, "sleep") as sleep:
+            status, _, body = m.AppUpdateSource("octo/repo", "tok")._api_get("https://api.github.com/x")
+        self.assertEqual((status, body), (200, b"{}"))
+        sleep.assert_called_once()
+
+    def test_api_get_gives_up_after_two_connection_failures(self):
+        from urllib.error import URLError
+
+        class FailingOpener:
+            calls = 0
+
+            def open(self, *args, **kwargs):
+                self.calls += 1
+                raise URLError("down")
+
+        opener = FailingOpener()
+        with patch.object(m, "build_opener", return_value=opener), \
+                patch.object(m.time, "sleep"):
+            with self.assertRaises(m.UpstreamError) as caught:
+                m.AppUpdateSource("octo/repo", "tok")._api_get("https://api.github.com/x")
+        self.assertEqual(opener.calls, 2)
+        self.assertEqual(caught.exception.status, 502)
 
     def test_release_without_update_assets_is_unavailable(self):
         def responses(url, accept):

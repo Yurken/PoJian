@@ -283,32 +283,42 @@ class AppUpdateSource:
 
     def _api_get(self, url: str, accept: str = GITHUB_ACCEPT):
         """Authenticated GET without following redirects: (status, headers, body)."""
-        try:
-            with build_opener(NoRedirect()).open(Request(url, headers=self._headers(accept)), timeout=15) as response:
-                return response.status, response.headers, response.read(MAX_REPLY + 1)
-        except HTTPError as error:
+        last = None
+        for attempt in (0, 1):
             try:
-                body = error.read(MAX_REPLY + 1)
-            except Exception:
-                body = b""
-            error.close()
-            return error.code, error.headers or {}, body
-        except (TimeoutError, socket.timeout):
-            raise UpstreamError("Update provider timed out", 504) from None
-        except (URLError, HTTPException, OSError):
-            raise UpstreamError("Update provider connection failed") from None
+                with build_opener(NoRedirect()).open(Request(url, headers=self._headers(accept)), timeout=15) as response:
+                    return response.status, response.headers, response.read(MAX_REPLY + 1)
+            except HTTPError as error:
+                try:
+                    body = error.read(MAX_REPLY + 1)
+                except Exception:
+                    body = b""
+                error.close()
+                return error.code, error.headers or {}, body
+            except (TimeoutError, socket.timeout):
+                last = UpstreamError("Update provider timed out", 504)
+            except (URLError, HTTPException, OSError) as error:
+                last = UpstreamError("Update provider connection failed")
+            if attempt == 0:
+                time.sleep(0.5)
+        raise last
 
     def _public_get(self, url: str, timeout: float = 15):
         """Unauthenticated GET that follows redirects to the signed CDN URL."""
-        try:
-            return build_opener().open(url, timeout=timeout)
-        except HTTPError as error:
-            error.close()
-            raise UpstreamError("Update asset rejected") from None
-        except (TimeoutError, socket.timeout):
-            raise UpstreamError("Update provider timed out", 504) from None
-        except (URLError, HTTPException, OSError):
-            raise UpstreamError("Update asset download failed") from None
+        last = None
+        for attempt in (0, 1):
+            try:
+                return build_opener().open(url, timeout=timeout)
+            except HTTPError as error:
+                error.close()
+                raise UpstreamError("Update asset rejected") from None
+            except (TimeoutError, socket.timeout):
+                last = UpstreamError("Update provider timed out", 504)
+            except (URLError, HTTPException, OSError):
+                last = UpstreamError("Update asset download failed")
+            if attempt == 0:
+                time.sleep(0.5)
+        raise last
 
     def _latest_assets(self) -> dict:
         """Cached release asset map of the latest GitHub release."""
@@ -1166,9 +1176,10 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
             except UpstreamError as error:
                 return self.send_json(error.status, {"error": "更新信息暂不可用"})
             host = (self.headers.get("Host") or "").split(",")[0].strip()
-            if not host:
+            base = os.environ.get("EMERGE_APP_UPDATE_BASE") or (("https://" + host) if host else "")
+            if not base:
                 return self.send_json(500, {"error": "更新地址不可用"})
-            apk_url = "https://" + host + self.path.split("?")[0] + "/download"
+            apk_url = base.rstrip("/") + self.path.split("?")[0] + "/download"
             return self.send_json(200, {"versionCode": info["version_code"], "versionName": info["version_name"],
                                         "apkUrl": apk_url, "sha256": info["sha256"]})
 
