@@ -11,18 +11,20 @@ class RecentContentWordsTest {
     private val zone = ZoneId.of("Asia/Shanghai")
     private val now = ZonedDateTime.of(2026, 10, 11, 12, 0, 0, 0, zone).toInstant().toEpochMilli()
     private fun event(id: Long, at: Long = now - 1000) = BrowseEvent(id, "reader", at, 32,
-        "先把岗位要求和自己的项目经历逐项对上。点赞 评论 收藏")
+        "第${id}条内容：先把岗位要求和自己的项目经历逐项对上。点赞 评论 收藏")
     private fun result(event: BrowseEvent, topic: String = "职业发展", subject: String = "求职准备",
         at: Long = now) = EventSemantics(event.id, event.visibleText, at,
         listOf(ArgumentUnit("先把岗位要求和自己的项目经历逐项对上。", topic, subject, "", "")))
     private fun words(events: List<BrowseEvent>, results: List<EventSemantics>, period: StatisticsPeriod = StatisticsPeriod.DAY) =
         recentContentWords(events, period, now, results, zone)
 
-    @Test fun usesModelConceptsEvenWhenAbsentFromOriginalAndCountsOncePerRecord() {
+    @Test fun usesModelConceptsEvenWhenAbsentFromOriginalAndCountsDistinctSnapshots() {
         val a = event(1)
         val b = event(2)
         val model = result(a)
-        val words = words(listOf(a, a, b), listOf(model.copy(claims = model.claims + model.claims), result(b)))
+        val duplicate = a.copy(id = 3)
+        val words = words(listOf(a, a, b, duplicate),
+            listOf(model.copy(claims = model.claims + model.claims), result(b), result(duplicate)))
         assertEquals(setOf(ContentWord("职业发展", 2), ContentWord("求职准备", 2)), words.toSet())
     }
 

@@ -13,33 +13,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.analysis.ContentWord
 import com.emerge.app.analysis.recentContentWords
-import com.emerge.app.analysis.recentContentWordRecords
+import com.emerge.app.analysis.RecentContentGroup
+import com.emerge.app.analysis.RecentContentPoint
+import com.emerge.app.analysis.recentContentGroups
 import com.emerge.app.data.BrowseEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.cos
-import kotlin.math.sin
-import kotlin.math.sqrt
 
 @Composable
 internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
@@ -70,14 +67,6 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
     }
 }
 
-// Preferred centers echo the reference's editorial composition; measured bounds avoid overlap.
-private val WordAnchors = listOf(
-    Offset(.48f, .46f), Offset(.28f, .24f), Offset(.72f, .64f),
-    Offset(.76f, .30f), Offset(.25f, .70f), Offset(.14f, .48f),
-    Offset(.86f, .48f), Offset(.46f, .10f), Offset(.55f, .86f),
-    Offset(.70f, .14f), Offset(.28f, .89f)
-)
-
 @Composable
 private fun ContentWordCloud(words: List<ContentWord>, onWord: (ContentWord) -> Unit) {
     val scheme = MaterialTheme.colorScheme
@@ -87,101 +76,51 @@ private fun ContentWordCloud(words: List<ContentWord>, onWord: (ContentWord) -> 
         Color(0xFFB45309), Color(0xFF4338CA), Color(0xFF0369A1))
     val glow = scheme.primaryContainer.copy(alpha = if (dark) .65f else .8f)
     val edge = scheme.surfaceContainerLow.copy(alpha = .2f)
-    val min = words.minOf { it.recordCount }
-    val max = words.maxOf { it.recordCount }
-    Layout(modifier = Modifier.fillMaxWidth().testTag("recent-content-cloud")
-        .clip(RoundedCornerShape(14.dp)).drawWithCache {
-            val brush = Brush.radialGradient(listOf(glow, edge),
-                center = Offset(size.width * .5f, size.height * .46f),
-                radius = maxOf(size.width, size.height) * .65f)
-            onDrawBehind { drawRect(brush) }
-        }, content = {
-        words.forEachIndexed { index, word ->
-            val weight = if (max == min) .4f else (word.recordCount - min).toFloat() / (max - min)
-            val label = "${word.text}，${word.recordCount} 条记录"
-            val baseColor = when {
-                weight >= .8f -> colors[0]
-                index < colors.size -> colors[index]
-                else -> scheme.onSurfaceVariant
-            }
-            val wordColor = readableCloudColor(baseColor, .55f + weight * .45f, glow.compositeOver(scheme.surface))
-            Box(contentAlignment = Alignment.Center,
-                modifier = Modifier.widthIn(min = 48.dp).heightIn(min = 48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable(role = Role.Button, onClickLabel = "查看相关原文") { onWord(word) }
-                    .padding(horizontal = 6.dp, vertical = 6.dp)
-                    .clearAndSetSemantics {
-                        contentDescription = label
-                        role = Role.Button
-                        onClick(label = "查看相关原文") { onWord(word); true }
-                    }) {
-                Text(word.text, color = wordColor, fontSize = (14 + weight * 20).sp,
-                    lineHeight = (18 + weight * 24).sp, textAlign = TextAlign.Center,
-                    fontWeight = when { weight >= .75f -> FontWeight.ExtraBold; weight >= .4f -> FontWeight.Bold; else -> FontWeight.Medium },
-                    letterSpacing = if (weight >= .8f) (-.3).sp else 0.sp)
-            }
+    val fontScale = LocalDensity.current.fontScale
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val limit = when {
+            fontScale > 1.8f || maxWidth < 240.dp -> 4
+            fontScale > 1.2f -> 6
+            maxWidth < 280.dp -> 8
+            else -> 12
         }
-    }) { measurables, constraints ->
-        val width = constraints.maxWidth
-        val inset = 8.dp.roundToPx().coerceAtMost(width / 4)
-        val placeables = measurables.map { it.measure(Constraints(maxWidth = (width - 2 * inset).coerceAtLeast(0))) }
-        val baseHeight = (if (words.size <= 3) 120.dp else 180.dp).roundToPx()
-        val contentArea = placeables.sumOf { it.width.toDouble() * it.height }
-        var cloudHeight = maxOf(baseHeight, (contentArea / (width.coerceAtLeast(1) * .65)).toInt(),
-            (placeables.maxOfOrNull { it.height } ?: 0) + 2 * inset)
-        fun arrange(cloudHeight: Int): Pair<List<Rect>, Int> {
-            val boxes = mutableListOf<Rect>()
-            var bottom = cloudHeight
-            placeables.forEachIndexed { index, item ->
-                val anchor = WordAnchors[index % WordAnchors.size]
-                var found: Rect? = null
-                for (step in 0..1200) {
-                    val angle = step * .38
-                    val radius = sqrt(step.toDouble()) * 4.dp.toPx()
-                    val x = (width * anchor.x + cos(angle) * radius - item.width / 2f).toInt()
-                    val y = (cloudHeight * anchor.y + sin(angle) * radius * .8 - item.height / 2f).toInt()
-                    val box = Rect(x.toFloat(), y.toFloat(), (x + item.width).toFloat(), (y + item.height).toFloat())
-                    if (x >= inset && y >= inset && box.right <= width - inset && box.bottom <= cloudHeight - inset && boxes.none { it.overlaps(box) }) {
-                        found = box
-                        break
-                    }
-                }
-                // Search remaining gaps before growing the stage; edge anchors can miss distant spaces.
-                if (found == null) {
-                    var nearest = Float.MAX_VALUE
-                    val stride = 2.dp.roundToPx().coerceAtLeast(1)
-                    for (y in inset..(cloudHeight - inset - item.height) step stride) {
-                        for (x in inset..(width - inset - item.width) step stride) {
-                            val box = Rect(x.toFloat(), y.toFloat(), (x + item.width).toFloat(), (y + item.height).toFloat())
-                            val dx = box.center.x - width * anchor.x
-                            val dy = box.center.y - cloudHeight * anchor.y
-                            val distance = dx * dx + dy * dy
-                            if (distance < nearest && boxes.none { it.overlaps(box) }) {
-                                found = box
-                                nearest = distance
-                            }
+        val columns = if (limit == 12) 3 else 2
+        val visible = words.take(limit)
+        val min = visible.minOf { it.recordCount }
+        val max = visible.maxOf { it.recordCount }
+        val rows = visible.chunked(columns)
+        // Bounded rows replace the old expanding spiral. Full labels remain available
+        // to accessibility and in the collection title when visual text is ellipsized.
+        val height = (rows.size * (64f * fontScale).coerceIn(64f, 120f) + 16f).coerceIn(112f, 280f).dp
+        Column(Modifier.fillMaxWidth().height(height).testTag("recent-content-cloud")
+            .clip(RoundedCornerShape(14.dp)).drawWithCache {
+                val brush = Brush.radialGradient(listOf(glow, edge),
+                    center = Offset(size.width * .5f, size.height * .46f),
+                    radius = maxOf(size.width, size.height) * .65f)
+                onDrawBehind { drawRect(brush) }
+            }.padding(8.dp)) {
+            rows.forEachIndexed { rowIndex, row ->
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    row.forEachIndexed { columnIndex, word ->
+                        val index = rowIndex * columns + columnIndex
+                        val weight = if (max == min) .4f else (word.recordCount - min).toFloat() / (max - min)
+                        val baseColor = if (weight >= .8f) colors[0] else colors[index % colors.size]
+                        val wordColor = readableCloudColor(baseColor, .7f + weight * .3f, glow.compositeOver(scheme.surface))
+                        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button, onClickLabel = "查看相关内容") { onWord(word) }
+                            .padding(horizontal = 6.dp, vertical = 4.dp).clearAndSetSemantics {
+                                contentDescription = "${word.text}，${word.recordCount} 条记录"
+                                role = Role.Button
+                                onClick(label = "查看相关内容") { onWord(word); true }
+                            }, contentAlignment = Alignment.Center) {
+                            val emphasis = if (fontScale > 1.2f) 8 else 10
+                            Text(word.text, color = wordColor, fontSize = (14 + weight * emphasis).sp,
+                                lineHeight = (18 + weight * emphasis).sp, textAlign = TextAlign.Center,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                fontWeight = if (weight >= .75f) FontWeight.ExtraBold else FontWeight.SemiBold)
                         }
                     }
                 }
-                // Keep every word and its complete text reachable, including at large font scales.
-                boxes += found ?: Rect((width - item.width) / 2f, bottom.toFloat(),
-                    (width + item.width) / 2f, (bottom + item.height).toFloat()).also { bottom += item.height + inset }
-            }
-            return boxes to bottom
-        }
-        var (boxes, bottom) = arrange(cloudHeight)
-        // When touch targets need more room, reflow the whole composition before appending rows.
-        var attempts = 0
-        while (bottom > cloudHeight && attempts < 6) {
-            cloudHeight += 48.dp.roundToPx()
-            val arrangement = arrange(cloudHeight)
-            boxes = arrangement.first
-            bottom = arrangement.second
-            attempts++
-        }
-        layout(width, constraints.constrainHeight(bottom)) {
-            placeables.forEachIndexed { index, item ->
-                item.placeRelative(boxes[index].left.toInt(), boxes[index].top.toInt())
             }
         }
     }
@@ -205,9 +144,9 @@ private fun readableCloudColor(base: Color, preferredAlpha: Float, background: C
 @Composable
 private fun ContentWordDetails(word: String, events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
     semantics: List<EventSemantics>, appNames: Map<String, String>, onDismiss: () -> Unit) {
-    val originals by produceState<List<BrowseEvent>?>(null, word, events, period, now, semantics) {
+    val groups by produceState<List<RecentContentGroup>?>(null, word, events, period, now, semantics) {
         value = null
-        value = withContext(Dispatchers.Default) { recentContentWordRecords(word, events, period, now, semantics) }
+        value = withContext(Dispatchers.Default) { recentContentGroups(word, events, period, now, semantics) }
     }
     ModalBottomSheet(onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
@@ -219,24 +158,70 @@ private fun ContentWordDetails(word: String, events: List<BrowseEvent>, period: 
             }
             LazyColumn(Modifier.weight(1f).testTag("recent-content-details"),
                 contentPadding = PaddingValues(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                val current = originals
+                val current = groups
                 item {
                     MetadataText(when {
-                        current == null -> "正在查找相关原文…"
-                        current.isEmpty() -> "对应原文暂不可用"
-                        else -> "${period.label} · ${current.size} 条相关记录"
+                        current == null -> "正在整理相关内容…"
+                        current.isEmpty() -> "暂无相关内容"
+                        else -> "${period.label} · ${current.flatMap { it.records }.distinctBy { it.id }.size} 条相关记录"
                     })
                 }
-                items(current.orEmpty(), key = { it.id }) { event ->
-                    Column(Modifier.testTag("recent-content-original-${event.id}"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val time = Instant.ofEpochMilli(event.timestamp).atZone(ZoneId.systemDefault())
-                            .format(DateTimeFormatter.ofPattern("M/d HH:mm"))
-                        SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
-                            "${appNames[event.packageName] ?: event.packageName} · $time")
-                        QuoteBlock(event.visibleText)
-                    }
+                items(current.orEmpty(), key = { it.key }) { group ->
+                    RelatedContentGroup(group, word, appNames)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RelatedContentGroup(group: RecentContentGroup, word: String, appNames: Map<String, String>) {
+    var expanded by rememberSaveable(word, group.key) { mutableStateOf(false) }
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerLow, shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(16.dp).testTag("recent-content-group-${group.key}"),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(group.title, Modifier.weight(1f).semantics { heading() }, color = Ink,
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                MetadataText("${group.records.size} 条记录")
+            }
+            (if (expanded) group.points else group.points.take(3)).forEachIndexed { index, point ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = .5f))
+                key(point.key) { RelatedContentPoint(point, word, group.key, appNames) }
+            }
+            if (group.points.size > 3) PojianTextButton(onClick = { expanded = !expanded },
+                modifier = Modifier.align(Alignment.End)) {
+                Text(if (expanded) "收起" else "展开全部（${group.points.size}）")
+            }
+        }
+    }
+}
+
+@Composable
+private fun RelatedContentPoint(point: RecentContentPoint, word: String, groupKey: String, appNames: Map<String, String>) {
+    var raw by rememberSaveable(word, groupKey, point.key) { mutableStateOf(false) }
+    var sourceLimit by rememberSaveable(word, groupKey, point.key) { mutableIntStateOf(3) }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(point.quote, color = Ink, style = MaterialTheme.typography.bodyMedium)
+        point.records.groupBy { it.packageName to it.sourceType }.forEach { (_, records) ->
+            val event = records.first()
+            SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
+                "${appNames[event.packageName] ?: event.packageName} · ${records.size} 条记录")
+        }
+        PojianTextButton(onClick = { raw = !raw; sourceLimit = 3 }, modifier = Modifier.align(Alignment.End)) {
+            Text(if (raw) "收起原文" else "查看原文 ›")
+        }
+        if (raw) {
+            point.records.take(sourceLimit).forEach { event ->
+                Column(Modifier.testTag("recent-content-original-${event.id}"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val time = Instant.ofEpochMilli(event.timestamp).atZone(ZoneId.systemDefault())
+                        .format(DateTimeFormatter.ofPattern("M/d HH:mm"))
+                    SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
+                        "${appNames[event.packageName] ?: event.packageName} · $time")
+                    QuoteBlock(event.visibleText)
+                }
+            }
+            if (sourceLimit < point.records.size) PojianTextButton(onClick = { sourceLimit += 3 }) { Text("更多原文") }
         }
     }
 }
