@@ -1,0 +1,21 @@
+Use case: precise-object-edit / text-localization.
+Edit target: the provided existing 1024 × 1536 portrait introduction poster for 破茧 PoJian.
+
+The user's crucial correction: this product is about noticing whether one is trapped in an information cocoon woven by recommendation algorithms, and whether one's informational field is becoming increasingly narrow and one-sided. Repeated viewpoints are only an observation signal, NOT the core purpose. Make the existing poster communicate this clearly. This is product-positioning copy; do not invent a claim that the app can inspect proprietary algorithms or definitively diagnose algorithmic manipulation.
+
+Make exactly these text changes:
+1. Preserve the main headline first line “察觉信息茧房”.
+2. Replace the second large headline “查证眼前信息” with “警惕推荐算法的陷阱”. Keep this as one readable line under the first headline, matching the original dark ink, bold Chinese sans-serif styling and left alignment. Slightly reduce ONLY this second line's font size if needed to keep it within the existing margins, with comfortable space from the edge. No extra headline.
+3. Replace the first feature heading “观点重复监测” with “信息茧房觉察”.
+4. Replace the first feature description “比较跨应用的观点与论据” with “观察观点是否单一、信息接触是否持续收窄”.
+5. Replace the third feature description “主题去重归组，相关内容集中查看” with “回看接触的主题与来源，了解自己的信息环境”.
+
+Preserve the other text exactly:
+破茧
+PoJian
+事实核查
+检索外部资料，保留来源与引文
+近期接触聚合
+Android 10+ · 产品原型
+
+Preserve the entire mint-and-gold woven opening-cocoon artwork, its fine looping threads and opening paper-like planes, white background, soft shadow, brand lockup, three feature-row composition, thin dividers, accent dots, and footer position. The cocoon already visually represents the algorithm-woven enclosure; do not add new pictures, icons, phone mockups, chains, labels, charts, or decorations. Keep the existing 1024 × 1536 framing. Maintain crisp and accurately written Simplified Chinese, no duplicated text, no extra slogans, no watermark, no QR code. All feature descriptions must fit cleanly within the right margin without crossing dividers. Opaque background.
