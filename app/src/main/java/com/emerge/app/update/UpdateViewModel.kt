@@ -27,6 +27,8 @@ internal class UpdateViewModel(application: Application, private val saved: Save
     private var checkJob: Job? = null
     private var operation: Job? = null
     private var downloaded: File? = null
+    private val mutableCheckStatus = MutableStateFlow<String?>(null)
+    val checkStatus = mutableCheckStatus.asStateFlow()
 
     init {
         // Restore the offer and downloaded file across the system's install-permission screen.
@@ -63,6 +65,29 @@ internal class UpdateViewModel(application: Application, private val saved: Save
             } catch (_: Exception) {
                 currentCoroutineContext().ensureActive()
                 // Automatic checks never interrupt normal use on offline or invalid responses.
+            }
+        }
+    }
+
+    fun checkNow() {
+        if (endpoint.isEmpty() || checkJob?.isActive == true || mutableUi.value != null) return
+        mutableCheckStatus.value = "正在检查…"
+        preferences.edit().putString("endpoint", endpoint).putLong("attempt", System.currentTimeMillis()).apply()
+        checkJob = viewModelScope.launch {
+            try {
+                val release = repository.check(endpoint)
+                preferences.edit().putLong("success", System.currentTimeMillis()).apply()
+                if (release != null) {
+                    saved["update_endpoint"] = endpoint
+                    saved["update_release"] = arrayOf(release.versionCode.toString(), release.versionName, release.apkUrl, release.sha256)
+                    mutableUi.value = UpdateUiState(release)
+                    mutableCheckStatus.value = null
+                } else {
+                    mutableCheckStatus.value = "已是最新版本"
+                }
+            } catch (_: Exception) {
+                currentCoroutineContext().ensureActive()
+                mutableCheckStatus.value = "检查失败，请稍后重试"
             }
         }
     }

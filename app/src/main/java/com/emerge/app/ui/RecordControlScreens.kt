@@ -234,7 +234,7 @@ private fun ApplicationFilterRow(label: String, detail: String, selected: Boolea
 fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture: (Boolean) -> Unit,
     onOpenSettings: () -> Unit, onClear: () -> Unit, message: String?, modifier: Modifier = Modifier,
     diagnostics: CaptureStatus = CaptureStatus(), selectedApps: List<CaptureApp> = emptyList(), onChooseApps: () -> Unit = {},
-    audioContent: (@Composable () -> Unit)? = null) {
+    audioContent: (@Composable () -> Unit)? = null, updateContent: (@Composable () -> Unit)? = null) {
     val captureState = when {
         selectedApps.isEmpty() -> "尚未选择要记录的应用"
         !enabled -> "采集已暂停"
@@ -326,6 +326,7 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 }
             }
         }
+        updateContent?.let { content -> item(key = "update-settings") { content() } }
         item {
             WhiteCard {
                 SectionTitle("关于")

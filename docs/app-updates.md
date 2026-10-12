@@ -1,5 +1,7 @@
 # 应用自动更新
 
+支持 Cloudflare R2 发布与差分更新，配置步骤见 [R2 自动更新](R2_UPDATES.md)。CI 配置 `R2_PUBLIC_BASE_URL` 后，构建直接使用 R2 清单地址；服务器配置 `EMERGE_APP_UPDATE_R2_BASE` 后，旧客户端的网关清单也返回 R2 下载地址。上传密钥仅保存在 GitHub Secrets。未配置 R2 时继续使用下述 GitHub 网关方式。
+
 配置入口：`app/build.gradle.kts` 中的 `BuildConfig.UPDATE_MANIFEST_URL`，默认 `https://xiaoyan.net.cn/pojian/app-update`（生产网关清单端点）。为空时不会检查更新、发送更新请求或显示更新弹窗。可用 `pojian.updateManifestUrl` Gradle 属性或在 `local.properties` 中置空来覆盖。
 
 清单与安装包由网关 `/app-update`、`/app-update/download` 代理：服务端持有 `EMERGE_APP_UPDATE_TOKEN`（只需私有仓库 Contents 只读权限的 GitHub 令牌），从 `EMERGE_APP_UPDATE_REPO`（默认 `baijiamin/PoJian`）最新 Release 的 `update.json` 与 `PoJian.apk` 生成；Release 由 CI 在打 `v<versionName>` Tag 时发布。令牌只存在于服务端，不进入 APK；端点公开，源码仓库保持私有。

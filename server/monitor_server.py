@@ -318,6 +318,8 @@ class AppUpdateSource:
 
     @classmethod
     def from_env(cls) -> "AppUpdateSource":
+        if os.getenv("EMERGE_APP_UPDATE_R2_BASE", "").strip():
+            return R2UpdateSource(os.environ["EMERGE_APP_UPDATE_R2_BASE"])
         return cls(os.getenv("EMERGE_APP_UPDATE_REPO", APP_UPDATE_REPO_DEFAULT),
                    os.getenv("EMERGE_APP_UPDATE_TOKEN", ""))
 
@@ -453,6 +455,47 @@ class AppUpdateSource:
         if status == 200:
             return _BufferedAsset(body, headers)
         return self._public_get(self._redirect_target(status, headers), timeout=60)
+
+
+class R2UpdateSource(AppUpdateSource):
+    """Migration for installed apps that still check the original gateway URL."""
+
+    def __init__(self, base: str):
+        super().__init__("", "")
+        self._base = base.strip().rstrip("/")
+
+    @property
+    def configured(self) -> bool:
+        try:
+            url = urlsplit(self._base)
+            return bool(url.scheme == "https" and url.hostname and not url.username and not url.password
+                        and not url.query and not url.fragment)
+        except ValueError:
+            return False
+
+    def manifest(self) -> dict:
+        with self._lock:
+            if self._assets is not None and time.monotonic() - self._cached_at < APP_UPDATE_CACHE_SECONDS:
+                return dict(self._assets)
+        with self._public_get(self._base + "/updates/latest.json") as response:
+            raw = response.read(65537)
+        try:
+            value = decode_json(raw)
+            code = value["versionCode"]
+            name, digest, apk = value["versionName"], value["sha256"], value["apkUrl"]
+            if len(raw) > 65536 or type(code) is not int or code <= 0 or not isinstance(name, str) or not name:
+                raise ValueError("Invalid version")
+            if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+                raise ValueError("Invalid hash")
+            if not isinstance(apk, str) or not apk.startswith(self._base + "/updates/releases/") or "\r" in apk or "\n" in apk:
+                raise ValueError("Invalid APK URL")
+            result = {"version_code": code, "version_name": name, "sha256": digest,
+                      "apk_url": apk, "patches": value.get("patches", [])}
+        except (KeyError, TypeError, ValueError, UnicodeError, RecursionError):
+            raise UpstreamError("Invalid R2 update manifest") from None
+        with self._lock:
+            self._assets, self._cached_at = dict(result), time.monotonic()
+        return result
 
 
 class RuntimeConfig:
@@ -1352,6 +1395,9 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
                 info = updates.manifest()
             except UpstreamError as error:
                 return self.send_json(error.status, {"error": "更新信息暂不可用"})
+            if "apk_url" in info:
+                return self.send_json(200, {"versionCode": info["version_code"], "versionName": info["version_name"],
+                    "apkUrl": info["apk_url"], "sha256": info["sha256"], "patches": info.get("patches", [])})
             host = (self.headers.get("Host") or "").split(",")[0].strip()
             base = os.environ.get("EMERGE_APP_UPDATE_BASE") or (("https://" + host) if host else "")
             if not base:
@@ -1363,6 +1409,18 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
         def _app_update_download(self):
             if updates is None or not updates.configured:
                 return self.send_json(404, {"error": "Not found"})
+            if isinstance(updates, R2UpdateSource):
+                try:
+                    info = updates.manifest()
+                except UpstreamError as error:
+                    return self.send_json(error.status, {"error": "更新暂不可用"})
+                self._record(302)
+                self.send_response(302)
+                self.send_header("Location", info["apk_url"])
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             try:
                 stream = updates.open_apk()
             except UpstreamError as error:

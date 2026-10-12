@@ -66,4 +66,34 @@ class AppUpdateTest {
             assertThrows(IllegalArgumentException::class.java) { FileProvider.getUriForFile(context, authority, outside) }
         } finally { file.delete(); outside.delete() }
     }
+
+    @Test fun invalidDeltaFallsBackToFullDownload() = runBlocking {
+        val base = File(context.applicationInfo.sourceDir)
+        val baseHash = MessageDigest.getInstance("SHA-256").let { digest ->
+            base.inputStream().use { input ->
+                val buffer = ByteArray(65536)
+                while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        }
+        val urls = mutableListOf<String>()
+        val repository = AppUpdateRepository(context, UpdateTransport { url, _, emit ->
+            urls += url
+            val bytes = "invalid".toByteArray()
+            emit(bytes, bytes.size, bytes.size.toLong())
+        })
+        val code = context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        val release = UpdatePolicy.release(code + 1, "test", "https://example.com/full.apk", hash).copy(
+            patches = listOf(UpdatePatch(code, baseHash, "https://example.com/delta", hash, 7)))
+        assertThrows(UpdateException::class.java) { runBlocking { repository.download(release) {} } }
+        assertEquals(listOf("https://example.com/delta", "https://example.com/full.apk"), urls)
+    }
+
+    @Test fun optionalPatchMetadataDoesNotBlockLegacyManifest() {
+        val patch = """{"format":"pjdiff1","fromVersionCode":26,"baseSha256":"$hash","url":"https://example.com/delta","sha256":"$hash","size":123}"""
+        val json = manifest().dropLast(1) + ",\"patches\":[$patch]}"
+        assertEquals(26L, decodeManifest(json, 26)!!.patches.single().fromVersionCode)
+        assertTrue(decodeManifest(json.replace("pjdiff1", "unsupported"), 26)!!.patches.isEmpty())
+        assertTrue(decodeManifest(json.replace("https://example.com/delta", "http://example.com/delta"), 26)!!.patches.isEmpty())
+    }
 }

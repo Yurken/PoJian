@@ -2,7 +2,11 @@ package com.emerge.app.update
 
 import java.net.URI
 
-internal data class UpdateRelease(val versionCode: Long, val versionName: String, val apkUrl: String, val sha256: String)
+internal data class UpdateRelease(val versionCode: Long, val versionName: String, val apkUrl: String, val sha256: String,
+    val patches: List<UpdatePatch> = emptyList())
+
+internal data class UpdatePatch(val fromVersionCode: Long, val baseSha256: String, val url: String,
+    val sha256: String, val size: Long)
 
 internal data class ApkIdentity(val packageName: String, val versionCode: Long, val versionName: String?,
     val minSdk: Int, val signers: Set<String>)

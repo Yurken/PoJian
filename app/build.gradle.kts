@@ -95,8 +95,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 35
-        versionName = "0.5.13"
+        versionCode = 40
+        versionName = "0.5.18"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -113,8 +113,7 @@ android {
         require(pojianServiceToken.length <= 512 && pojianServiceToken.all { it.code in 33..126 }) { "Invalid service token format" }
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
-        // HTTPS JSON manifest for in-app auto-updates. The production gateway serves it at
-        // /app-update and proxies the APK from the private release repository server-side.
+        // CI injects the public R2 manifest URL; existing builds can migrate via the gateway.
         // Override with the pojian.updateManifestUrl Gradle property, or set it empty in
         // local.properties to disable update checks and network requests.
         val updateManifestUrl = providers.gradleProperty("pojian.updateManifestUrl").orNull
