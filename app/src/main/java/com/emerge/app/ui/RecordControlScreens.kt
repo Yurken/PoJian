@@ -415,12 +415,9 @@ fun AppPickerDialog(apps: List<CaptureApp>, selected: Set<String>, loading: Bool
                         Row(Modifier.fillMaxWidth().toggleable(value = checked, role = Role.Checkbox, onValueChange = { value ->
                             draft = if (value) draft + application.packageName else draft - application.packageName
                         }).heightIn(min = 64.dp).padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                                SourceAppText(application.packageName, application.label, color = Ink,
-                                    style = MaterialTheme.typography.titleSmall)
-                                Text(application.packageName, color = Muted, style = MaterialTheme.typography.bodySmall,
-                                    modifier = Modifier.padding(top = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
+                            SourceAppText(application.packageName, application.label, color = Ink,
+                                modifier = Modifier.weight(1f).padding(end = 12.dp),
+                                style = MaterialTheme.typography.titleSmall)
                             PojianCheckbox(checked = checked, onCheckedChange = null)
                         }
                         if (records > 0) PojianTextButton(onClick = { onDeletePackage(application) },
