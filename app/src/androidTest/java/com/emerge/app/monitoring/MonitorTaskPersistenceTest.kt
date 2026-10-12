@@ -346,11 +346,11 @@ class MonitorTaskPersistenceTest {
                 assertEquals(old.task.id, second.task.id)
                 assertEquals(2, second.task.attempts)
                 assertFalse(store.finish(old, now + 2))
-                store.recover(now + 120002)
-                val third = requireNotNull(store.claim(now + 120002))
+                store.recover(now + 180002)
+                val third = requireNotNull(store.claim(now + 180002))
                 assertEquals(3, third.task.attempts)
-                assertFalse(store.finish(second, now + 120003))
-                assertTrue(store.finish(third, now + 120003))
+                assertFalse(store.finish(second, now + 180003))
+                assertTrue(store.finish(third, now + 180003))
                 assertEquals("", reopened.monitorTaskDao().all().single().payload)
             } finally { reopened.close() }
         } finally { context.deleteDatabase(name) }

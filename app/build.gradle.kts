@@ -95,8 +95,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 27
-        versionName = "0.5.5"
+        versionCode = 28
+        versionName = "0.5.6"
         // HTTPS JSON manifest endpoint. Empty disables update checks and network requests.
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"\"")
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.

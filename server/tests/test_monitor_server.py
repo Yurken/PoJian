@@ -66,20 +66,20 @@ class MonitorTimeoutTests(unittest.TestCase):
         runtime = m.RuntimeConfig(config, m.Options(vision_model="vision-model"), ":memory:")
         self.providers = m.Providers(config, runtime)
 
-    def test_text_and_vision_models_use_remaining_two_minute_budget(self):
+    def test_text_and_vision_models_leave_proxy_response_headroom(self):
         reply = {"choices": [{"message": {"content": "{}"}}]}
         for image in ("", "image-fixture"):
-            for now, expected in ((1000, 120), (1095, 25)):
+            for now, expected in ((1000, 110), (1095, 15)):
                 with self.subTest(image=bool(image), elapsed=now - 1000), \
                         patch.object(m.time, "monotonic", return_value=now), \
                         patch.object(m, "post_json", return_value=reply) as post:
-                    self.providers.model("system", {}, 1120, image)
+                    self.providers.model("system", {}, 1110, image)
                     self.assertEqual(post.call_args.args[3], expected)
 
     def test_expired_budget_does_not_start_another_model_call(self):
-        with patch.object(m.time, "monotonic", return_value=1120), patch.object(m, "post_json") as post:
+        with patch.object(m.time, "monotonic", return_value=1110), patch.object(m, "post_json") as post:
             with self.assertRaises(m.UpstreamError) as caught:
-                self.providers.model("system", {}, 1120)
+                self.providers.model("system", {}, 1110)
         self.assertEqual(caught.exception.status, 504)
         post.assert_not_called()
 
@@ -90,8 +90,8 @@ class MonitorTimeoutTests(unittest.TestCase):
                 patch.object(providers, "search", wraps=providers.search) as search:
             m.analyze_monitor(m.validate_monitor(request_data()), providers)
         self.assertEqual(model.call_count, 2)
-        self.assertEqual([call.args[2] for call in model.call_args_list], [1120, 1120])
-        self.assertEqual(search.call_args.args[1], 1120)
+        self.assertEqual([call.args[2] for call in model.call_args_list], [1110, 1110])
+        self.assertEqual(search.call_args.args[1], 1110)
 
 
 class InputTests(unittest.TestCase):
@@ -510,7 +510,7 @@ class StatusPageTests(unittest.TestCase):
         self.assertTrue(body["service"]["retrieval_configured"])
         settings = body["settings"]
         self.assertEqual(settings["text"]["model"], "fixture-model")
-        self.assertEqual(settings["text"]["timeout"], 120)
+        self.assertEqual(settings["text"]["timeout"], 110)
         self.assertEqual(settings["service_token"], "已配置")
         self.assertEqual(settings["daily_limit"], self.provider.options.daily_limit)
         self.assertEqual(settings["budget_used_today"], 0)

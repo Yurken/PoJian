@@ -31,7 +31,71 @@ except ImportError:
 
 MAX_BODY = 512 * 1024
 MAX_REPLY = 1024 * 1024
-MONITOR_TIMEOUT_SECONDS = 120.0
+# Finish before the 120-second reverse-proxy deadline, leaving time to send the result.
+MONITOR_TIMEOUT_SECONDS = 110.0
+
+
+class MonitorProviderError(UpstreamError):
+    """Safe failure category, independent of provider messages, keys and request content."""
+    def __init__(self, message: str, code: str, status: int = 502):
+        super().__init__(message, status)
+        self.code = code
+
+
+def qwen_structured_options(url: str, model: str, image: bool = False) -> dict:
+    host = (urlsplit(url).hostname or "").lower()
+    official = host in {"dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "dashscope-us.aliyuncs.com"} or host.endswith(".maas.aliyuncs.com")
+    # These hybrid models default to thinking. The monitor expects a complete,
+    # non-streaming JSON answer, not reasoning that consumes its output budget.
+    if official and model.lower().startswith(("qwen3.8-flash", "qwen3.8-max")):
+        return {"enable_thinking": False, "max_tokens": 8192 if image else 4096}
+    return {}
+
+
+def fact_check_failure(stage: str, error: UpstreamError) -> tuple[dict, str]:
+    code = getattr(error, "code", "invalid_evidence" if stage == "evidence" else "provider_failure")
+    if error.status == 504:
+        code = "timeout"
+    detail = {"stage": stage, "code": code,
+              "retryable": code in {"timeout", "connection", "rate_limited", "provider_failure", "invalid_json", "truncated", "model_contract"}}
+    name = "联网取证" if stage == "retrieval" else "证据分析"
+    if stage == "evidence":
+        message = "证据校验未通过，本次未生成真假结论。"
+    elif code == "timeout":
+        message = name + "超时，本次未完成核查。"
+    elif code == "authentication":
+        message = name + "服务认证失败，本次未完成核查。"
+    elif code == "rate_limited":
+        message = name + "服务额度不足或请求受限，本次未完成核查。"
+    elif code == "truncated":
+        message = "核查模型输出被截断，本次未完成核查。"
+    else:
+        message = name + "失败，本次未生成真假结论。"
+    return detail, message
+
+
+class FactCheckDiagnostics:
+    """Counters only: no captured text, URLs, provider payloads or credentials."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.counts: dict[str, int] = {}
+
+    def record(self, result: dict):
+        with self.lock:
+            for claim in result["claims"]:
+                error = claim.get("check_error")
+                key = (error["stage"] + ":" + error["code"]) if error else claim["verdict"]
+                self.counts[key] = self.counts.get(key, 0) + 1
+
+    def snapshot(self) -> dict:
+        with self.lock:
+            return dict(self.counts)
+
+    def record_extraction_failure(self, error: UpstreamError):
+        code = "timeout" if error.status == 504 else getattr(error, "code", "model_contract")
+        with self.lock:
+            key = "extraction:" + code
+            self.counts[key] = self.counts.get(key, 0) + 1
 
 
 class BodyError(ClientError):
@@ -600,17 +664,17 @@ def post_json(url: str, key: str, payload: dict, timeout: float, detail: bool = 
             chunks, total = [], 0
             while True:
                 if time.monotonic() > deadline:
-                    raise UpstreamError("Provider request timed out", 504)
+                    raise MonitorProviderError("Provider request timed out", "timeout", 504)
                 block = response.read1(min(65536, MAX_REPLY + 1 - total))
                 if not block:
                     break
                 total += len(block)
                 if total > MAX_REPLY:
-                    raise UpstreamError("Provider response exceeded the size limit")
+                    raise MonitorProviderError("Provider response exceeded the size limit", "invalid_json")
                 chunks.append(block)
             result = decode_json(b"".join(chunks))
         if not isinstance(result, dict):
-            raise UpstreamError("Provider did not return an object")
+            raise MonitorProviderError("Provider did not return an object", "invalid_json")
         return result
     except HTTPError as error:
         status, message = error.code, ""
@@ -620,13 +684,15 @@ def post_json(url: str, key: str, payload: dict, timeout: float, detail: bool = 
         text = "Provider rejected the request"
         if detail:
             text += f" (HTTP {status})" + (f": {message}" if message else "")
-        raise UpstreamError(text) from None
+        code = ("timeout" if status in {408, 504} else "authentication" if status in {401, 403} else "rate_limited" if status in {402, 429, 432, 433}
+                else "provider_failure" if status >= 500 else "request_rejected")
+        raise MonitorProviderError(text, code) from None
     except (TimeoutError, socket.timeout):
-        raise UpstreamError("Provider request timed out", 504) from None
+        raise MonitorProviderError("Provider request timed out", "timeout", 504) from None
     except (URLError, HTTPException, OSError):
-        raise UpstreamError("Provider connection failed") from None
+        raise MonitorProviderError("Provider connection failed", "connection") from None
     except (UnicodeError, ValueError, RecursionError):
-        raise UpstreamError("Provider returned invalid JSON") from None
+        raise MonitorProviderError("Provider returned invalid JSON", "invalid_json") from None
 
 
 class Providers:
@@ -637,7 +703,7 @@ class Providers:
         return self.runtime.search_key()
 
     def model(self, system: str, user: object, deadline: float, image: str = "") -> dict:
-        # Monitor shares a two-minute budget across extraction and verification;
+        # Monitor shares its end-to-end budget across extraction and verification;
         # the legacy /analyze timeout must not truncate these model calls.
         remaining = min(MONITOR_TIMEOUT_SECONDS, deadline - time.monotonic())
         if remaining <= 0:
@@ -653,8 +719,13 @@ class Providers:
         result = post_json(url, key, {"model": model, "messages": [
             {"role": "system", "content": system}, {"role": "user", "content": content}],
             "temperature": 0, "max_tokens": 2600, "stream": False,
-            "response_format": {"type": "json_object"}}, remaining)
+            "response_format": {"type": "json_object"}, **qwen_structured_options(url, model, bool(image))}, remaining)
         try:
+            choice = result["choices"][0]
+            if not isinstance(choice, dict):
+                raise ValueError("Missing model choice")
+            if choice.get("finish_reason") == "length":
+                raise MonitorProviderError("Model output was truncated", "truncated")
             value = result["choices"][0]["message"]["content"]
             if not isinstance(value, str):
                 raise ValueError("Missing model text")
@@ -663,7 +734,7 @@ class Providers:
                 raise ValueError("Missing object")
             return parsed
         except (KeyError, IndexError, TypeError, ValueError, UnicodeError, RecursionError):
-            raise UpstreamError("Model response did not match the JSON contract") from None
+            raise MonitorProviderError("Model response did not match the JSON contract", "model_contract") from None
 
     def retrieval_available(self) -> bool:
         return bool(self.runtime.search_key()) or bool(self.runtime.provider_settings(False)[1])
@@ -816,6 +887,7 @@ def analyze_monitor(source: dict, providers: Providers) -> dict:
             claim["explanation"] = "尚未配置联网取证服务，不能用模型自身知识代替事实核查"
             continue
         searched = True
+        stage = "retrieval"
         try:
             # Neutral, condition-preserving query; do not bias retrieval toward an assumed false verdict.
             sources = providers.search(claim["quote"] + " " + claim["conditions"], deadline)
@@ -824,13 +896,16 @@ def analyze_monitor(source: dict, providers: Providers) -> dict:
                 continue
             # The verify prompt needs bounded context; quotes are still validated against the full excerpt.
             verify_sources = [{**row, "excerpt": row["excerpt"][:2500]} for row in sources]
+            stage = "alignment"
             result = providers.model(VERIFY_PROMPT, {"claim": claim["quote"], "conditions": claim["conditions"],
                                      "captured_at": source["captured_at"], "sources": verify_sources}, deadline)
+            stage = "evidence"
             claim.update(validate_verdict(result, sources))
             if claim["uncertain"] and claim["verdict"] != "insufficient":
                 claim.update(verdict="insufficient", explanation="原句归属或上下文尚不明确，以下资料仅供回查。" + claim["explanation"])
-        except UpstreamError:
-            claim.update(verdict="not_checked", sources=[], explanation="联网取证或证据对齐失败；未生成真假结论")
+        except UpstreamError as error:
+            detail, explanation = fact_check_failure(stage, error)
+            claim.update(verdict="not_checked", sources=[], explanation=explanation, check_error=detail)
     return {"version": 1, "id": source["id"], "observed_text": observed, "claims": claims,
             "coverage": {"sampled_only": True, "claim_limit": 3, "fact_check_limit": 1,
                          "search_attempted": searched, "visual_transcription_unverified": source["kind"] == "frame"}}
@@ -843,6 +918,7 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
     runtime = runtime or RuntimeConfig(config, options, ":memory:")
     providers = providers or Providers(config, runtime)
     statistics = stats or admin.Stats()
+    fact_diagnostics = FactCheckDiagnostics()
     sessions = admin.Sessions()
     throttle = admin.LoginThrottle()
     admin_user = options.admin_user or "admin"
@@ -862,7 +938,7 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
                                                      model_configured=runtime.text_configured,
                                                      vision_configured=runtime.vision_configured,
                                                      retrieval_configured=runtime.retrieval_configured),
-                    "settings": settings}
+                    "settings": settings, "fact_checks": fact_diagnostics.snapshot()}
 
         def _authorized(self) -> bool:
             return admin.bearer_authorized(self.headers.get_all("Authorization", []), config.service_token)
@@ -962,10 +1038,13 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
             try:
                 if not budget.reserve():
                     return self.send_json(429, {"error": "Daily monitor request budget exhausted"})
-                self.send_json(200, analyze_monitor(source, providers))
+                result = analyze_monitor(source, providers)
+                fact_diagnostics.record(result)
+                self.send_json(200, result)
             except ClientError:
                 self.send_json(400, {"error": "Invalid monitor request"})
             except UpstreamError as error:
+                fact_diagnostics.record_extraction_failure(error)
                 self.send_json(error.status, {"error": str(error)})
             except (TimeoutError, socket.timeout):
                 self.send_json(408, {"error": "Request timed out"})

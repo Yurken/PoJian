@@ -298,11 +298,12 @@ class MonitorTaskStore(private val database: BrowseDatabase,
         internal const val CAPACITY = 6
         private const val MAX_ATTEMPTS = 3
         private const val TTL = 24 * 60 * 60 * 1000L
-        private const val LEASE_MILLIS = 120_000L
+        // Covers connection, server processing, response transfer and local persistence.
+        private const val LEASE_MILLIS = 180_000L
         private val RETRY_DELAYS = longArrayOf(5000, 30_000, 120_000)
         private val PROCESS_SESSION = UUID.randomUUID().toString()
         private val REASONS = setOf("cancelled", "authorization_changed", "input_changed", "input_deleted", "expired",
-            "invalid_payload", "invalid_response", "network", "frame_budget", "request_budget", "retry_exhausted",
+            "invalid_payload", "invalid_response", "network", "fact_check_upstream", "frame_budget", "request_budget", "retry_exhausted",
             "lease_recovered", "processing_failed")
     }
 }

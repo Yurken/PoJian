@@ -439,8 +439,15 @@ class MonitorRuntime(private val app: EmergeApplication) {
             if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
             input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
             commit(input, outputs, claims, units, observed, policy, service)
+            val retryableFactFailure = checkFacts && (0 until claims.length()).any { index ->
+                val claim = claims.getJSONObject(index)
+                claim.optString("verdict") == "not_checked" && claim.optJSONObject("check_error")?.optBoolean("retryable", false) == true
+            }
+            // Keep the extracted viewpoints, but let the existing bounded queue retry
+            // transient retrieval/model failures instead of permanently completing them.
+            if (retryableFactFailure && input.lease != null) return ProcessResult.RETRY("fact_check_upstream")
             // Invalid or failed responses must never prevent a fresh network attempt.
-            if (cached == null) synchronized(cache) {
+            if (cached == null && (!checkFacts || outputs.none { it.verdict == "not_checked" })) synchronized(cache) {
                 if (current(input) && app.audioCoordinator.settings.config.value == service) {
                     cache[cacheKey] = System.currentTimeMillis() to json
                     while (cache.size > 32) cache.remove(cache.keys.first())
@@ -499,7 +506,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         val bytes = payload.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= 512 * 1024) { "当前画面过大，请缩小采样尺寸" }
         val http = (URL(endpoint.trimEnd('/') + "/monitor").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"; doOutput = true; connectTimeout = 15000; readTimeout = 120_000; instanceFollowRedirects = false
+            requestMethod = "POST"; doOutput = true; connectTimeout = 15000; readTimeout = 135_000; instanceFollowRedirects = false
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             if (token.isNotEmpty()) setRequestProperty("Authorization", "Bearer $token")
             setFixedLengthStreamingMode(bytes.size)
