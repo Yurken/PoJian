@@ -8,20 +8,14 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -132,17 +126,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     }) else null
     val titles = listOf("概览", "发现", "设置")
     val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
-    Scaffold(containerColor = PageBackground, snackbarHost = { SnackbarHost(snackbar) }, topBar = {
-        Surface(color = PageBackground) {
-            Row(Modifier.fillMaxWidth().statusBarsPadding().heightIn(min = 52.dp).padding(horizontal = 20.dp),
-                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Image(painterResource(R.mipmap.ic_launcher_artwork), contentDescription = null,
-                    modifier = Modifier.size(26.dp).clip(RoundedCornerShape(8.dp))
-                        .background(colorResource(R.color.ic_launcher_background)))
-                Text(stringResource(R.string.brand_name), style = MaterialTheme.typography.titleMedium)
-            }
-        }
-    }, bottomBar = {
+    Scaffold(containerColor = PageBackground, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
         PojianNavigationBar(titles, selectedIndex = tab, onSelect = { index ->
             tab = index; showRecords = false; showCaptureTools = false; showAudioRecords = false
         }) { index ->
@@ -180,7 +164,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                         if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
                     } }, semantics = semantics)
                 tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
-                    onRecords = { showRecords = true }, onClear = { app.monitor.invalidate() }, events = all)
+                    onRecords = { showRecords = true }, events = all)
                 else -> SettingsScreen(permission, enabled, count, { value ->
                     if (!value) app.audioCoordinator.stopAll()
                     model.setCapture(value)

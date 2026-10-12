@@ -2,8 +2,6 @@ package com.emerge.app.monitoring
 
 import com.emerge.app.ui.PojianSecondaryButton
 import com.emerge.app.ui.PojianTextButton
-import com.emerge.app.ui.PojianIconButton
-import com.emerge.app.ui.PojianDialog
 import com.emerge.app.ui.PojianSegmentedTabs
 import com.emerge.app.ui.SourceAppText
 
@@ -18,7 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
-import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -35,7 +32,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emerge.app.data.BrowseEvent
-import com.emerge.app.ui.HelpButton
 import com.emerge.app.ui.MetadataText
 import com.emerge.app.ui.PojianActionChip
 import com.emerge.app.ui.QuoteBlock
@@ -46,11 +42,9 @@ import java.util.Locale
 
 @Composable
 fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, modifier: Modifier = Modifier,
-    onRecords: () -> Unit, onClear: () -> Unit, events: List<BrowseEvent> = emptyList()) {
+    onRecords: () -> Unit, events: List<BrowseEvent> = emptyList()) {
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableIntStateOf(0) }
-    var menu by remember { mutableStateOf(false) }
-    var confirm by rememberSaveable { mutableStateOf(false) }
     val repetitions = state.findings.filter { it.kind == "cocoon" }
     val facts = state.findings.filter { it.kind == "fact" }
     val displayed = if (filter == 0) repetitions else facts
@@ -58,21 +52,6 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
     val selected = state.findings.firstOrNull { it.id == selectedId }
     LaunchedEffect(selected) { if (selected == null) selectedId = null }
     Column(modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text("发现", style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.weight(1f).semantics { heading() })
-            HelpButton("发现", "重复观点：找出你反复接触的说法，比较依据是否变化。\n\n事实核查：对照外部资料核查具体说法。证据不足与尚未核查会单独标明。")
-            Box {
-                PojianIconButton(onClick = { menu = true }) {
-                    Icon(Icons.Outlined.MoreVert, contentDescription = "发现更多操作")
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("清空发现") }, enabled = state.findings.isNotEmpty(),
-                        onClick = { menu = false; confirm = true })
-                }
-            }
-        }
         PojianSegmentedTabs(listOf("重复观点", "事实核查"), filter, onSelect = { filter = it },
             counts = listOf(repetitions.size, facts.size),
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
@@ -93,11 +72,6 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
         DiscoveryDetail(finding, events, appNames, onDismiss = { selectedId = null },
             onRecords = { selectedId = null; onRecords() })
     }
-    if (confirm) PojianDialog(onDismissRequest = { confirm = false }, title = { Text("清空全部发现？") },
-        text = { Text("清空重复观点、核查结果与对比材料，保留浏览记录。无法撤销。") },
-        confirmButton = { PojianTextButton(onClick = { onClear(); confirm = false },
-            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("清空") } },
-        dismissButton = { PojianTextButton(onClick = { confirm = false }) { Text("取消") } })
 }
 
 @Composable

@@ -15,7 +15,6 @@ import com.emerge.app.monitoring.MonitorDiscoverScreen
 import com.emerge.app.monitoring.MonitorFinding
 import com.emerge.app.monitoring.MonitorState
 import com.emerge.app.ui.theme.EmergeTheme
-import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -49,7 +48,7 @@ class DiscoveryUiTest {
             BrowseEvent(43, "reader", 1791693000000, 32, "无关的天气记录"))
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme { Surface(Modifier.fillMaxSize()) {
             MonitorDiscoverScreen(state.value, mapOf("reader" to "阅读器", "video" to "视频"),
-                onRecords = {}, onClear = {}, events = events)
+                onRecords = {}, events = events)
         } } } }
         compose.onNodeWithText("查看原文与对比").performClick()
         compose.onNodeWithText("为什么提醒你").assertIsDisplayed()
@@ -61,25 +60,20 @@ class DiscoveryUiTest {
         compose.onNodeWithText("暂未发现重复观点").assertIsDisplayed()
     }
 
-    @Test fun clearingIsSecondaryAndRequiresConfirmationAndEmptyFactTabIsSpecific() {
-        var clears = 0
-        render(MonitorState(findings = listOf(repeated))) { clears++ }
+    @Test fun redundantHeaderAndClearingAreRemovedAndEmptyFactTabIsSpecific() {
+        render(MonitorState(findings = listOf(repeated)))
+        compose.onNodeWithText("发现").assertDoesNotExist()
+        compose.onNodeWithContentDescription("发现更多操作").assertDoesNotExist()
+        compose.onNodeWithText("清空发现").assertDoesNotExist()
+        compose.onNodeWithText("清空全部发现？").assertDoesNotExist()
         compose.onNodeWithText("事实核查").performClick()
         compose.onNodeWithText("暂无核查结果").assertIsDisplayed()
-        compose.onNodeWithContentDescription("发现更多操作").performClick()
-        compose.onNodeWithText("清空发现").performClick()
-        compose.onNodeWithText("取消").performClick()
-        compose.runOnIdle { assertEquals(0, clears) }
-        compose.onNodeWithContentDescription("发现更多操作").performClick()
-        compose.onNodeWithText("清空发现").performClick()
-        compose.onNodeWithText("清空").performClick()
-        compose.runOnIdle { assertEquals(1, clears) }
     }
 
-    private fun render(state: MonitorState, onClear: () -> Unit = {}) {
+    private fun render(state: MonitorState) {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                MonitorDiscoverScreen(state, mapOf("reader" to "阅读器"), onRecords = {}, onClear = onClear)
+                MonitorDiscoverScreen(state, mapOf("reader" to "阅读器"), onRecords = {})
             }
         } } }
     }
