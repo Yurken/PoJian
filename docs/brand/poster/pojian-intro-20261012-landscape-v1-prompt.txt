@@ -1,0 +1,29 @@
+Use case: precise-object-edit.
+Asset type: landscape introduction poster for the PoJian Android project README.
+Input image 1 is the EDIT TARGET: the approved portrait poster. Recompose this existing design into a true 16:9 LANDSCAPE poster, preferably 2048 × 1152 pixels. Change layout and canvas orientation only. Do not rotate, stretch, crop the portrait poster, or place the portrait as a small inset. Create a polished native horizontal composition.
+
+Composition: an airy white editorial layout with generous margins. The brand and two-line headline occupy the left portion of the upper area. The original mint-green and gold opening woven cocoon occupies the right portion, with fine golden and mint strands flowing toward the upper-right edge. Preserve the recognizable cocoon sculpture, translucent folded shapes, delicate fibers, and soft ground shadow. Below this main area, arrange the three existing feature blocks in a single horizontal row with subtle thin dividers, equal readable spacing, and their original mint/gold/mint accent dots. Each block has a bold heading and smaller gray description, wrapping naturally where necessary. Keep the small footer centered at the bottom.
+
+Text must be exactly the following, in crisp, correctly written Simplified Chinese and the existing modern sans-serif typography. Every phrase appears once. No additions, omissions, rewriting or extra slogans.
+Brand:
+“破茧”
+“PoJian”
+Main headline, two lines:
+“察觉信息茧房”
+“警惕推荐算法的陷阱”
+Feature 1 heading:
+“信息茧房觉察”
+Feature 1 description:
+“观察观点是否单一、信息接触是否持续收窄”
+Feature 2 heading:
+“事实核查”
+Feature 2 description:
+“检索外部资料，保留来源与引文”
+Feature 3 heading:
+“近期接触聚合”
+Feature 3 description:
+“回看接触的主题与来源，了解自己的信息环境”
+Footer:
+“Android 10+ · 产品原型”
+
+Preserve the approved white, pale mint-green, warm gold, dark ink and muted gray palette; restrained premium typography; and original visual identity. The information-cocoon headline is the primary focus. Keep all type readable, with sufficient contrast and clear separation from the artwork, within safe margins. Keep the brand modest relative to the central message. Do not invent app screenshots, logos, buttons, phone frames, extra symbols, chains, people, QR codes, download links, badges, or watermarks. Opaque white background. The final image must be wider than tall, with a 16:9 landscape canvas.

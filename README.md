@@ -12,9 +12,11 @@
 **当前版本 0.5.13** · Android 10+ · [更新日志](docs/CHANGELOG.md)
 
 <p align="center">
-  <a href="docs/brand/poster/pojian-intro-20261012-v3.png">
-    <img src="docs/brand/poster/pojian-intro-20261012-v3.png" alt="破茧：察觉信息茧房，警惕推荐算法的陷阱" width="480" />
+  <a href="docs/brand/poster/pojian-intro-20261012-landscape-v1.png">
+    <img src="docs/brand/poster/pojian-intro-20261012-landscape-v1.png" alt="破茧：察觉信息茧房，警惕推荐算法的陷阱" width="960" />
   </a>
+  <br />
+  <a href="docs/brand/poster/pojian-intro-20261012-v3.png">查看竖版海报</a>
 </p>
 
 ## 功能特性
