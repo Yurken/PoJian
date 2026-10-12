@@ -1,5 +1,12 @@
 # 破茧 构建与验证
 
+## 纯版本 Tag 与 0.5.2 无 Tag 推送（2026-10-12）
+
+- Tag 规则统一为 `v<versionName>`；按本次明确要求仅推送分支，不创建 Tag。CI 只复用指向当前提交的同名 Tag，无 Tag 时跳过 Release 发布，继续保留 Actions APK 构建产物上传。
+- `versionName` 递增为 `0.5.2`，`versionCode` 递增为 24，`applicationId` 保持 `com.zhiheng.app`；应用构建通过，APK 元数据已核对。构建日志：`app/build/ui-tools/tag-policy-052-build.log`。
+- Release 脚本语法检查通过，使用本地模拟命令验证无 Tag、错误提交、远端查询失败、附注 Tag、轻量 Tag、已有 Release 六种情况，全部通过；新建 Release 使用 `--verify-tag` 防止自动补建 Tag。未新增或修改界面文案。
+- CI 仍使用临时 Debug 签名，尚不能确认与旧版签名兼容；覆盖安装未得到保证。
+
 ## 采集范围精简与 0.5.1 推送（2026-10-12）
 
 - 应用选择列表移除单独的包名行，只保留与文字等高的图标、应用名称及选择控件；搜索、选择、取消、保存和历史删除回调不变，无新增可见文案。

@@ -62,18 +62,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          BUILD_NUMBER: ${{ github.run_number }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
           VERSION="$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts)"
           test -n "$VERSION"
-          RELEASE_TAG="v${VERSION}-build${BUILD_NUMBER}"
+          RELEASE_TAG="v${VERSION}"
+          TAG_REFS="$(git ls-remote --tags origin "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}")"
+          if [ -z "$TAG_REFS" ]; then
+            echo "No existing ${RELEASE_TAG}; skipping Release publication."
+            exit 0
+          fi
+          TAG_COMMIT="$(printf '%s\n' "$TAG_REFS" | awk '$2 ~ /\^\{\}$/ { print $1 }')"
+          if [ -z "$TAG_COMMIT" ]; then
+            TAG_COMMIT="$(printf '%s\n' "$TAG_REFS" | awk 'NR == 1 { print $1 }')"
+          fi
+          if [ "$TAG_COMMIT" != "$RELEASE_SHA" ]; then
+            echo "${RELEASE_TAG} does not point to this commit; refusing Release publication."
+            exit 1
+          fi
           mkdir -p release-apk
           cp app/build/outputs/apk/debug/app-debug.apk release-apk/PoJian.apk
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" release-apk/PoJian.apk --clobber
           else
             gh release create "$RELEASE_TAG" release-apk/PoJian.apk \
+              --verify-tag \
               --target "$RELEASE_SHA" \
               --title "破茧 v${VERSION}" \
               --notes "主分支自动构建的 Debug APK。下载 Assets 中的 PoJian.apk 安装。使用临时 Debug 签名，与旧版本可能无法覆盖安装；请先保留旧应用及数据。" \
