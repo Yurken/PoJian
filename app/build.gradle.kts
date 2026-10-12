@@ -95,8 +95,10 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 26
-        versionName = "0.5.4"
+        versionCode = 27
+        versionName = "0.5.5"
+        // HTTPS JSON manifest endpoint. Empty disables update checks and network requests.
+        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"\"")
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }

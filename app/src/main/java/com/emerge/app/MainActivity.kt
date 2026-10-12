@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
+    com.emerge.app.update.AppUpdateHost()
     val app = LocalContext.current.applicationContext as EmergeApplication
     val model: BrowseViewModel = viewModel()
     val audioModel: AudioViewModel = viewModel()
