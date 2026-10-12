@@ -50,7 +50,6 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("近期接触", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f).semantics { heading() })
-            HelpButton("近期接触", "AI 整理近期内容的主题与对象，字号按相关记录数呈现。")
         }
         val current = words
         when {
@@ -85,9 +84,8 @@ private fun ContentWordCloud(words: List<ContentWord>, onWord: (ContentWord) -> 
             else -> 12
         }
         val columns = if (limit == 12) 3 else 2
+        // Counts are descending upstream; ties retain the existing recency order.
         val visible = words.take(limit)
-        val min = visible.minOf { it.recordCount }
-        val max = visible.maxOf { it.recordCount }
         val rows = visible.chunked(columns)
         // Bounded rows replace the old expanding spiral. Full labels remain available
         // to accessibility and in the collection title when visual text is ellipsized.
@@ -103,23 +101,26 @@ private fun ContentWordCloud(words: List<ContentWord>, onWord: (ContentWord) -> 
                 Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     row.forEachIndexed { columnIndex, word ->
                         val index = rowIndex * columns + columnIndex
-                        val weight = if (max == min) .4f else (word.recordCount - min).toFloat() / (max - min)
-                        val baseColor = if (weight >= .8f) colors[0] else colors[index % colors.size]
-                        val wordColor = readableCloudColor(baseColor, .7f + weight * .3f, glow.compositeOver(scheme.surface))
-                        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
+                        val wordColor = readableCloudColor(colors[index % colors.size], .9f,
+                            glow.compositeOver(scheme.surface))
+                        Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
                             .clickable(role = Role.Button, onClickLabel = "查看相关内容") { onWord(word) }
                             .padding(horizontal = 6.dp, vertical = 4.dp).clearAndSetSemantics {
                                 contentDescription = "${word.text}，${word.recordCount} 条记录"
                                 role = Role.Button
                                 onClick(label = "查看相关内容") { onWord(word); true }
-                            }, contentAlignment = Alignment.Center) {
-                            val emphasis = if (fontScale > 1.2f) 8 else 10
-                            Text(word.text, color = wordColor, fontSize = (14 + weight * emphasis).sp,
-                                lineHeight = (18 + weight * emphasis).sp, textAlign = TextAlign.Center,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                fontWeight = if (weight >= .75f) FontWeight.ExtraBold else FontWeight.SemiBold)
+                            }, horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(word.recordCount.toString(), modifier = Modifier.align(Alignment.End),
+                                color = wordColor, fontSize = 11.sp, lineHeight = 14.sp,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                                Text(word.text, color = wordColor, fontSize = 14.sp, lineHeight = 18.sp,
+                                    textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                    fontWeight = FontWeight.Medium)
+                            }
                         }
                     }
+                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
