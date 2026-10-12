@@ -82,7 +82,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                         browsingUnknown == browsingCount -> "未知"
                         else -> compactDuration(stats.observedDurationMillis)
                     }
-                    CompactFact(duration, "预计停留", modifier = Modifier.weight(1f))
+                    CompactFact(duration, "停留时长", modifier = Modifier.weight(1f))
                 }
             }
         }

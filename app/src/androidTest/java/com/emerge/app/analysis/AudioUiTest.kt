@@ -122,7 +122,7 @@ class AudioUiTest {
         compose.onNodeWithText("旧版本").assertDoesNotExist()
         compose.onNodeWithText("查看原文 ›").performClick()
         compose.onNodeWithText(event.visibleText).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("预计停留", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("停留时长", substring = true).assertDoesNotExist()
     }
 
     @Test fun analysisFailureIsVisibleWithinTheDetailSheetAndAllowsRetry() {

@@ -142,8 +142,8 @@ internal fun AnalysisCards(
                             when {
                                 records == 0 -> "${hour}时，暂无记录"
                                 unknown == records && duration == 0L -> "${hour}时，${records}条记录，时长未统计"
-                                unknown > 0 -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}，${unknown}条时长未统计"
-                                else -> "${hour}时，${records}条记录，预计停留${formatDuration(duration)}"
+                                unknown > 0 -> "${hour}时，${records}条记录，停留时长${formatDuration(duration)}，${unknown}条时长未统计"
+                                else -> "${hour}时，${records}条记录，停留时长${formatDuration(duration)}"
                             }
                         }
                         selectedHour?.let { value ->
@@ -192,7 +192,7 @@ internal fun AnalysisCards(
                                         value = "${exposure.recordCount} 条 · ${ReportExporter.percent(exposure.recordCount, report.coverageSessions)}",
                                         fraction = fraction(exposure.recordCount, report.coverageSessions),
                                         color = ChartColors[index % ChartColors.size],
-                                        note = if (exposure.durationMillis > 0) "预计停留 ${formatDuration(exposure.durationMillis)}" else null
+                                        note = if (exposure.durationMillis > 0) "停留时长 ${formatDuration(exposure.durationMillis)}" else null
                                     )
                                 }
                                 if (report.topics.isNotEmpty()) {
@@ -329,7 +329,7 @@ internal fun AnalysisCards(
                             ?.takeIf { window.durationKnown(it) }
                             ?.let { event -> window.slices(event).filter { it.hour == value }.sumOf { it.durationMillis } }
                         ClaimDetail(item, events, report.zone, appNames,
-                            durationMillis = duration, durationLabel = "本时段预计停留")
+                            durationMillis = duration, durationLabel = "本时段停留时长")
                     }
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -341,7 +341,7 @@ internal fun AnalysisCards(
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             val duration = window.slices(event).filter { it.hour == value }.sumOf { it.durationMillis }
                             MetadataText(if (event.sourceType.startsWith("audio_")) "音频转写 · 时长未统计"
-                                else if (window.durationKnown(event)) "本时段预计停留 ${formatDuration(duration)}" else "时长未统计")
+                                else if (window.durationKnown(event)) "本时段停留时长 ${formatDuration(duration)}" else "时长未统计")
                             if (event.sourceType == "accessibility") CaptureVisibilityBreakdown(event, window, value)
                             OriginalRecord(event, report.zone, appNames, "采集原文：")
                             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -432,7 +432,7 @@ private fun GroupRow(index: Int, group: ClaimGroup, onClick: () -> Unit) {
 @Composable
 private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone: String,
     appNames: Map<String, String>, durationMillis: Long? = item.durationMillis,
-    durationLabel: String = "本次预计停留") {
+    durationLabel: String = "本次停留时长") {
     val current = events.firstOrNull { it.id == item.eventId }
     val fromAudio = current?.sourceType?.startsWith("audio_") == true
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {

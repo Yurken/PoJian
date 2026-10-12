@@ -2,12 +2,80 @@ package com.emerge.app.analysis
 
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.ui.StatisticsPeriod
+import com.emerge.app.ui.calculateStatistics
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import org.junit.Assert.*
 import org.junit.Test
 
 class ViewpointTimelineTest {
+    @Test fun anonymousRepeatedWeiboSnapshotsCountOnceAndKeepEveryVisitDuration() {
+        val quote = "楼下大爷说的话，我是不会轻易相信的。"
+        val rows = listOf(0L, 4000L, 1000L, 0L).mapIndexed { index, duration ->
+            event(index + 1L, quote, now - 3_600_000L - index * 60_000L, "visit:$index").copy(
+                packageName = "com.sina.weibo", identityMethod = "session_estimate", durationMillis = duration,
+                endTimestamp = now - 3_600_000L - index * 60_000L + duration)
+        }
+        val groups = ViewpointTimeline.groups(ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone).flatMap { it.items })
+        val item = ViewpointTimeline.details(groups.single().items).single()
+        assertEquals(1, groups.single().total)
+        assertEquals(quote, item.quote)
+        assertEquals(rows.map { it.id }.toSet(), item.records.map { it.id }.toSet())
+        assertEquals(5000L, item.durationMillis(ObservationWindow.forPeriod(StatisticsPeriod.DAY, now, zone)))
+        val stats = calculateStatistics(rows, StatisticsPeriod.DAY, now, zone)
+        assertEquals(1, stats.total)
+        assertEquals(4, stats.visitCount)
+        assertEquals(5000L, stats.observedDurationMillis)
+        assertEquals(1, stats.unidentifiedWorks)
+    }
+
+    @Test fun identicalQuotesCollapseOnlyInDetailsWhenFullSourcesOrKnownWorksDiffer() {
+        val quote = "楼下大爷说的话，我是不会轻易相信的。"
+        val rows = listOf(event(1, "作者甲\n$quote", work = "visit:1"),
+            event(2, "作者乙\n$quote", work = "visit:2")).map { it.copy(identityMethod = "session_estimate") }
+        val group = ViewpointTimeline.groups(ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone).flatMap { it.items }).single()
+        assertEquals(2, group.total)
+        assertEquals(2, group.items.size)
+        assertEquals(rows.map { it.visibleText }.toSet(), ViewpointTimeline.details(group.items).single().records.map { it.visibleText }.toSet())
+        val known = rows.mapIndexed { i, row -> row.copy(visibleText = quote, identityMethod = "platform_id", workKey = "post:$i") }
+        assertEquals(2, calculateStatistics(known, StatisticsPeriod.DAY, now, zone).total)
+    }
+
+    @Test fun anonymousIdentityPreservesNegationNumbersAndAppBoundaries() {
+        val rows = listOf("楼下大爷说的话，我是不会轻易相信的。", "楼下大爷说的话，我是会轻易相信的。",
+            "这项长期研究统计到的样本总数是100个。", "这项长期研究统计到的样本总数是101个。")
+            .mapIndexed { index, text -> event(index + 1L, text, work = "visit:$index").copy(identityMethod = "session_estimate") }
+        val otherApp = rows.first().copy(id = 5, packageName = "another-app")
+        assertEquals(5, calculateStatistics(rows + otherApp, StatisticsPeriod.DAY, now, zone).total)
+        assertEquals(5, ViewpointTimeline.build(rows + otherApp, StatisticsPeriod.DAY, now, zone)[11].items.size)
+    }
+
+    @Test fun anonymousVisitContinuationsAndExactRevisitsShareAnIdentityWithoutLosingQuotes() {
+        val quote = "楼下大爷说的话，我是不会轻易相信的。"
+        val rows = listOf(event(1, quote, work = "visit:a"),
+            event(2, "$quote\n新增的正文内容", work = "visit:a"),
+            event(3, "$quote\n新增的正文内容", work = "visit:b")).map { it.copy(identityMethod = "session_estimate") }
+        val keys = BrowseWorkKey.resolve(rows)
+        assertEquals(1, keys.distinct().size)
+        assertEquals(1, BrowseWorkKey.resolve(rows.reversed()).distinct().size)
+        assertEquals(1, calculateStatistics(rows, StatisticsPeriod.DAY, now, zone).total)
+        val item = ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone)[11].items.single()
+        assertEquals(3, item.records.size)
+    }
+
+    @Test fun mergedDurationsAreClippedToTheSelectedBucketAndUnknownTimeStaysUnknown() {
+        val row = event(1, "楼下大爷说的话，我是不会轻易相信的。", now - 3_601_000, "same").copy(
+            endTimestamp = now - 3_599_000, durationMillis = 2000)
+        val revisit = row.copy(id = 2, timestamp = now - 5000, endTimestamp = now - 1000, durationMillis = 4000)
+        val groups = ViewpointTimeline.groups(ViewpointTimeline.build(listOf(row, revisit), StatisticsPeriod.DAY, now, zone).flatMap { it.items })
+        val item = groups.single().items.single()
+        assertEquals(2, item.records.size)
+        assertEquals(6000L, item.durationMillis(ObservationWindow.forPeriod(StatisticsPeriod.DAY, now, zone)))
+        assertEquals(5000L, item.durationMillis(ObservationWindow(now - 3_600_000, now, zone)))
+        assertNull(item.copy(records = listOf(row, revisit.copy(sampleCount = 0))).durationMillis(
+            ObservationWindow.forPeriod(StatisticsPeriod.DAY, now, zone)))
+    }
+
     @Test fun dailySharesMergeViewpointsAndIncludeUnknownWorksInDenominator() {
         val rows = listOf(event(1, "找工作很难，很多人因此感到焦虑"),
             event(2, "求职困难让年轻人越来越焦虑"), event(3, "女性应该经济独立并自主生活"), event(4, "菜单"))

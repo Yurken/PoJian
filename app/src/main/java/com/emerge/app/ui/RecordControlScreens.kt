@@ -139,7 +139,7 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                             MetadataText("音频转写")
                             MetadataText("音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
                         }
-                    } else MetadataText(if (durationKnown) "预计停留 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品未识别"}"
+                    } else MetadataText(if (durationKnown) "停留时长 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品未识别"}"
                         else "时长未统计")
                     if (expanded) {
                         QuoteBlock(event.visibleText)

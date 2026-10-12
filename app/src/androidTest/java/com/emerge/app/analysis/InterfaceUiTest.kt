@@ -117,7 +117,7 @@ class InterfaceUiTest {
         compose.onNodeWithTag("report-open").performClick()
         compose.onNodeWithTag("report-details").assertIsDisplayed()
         saveScreenshot("pojian-report-details.png")
-        compose.onNodeWithContentDescription("8时，1条记录，预计停留1 分 0 秒")
+        compose.onNodeWithContentDescription("8时，1条记录，停留时长1 分 0 秒")
             .performScrollTo().performClick()
         compose.onNodeWithTag("hourly-review-details").assertIsDisplayed()
         compose.onNodeWithText("关闭").performClick()
@@ -202,7 +202,7 @@ class InterfaceUiTest {
         // Bring the horizontal list into the vertical viewport before scrolling to its hour.
         compose.onNodeWithTag("report-open").performScrollTo().performClick()
         compose.onNodeWithTag("hourly-hour-options").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithContentDescription("8时，1条记录，预计停留1 分 20 秒")
+        compose.onNodeWithContentDescription("8时，1条记录，停留时长1 分 20 秒")
             .performScrollTo().assertIsDisplayed().performClick()
         saveScreenshot("pojian-ui-hourly-heading-dark-large.png")
         compose.onNode(hasText("08:00—09:00") and hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()

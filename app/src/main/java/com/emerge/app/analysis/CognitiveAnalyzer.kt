@@ -257,7 +257,7 @@ class CognitiveAnalyzer {
             val majorDuration = majorIds.sumOf { currentEventsById[it]?.let(window::durationMillis) ?: 0 }
             val unknown = ids.count { currentEventsById[it]?.let { event -> !window.durationKnown(event) } == true }
             ObservationFinding(topic.topic, title,
-                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条，该组依据重复 $majorRepeated 条；全主题依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录预计停留共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条时长未统计。停留按记录去重；没有时长数据时无法判断是否阅读集中。有 $truncatedComparisons 个观点达到历史候选上限，未匹配部分保留为待定。片段新增只相对于本次可比历史，不证明事实真实或来源独立。" +
+                "在 ${ids.size} 条相关记录中识别出 ${members.size} 个观点，覆盖 $topicDays 天；其中最大的一组相似说法占 ${majorIds.size} 条，该组依据重复 $majorRepeated 条；全主题依据重复 $repeated 条，依据新增 ${members.count { it.increment == Increment.NEW }} 个，${members.count { it.increment == Increment.UNKNOWN }} 个暂无法判断。该主题的记录停留时长共 ${knownDuration / 1000} 秒，其中最大相似组 ${majorDuration / 1000} 秒，$unknown 条时长未统计。停留按记录去重；没有时长数据时无法判断是否阅读集中。有 $truncatedComparisons 个观点达到历史候选上限，未匹配部分保留为待定。片段新增只相对于本次可比历史，不证明事实真实或来源独立。" +
                     if (members.any { it.analysisSource == "structured_model" })
                         "部分观点来自云端分析，引用已通过原文校验；对象、维度、立场和归属仍需核实。历史对照使用本地识别，未经模型训练或校准。"
                     else "内容的作者、立场和材料来源尚未做模型验证。",

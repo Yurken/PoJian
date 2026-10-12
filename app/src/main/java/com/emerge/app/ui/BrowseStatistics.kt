@@ -1,6 +1,7 @@
 package com.emerge.app.ui
 
 import com.emerge.app.analysis.ObservationWindow
+import com.emerge.app.analysis.BrowseWorkKey
 import com.emerge.app.data.BrowseEvent
 import java.time.Instant
 import java.time.ZoneId
@@ -23,8 +24,7 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     // Audio segments and model-transcribed frames are material, not separately watched works.
     val selected = events.filter { it.sourceType == "accessibility" && window.contains(it) }
-    val keys = selected.mapIndexed { index, event -> event to (event.packageName + "|" +
-        (event.workKey ?: "legacy:${event.id.takeIf { it > 0 } ?: index}")) }
+    val keys = selected.zip(BrowseWorkKey.resolve(selected))
     val firstHour = Instant.ofEpochMilli(window.start).atZone(zone).truncatedTo(ChronoUnit.HOURS)
     val count = when (period) {
         StatisticsPeriod.DAY -> 24

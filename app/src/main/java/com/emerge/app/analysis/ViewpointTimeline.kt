@@ -26,7 +26,14 @@ data class ViewpointClaim(val quote: String, val topic: String = "", val subject
     } else ViewpointTimeline.label(quote)
 }
 data class ViewpointItem(val record: BrowseEvent, val label: String?, val quote: String?, val emotional: Boolean,
-    val claims: List<ViewpointClaim> = emptyList(), val analysisSource: String = "local_rules")
+    val claims: List<ViewpointClaim> = emptyList(), val analysisSource: String = "local_rules",
+    val records: List<BrowseEvent> = listOf(record), val workIdentity: String = BrowseWorkKey.of(record)) {
+    fun durationMillis(window: ObservationWindow): Long? {
+        val selected = records.filter(window::contains)
+        return if (selected.isEmpty() || selected.any { !window.durationKnown(it) }) null
+        else selected.sumOf { window.durationMillis(it) ?: 0 }
+    }
+}
 data class ViewpointBucket(val label: String, val start: Long, val end: Long,
     val items: List<ViewpointItem>, val score: Int?, val repeated: Int, val emotional: Int)
 data class ViewpointShare(val label: String, val items: List<ViewpointItem>, val total: Int,
@@ -39,8 +46,14 @@ object ViewpointTimeline {
     private val emotion = Regex("焦虑|恐慌|恐惧|绝望|完蛋|没有未来|毁掉")
     private val negatedEmotion = Regex("(?:不必|不用|无需|别|不要)[^，。；]{0,6}(?:焦虑|恐慌|恐惧|绝望)")
     private val predicate = Regex("应该|必须|需要|不能|独立|自主|焦虑|认为|觉得|导致|越来越|意味着|会|难|值得|自由")
-    private fun workKey(item: ViewpointItem) = item.record.packageName + "|" +
-        (item.record.workKey ?: "record:${item.record.id}:${item.record.timestamp}")
+    private fun workKey(item: ViewpointItem) = item.workIdentity
+    private fun records(items: List<ViewpointItem>) = items.flatMap { it.records }
+        .distinctBy { listOf(it.packageName, it.sourceType, it.id, it.timestamp) }
+
+    /** Collapse identical displayed quotes without equating different known works in the totals. */
+    fun details(items: List<ViewpointItem>): List<ViewpointItem> = items.groupBy {
+        listOf(it.record.packageName, it.analysisSource, BrowseWorkKey.normalize(it.quote ?: it.record.visibleText))
+    }.values.map { matches -> matches.first().copy(records = records(matches)) }
     private fun claims(item: ViewpointItem): List<ViewpointClaim> = item.claims.ifEmpty {
         if (item.analysisSource == "structured_model") emptyList()
         else item.quote?.let { listOf(ViewpointClaim(it, record = item.record)) }.orEmpty()
@@ -52,7 +65,7 @@ object ViewpointTimeline {
         val representative = used.firstOrNull { claims(it).isNotEmpty() } ?: used.first()
         val all = used.flatMap(::claims).distinctBy { it.key }
         representative.copy(label = all.firstOrNull()?.label, quote = all.firstOrNull()?.quote,
-            emotional = used.any { it.emotional }, claims = all)
+            emotional = used.any { it.emotional }, claims = all, records = records(visits))
     }
     fun groups(items: List<ViewpointItem>): List<ViewpointShare> {
         val works = works(items)
@@ -89,6 +102,7 @@ object ViewpointTimeline {
             else -> ChronoUnit.HOURS.between(first, Instant.ofEpochMilli(now).atZone(zone).truncatedTo(ChronoUnit.HOURS)).toInt() + 1
         }
         val selected = events.filter { it.sourceType == "accessibility" && window.contains(it) }
+        val workKeys = selected.zip(BrowseWorkKey.resolve(selected)).toMap()
         val observations = report?.takeIf { it.period == period.label }?.claims?.groupBy { it.eventId }.orEmpty()
         val modelResults = semantics.groupBy { it.eventId }.mapValues { (_, values) ->
             values.withIndex().maxWithOrNull(compareBy<IndexedValue<EventSemantics>> { it.value.analyzedAt }
@@ -112,7 +126,7 @@ object ViewpointTimeline {
             val source = if (model != null || chosen.any { it.analysisSource == "structured_model" }) "structured_model" else "local_rules"
             ViewpointItem(event, chosen.firstOrNull()?.label, chosen.firstOrNull()?.quote, chosen.any {
                 emotion.containsMatchIn(it.quote) && !negatedEmotion.containsMatchIn(it.quote)
-            }, chosen, source)
+            }, chosen, source, workIdentity = workKeys.getValue(event))
         }
         val slices = selected.associateWith(window::slices)
         return List(count) { index ->

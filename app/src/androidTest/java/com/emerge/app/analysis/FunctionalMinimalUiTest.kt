@@ -74,8 +74,8 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details")))
         compose.onNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
-        compose.onNode(hasText("本时段预计停留 1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
-        compose.onNode(hasText("本时段预计停留 2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
+        compose.onNode(hasText("本时段停留时长 1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
+        compose.onNode(hasText("本时段停留时长 2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
         saveScreenshot("emerge-viewpoint-details.png")
         compose.runOnIdle { assertEquals(0, analysisCalls) }
     }
@@ -137,6 +137,32 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("audio-pause-resume").assertDoesNotExist()
         compose.onNodeWithTag("audio-download-model").assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(1, downloadCalls); assertEquals(0, startCalls); assertEquals(0, pauseCalls) }
+    }
+
+    @Test fun repeatedAnonymousQuotesDisplayOnceWithCombinedTimeAndOriginalText() {
+        val midnight = LocalDate.of(2026, 10, 12).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val now = midnight + 12 * 3600000L
+        val quote = "楼下大爷说的话，我是不会轻易相信的。"
+        val rows = listOf(0L, 4000L, 1000L, 0L).mapIndexed { index, duration ->
+            val at = midnight + 3600000L + index * 60000L
+            BrowseEvent(index + 1L, "com.sina.weibo", at, 32, quote, endTimestamp = at + duration,
+                durationMillis = duration, sampleCount = 2, workKey = "visit:$index", identityMethod = "session_estimate")
+        }
+        render { OverviewScreen(calculateStatistics(rows, StatisticsPeriod.DAY, now), StatisticsPeriod.DAY, {},
+            active = false, statusLabel = "已暂停", appNames = mapOf("com.sina.weibo" to "微博"),
+            onRecords = {}, onSettings = {}, rawEvents = rows, now = now) }
+        val distribution = hasAnyAncestor(hasTestTag("daily-viewpoint-pie"))
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
+        compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("未识别，1个作品，100.0%")
+        compose.onNode(hasText("未识别") and distribution).performClick()
+        compose.onAllNodes(hasText(quote) and distribution).assertCountEquals(1)
+        compose.onNode(hasText("本时段停留时长 5 秒") and distribution).assertExists()
+        compose.onAllNodes(hasText("查看原文 ›") and distribution).assertCountEquals(1)
+        compose.onNode(hasText("查看原文 ›") and distribution).performScrollTo().performClick()
+        compose.onAllNodes(hasText(quote) and distribution).assertCountEquals(2)
+        compose.onNode(hasText("收起原文") and distribution).performClick()
+        compose.onAllNodes(hasText(quote) and distribution).assertCountEquals(1)
+        saveScreenshot("pojian-deduplicated-viewpoints.png")
     }
 
     @Test fun oneWorkWithTwoModelViewpointsUsesIndependentSharesAndPreservesQuotes() {

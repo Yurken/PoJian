@@ -24,17 +24,17 @@ object ReportExporter {
         appendLine()
         appendLine("## 1. 覆盖范围与数据质量")
         report.workStatistics?.let { stats ->
-            appendLine("浏览作品（估算）：${stats.total} 个；观看 ${stats.visitCount} 次；预计停留 ${duration(stats.observedDurationMillis)}。${stats.unidentifiedWorks} 个作品未识别。")
-            stats.apps.forEach { app -> appendLine("平台 ${app.packageName}：${app.count} 个作品，${app.visitCount} 次观看，预计停留 ${duration(app.durationMillis)}；${app.unidentifiedWorks} 个作品未识别，${app.unknownDurationRecords} 次时长未统计。") }
+            appendLine("浏览作品（估算）：${stats.total} 个；观看 ${stats.visitCount} 次；停留时长 ${duration(stats.observedDurationMillis)}。${stats.unidentifiedWorks} 个作品未识别。")
+            stats.apps.forEach { app -> appendLine("平台 ${app.packageName}：${app.count} 个作品，${app.visitCount} 次观看，停留时长 ${duration(app.durationMillis)}；${app.unidentifiedWorks} 个作品未识别，${app.unknownDurationRecords} 次时长未统计。") }
             appendLine("作品身份按平台提供的标识或作者与标题估计，无法确认时按连续观看计数。再次打开已识别作品增加观看次数，音频片段和视觉文字不单独计为作品。下文的分析记录数和观点数不是作品数。")
         }
         appendLine("范围内共 ${report.rawRecords} 条原始记录；合并内容相同的连续记录 ${report.mergedSnapshots} 条；跳过桌面和无正文的记录 ${report.skippedRecords} 条；保留有效记录 ${report.usableSnapshots} 条。跨越范围边界的记录按重叠部分计入。")
         appendLine("分析进度：${report.structuredAnalyzedRecords}/${report.usableSnapshots} 条有效记录有通过原文校验的云端分析（${percent(report.structuredAnalyzedRecords, report.usableSnapshots)}）；${report.localFallbackRecords} 条使用本地识别；${report.rejectedSemanticsRecords} 条云端分析未通过校验，已回退到本地识别。覆盖包括未提取到观点的记录，每次最多提取 3 个观点，不能代表整条记录或全部浏览内容。")
         appendLine("处理状态：${report.pendingAnalysisRecords} 条记录已保存、等待或正在分析；${report.failedAnalysisRecords} 条最近未完成。任务状态保留 24 小时，原文独立保留；本地识别不表示云端分析已完成。")
         if (report.structuredAnalyzedRecords == 0) appendLine("当前没有通过校验的云端分析；观点和依据均来自本地识别，需核对原文。")
-        appendLine("有效记录共 ${report.coverageSessions} 条；范围内预计停留合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条时长未统计。时长为零表示尚未采集到连续的检查间隔。")
+        appendLine("有效记录共 ${report.coverageSessions} 条；范围内停留时长合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条时长未统计。时长为零表示尚未采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")
-        appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒结束一段浏览。每条记录只计一次，按统计范围、日期和小时分摊。预计停留不能代表实际阅读、理解或观看时间；旧版本记录不补算时长，音频转写和媒体长度不计入观看时长。")
+        appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒结束一段浏览。每条记录只计一次，按统计范围、日期和小时分摊。停留时长不能代表实际阅读、理解或观看时间；旧版本记录不补算时长，音频转写和媒体长度不计入观看时长。")
         appendLine("数据来自本机保留的最近 5000 条记录，包括可见页面文字、已保存的音频转写及视觉提取文字，后者可能有误。未获取的页面文字、未转写的音频、完整视频画面和已删除历史均不在范围内。记录为零可能源于未采集、权限或页面限制。")
         appendLine("范围之前还保留 ${report.comparisonRecords} 条历史记录${report.comparisonStart?.let { "，最早一条是 ${time(it)}" } ?: ""}；对比按浏览先后顺序，仅使用这些记录。“首次出现”表示未匹配到可比历史。")
         appendLine()
@@ -42,9 +42,9 @@ object ReportExporter {
         report.topicExposure.forEach {
             val durationShare = if (report.observedDurationMillis > 0) percent(it.durationMillis, report.observedDurationMillis)
                 else "暂不可计算"
-            appendLine("${it.topic}：${it.recordCount}/${report.coverageSessions} 条（${percent(it.recordCount, report.coverageSessions)}）；预计停留 ${duration(it.durationMillis)}；时长占比 $durationShare")
+            appendLine("${it.topic}：${it.recordCount}/${report.coverageSessions} 条（${percent(it.recordCount, report.coverageSessions)}）；停留时长 ${duration(it.durationMillis)}；时长占比 $durationShare")
         }
-        appendLine("每条有效记录按主要内容归入一个主题，包括未分类和娱乐。条数比例的统计范围为全部 ${report.coverageSessions} 条有效记录；时长比例的统计范围为预计停留合计 ${duration(report.observedDurationMillis)}。时长未统计不表示没有阅读。")
+        appendLine("每条有效记录按主要内容归入一个主题，包括未分类和娱乐。条数比例的统计范围为全部 ${report.coverageSessions} 条有效记录；时长比例的统计范围为停留时长合计 ${duration(report.observedDurationMillis)}。时长未统计不表示没有阅读。")
         appendLine("娱乐与休闲单独统计，不会因为缺少论据或反复观看而被评价为“低价值”。专题内容占比高，也可能正符合你的浏览目的。")
         report.topics.forEach { appendLine("${it.topic}：${it.count}/${report.claims.size} 个观点（${percent(it.count, report.claims.size)}）") }
         if (report.claims.isEmpty()) appendLine("未识别到可回查的观点，无法据此判断是否存在信息同质化。")
@@ -76,7 +76,7 @@ object ReportExporter {
             if (review == null) {
                 appendLine("$label：${report.hourlyClaims.getOrElse(hour) { 0 }} 个观点；旧版本报告没有逐小时统计。")
             } else {
-                appendLine("$label：${review.recordCount} 条记录；预计停留 ${duration(review.durationMillis)}；${review.unknownDurationRecords} 条时长未统计；主题 ${review.topics.joinToString { "${it.topic} ${it.count}条" }.ifBlank { "无" }}；相关观点见记录 ${review.claimEventIds.joinToString { "#$it" }.ifBlank { "无" }}")
+                appendLine("$label：${review.recordCount} 条记录；停留时长 ${duration(review.durationMillis)}；${review.unknownDurationRecords} 条时长未统计；主题 ${review.topics.joinToString { "${it.topic} ${it.count}条" }.ifBlank { "无" }}；相关观点见记录 ${review.claimEventIds.joinToString { "#$it" }.ifBlank { "无" }}")
             }
         }
         appendLine("一条记录如果跨越多个小时（或跨天），会在每个接触到的小时里分别列出，所以各时段的条数不能直接相加；停留时长已切分，总时长不会重复。观点可通过记录编号到附录中回看原文。")
@@ -96,7 +96,7 @@ object ReportExporter {
             remaining -= shown.size
             shown.forEach { observation ->
                 appendLine("记录 #${observation.eventId} | 开始时间 ${time(observation.timestamp)} | ${observation.packageName}")
-                appendLine("该记录在本次范围内的预计停留：${observation.durationMillis?.let { duration(it) } ?: "时长未统计"}（同一记录里的多个观点共用时长，不能相加）")
+                appendLine("该记录在本次范围内的停留时长：${observation.durationMillis?.let { duration(it) } ?: "时长未统计"}（同一记录里的多个观点共用时长，不能相加）")
                 appendLine("观点原文：${observation.quote}")
                 appendLine("观点来源：${if (observation.analysisSource == "structured_model") "云端分析（需核对）" else "本地识别"}")
                 appendLine("讨论对象：${observation.subject.ifBlank { "未识别，暂不与历史对比" }}")
