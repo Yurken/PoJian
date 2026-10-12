@@ -9,8 +9,11 @@ MAX_APK = 512 * 1024 * 1024
 
 
 def sha256(path):
+    digest = hashlib.sha256()
     with open(path, "rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        for block in iter(lambda: stream.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def payloads(path):
