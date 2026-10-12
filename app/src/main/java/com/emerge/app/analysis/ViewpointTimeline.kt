@@ -9,7 +9,8 @@ import java.time.temporal.ChronoUnit
 data class ViewpointClaim(val quote: String, val topic: String = "", val subject: String = "",
     val dimension: String = "", val stance: String = "", val conditions: String = "",
     val uncertain: Boolean = false, val analysisSource: String = "local_rules",
-    val record: BrowseEvent? = null, val zoneId: String = ZoneId.systemDefault().id) {
+    val record: BrowseEvent? = null, val zoneId: String = ZoneId.systemDefault().id,
+    val evidence: String = "") {
     private fun normalized(value: String) = value.trim().replace(Regex("\\s+"), " ").lowercase()
     val confirmed: Boolean get() = !uncertain && topic.isNotBlank() && subject.isNotBlank() && dimension.isNotBlank() && stance.isNotBlank()
     val key: String get() = if (analysisSource == "structured_model")
@@ -53,7 +54,8 @@ object ViewpointTimeline {
     /** Collapse identical displayed quotes without equating different known works in the totals. */
     fun details(items: List<ViewpointItem>): List<ViewpointItem> = items.groupBy {
         listOf(it.record.packageName, it.analysisSource, BrowseWorkKey.normalize(it.quote ?: it.record.visibleText))
-    }.values.map { matches -> matches.first().copy(records = records(matches)) }
+    }.values.map { matches -> matches.first().copy(records = records(matches),
+        claims = matches.flatMap { it.claims }.distinct()) }
     private fun claims(item: ViewpointItem): List<ViewpointClaim> = item.claims.ifEmpty {
         if (item.analysisSource == "structured_model") emptyList()
         else item.quote?.let { listOf(ViewpointClaim(it, record = item.record)) }.orEmpty()
@@ -111,7 +113,7 @@ object ViewpointTimeline {
         val candidates = selected.associateWith { event ->
             val model = modelResults[event.id]?.takeIf { it.validFor(event) }
             val modelClaims = model?.claims?.map { ViewpointClaim(it.quote, it.topic, it.subject,
-                it.dimension, it.stance, it.conditions, it.uncertain, "structured_model", event, zone.id) }
+                it.dimension, it.stance, it.conditions, it.uncertain, "structured_model", event, zone.id, it.evidence) }
             // A report may be stale; only the full input snapshot can authorize a model result here.
             val reportClaims = observations[event.id].orEmpty().filter {
                 it.analysisSource == "local_rules" && event.visibleText.contains(it.quote)
