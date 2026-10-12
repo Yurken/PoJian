@@ -176,7 +176,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                             cloudEnabled = audioConfig.enabled, onCloudEnabledChange = { value ->
                                 audioModel.saveConfig(audioConfig.copy(enabled = value), {}, { error -> app.monitor.notice(error) })
                             }, cloudConfig = audioConfig)
-                    })
+                    }, updateContent = { com.emerge.app.update.UpdateSettingsSection() })
             }
         }
     }

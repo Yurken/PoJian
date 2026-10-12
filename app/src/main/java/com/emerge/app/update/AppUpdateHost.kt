@@ -8,6 +8,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,9 +27,15 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.emerge.app.BuildConfig
+import com.emerge.app.ui.MetadataText
+import com.emerge.app.ui.Muted
 import com.emerge.app.ui.PojianButton
 import com.emerge.app.ui.PojianDialog
+import com.emerge.app.ui.PojianSecondaryButton
 import com.emerge.app.ui.PojianTextButton
+import com.emerge.app.ui.SectionTitle
+import com.emerge.app.ui.WhiteCard
 
 @Composable
 internal fun AppUpdateHost(model: UpdateViewModel = viewModel()) {
@@ -63,6 +70,26 @@ internal fun AppUpdateHost(model: UpdateViewModel = viewModel()) {
         }
     }
     state?.let { UpdateDialog(it, model::download, model::requestInstall, model::dismiss) }
+}
+
+@Composable
+internal fun UpdateSettingsSection(model: UpdateViewModel = viewModel()) {
+    if (BuildConfig.UPDATE_MANIFEST_URL.isBlank()) return
+    val status by model.checkStatus.collectAsStateWithLifecycle()
+    val checking = status == "正在检查…"
+    WhiteCard {
+        SectionTitle("应用更新")
+        MetadataText("当前版本 v${BuildConfig.VERSION_NAME}")
+        PojianSecondaryButton(onClick = model::checkNow, enabled = !checking,
+            shape = MaterialTheme.shapes.small,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("check-update")) {
+            Text(if (checking) "正在检查…" else "检查更新")
+        }
+        status?.takeIf { !checking }?.let {
+            Text(it, color = if (it == "已是最新版本") Muted else MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall)
+        }
+    }
 }
 
 @Composable
