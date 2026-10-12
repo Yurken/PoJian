@@ -35,20 +35,49 @@ internal class AppUpdateRepository(private val context: Context, private val tra
         var completed = false
         try {
             withTimeout(15 * 60_000L) {
-                val digest = MessageDigest.getInstance("SHA-256")
-                var received = 0L
-                var reported = -1
-                part.outputStream().use { output ->
-                    transport.read(release.apkUrl, UpdatePolicy.MAX_APK_BYTES) { buffer, count, length ->
-                        output.write(buffer, 0, count)
-                        digest.update(buffer, 0, count)
-                        received += count
-                        val progress = if (length > 0) (received * 100 / length).toInt().coerceIn(0, 100) else null
-                        if (progress != null && progress != reported) { reported = progress; onProgress(progress) }
+                val base = File(context.applicationInfo.sourceDir)
+                val patch = release.patches.firstOrNull { it.fromVersionCode == installed().versionCode }
+                var patched = false
+                if (patch != null) {
+                    val delta = File.createTempFile("update-", ".delta", directory)
+                    try {
+                        if (hashFile(base) == patch.baseSha256) {
+                            delta.outputStream().use { output ->
+                                transport.read(patch.url, patch.size) { bytes, count, _ -> output.write(bytes, 0, count) }
+                            }
+                            check(delta.length() == patch.size && hashFile(delta) == patch.sha256)
+                            val coroutine = currentCoroutineContext()
+                            ApkDelta.apply(base, delta, part) { coroutine.ensureActive() }
+                            check(hashFile(part) == release.sha256)
+                            verifyPackage(part, release)
+                            patched = true
+                            onProgress(100)
+                        }
+                    } catch (_: Exception) {
+                        // Cancellation must never start a fallback download.
+                        currentCoroutineContext().ensureActive()
+                        part.delete()
+                        onProgress(null)
+                    } finally {
+                        delta.delete()
                     }
                 }
-                if (digest.digest().hex() != release.sha256) throw UpdateException("更新包校验失败，请重试。")
-                verifyPackage(part, release)
+                if (!patched) {
+                    val digest = MessageDigest.getInstance("SHA-256")
+                    var received = 0L
+                    var reported = -1
+                    part.outputStream().use { output ->
+                        transport.read(release.apkUrl, UpdatePolicy.MAX_APK_BYTES) { buffer, count, length ->
+                            output.write(buffer, 0, count)
+                            digest.update(buffer, 0, count)
+                            received += count
+                            val progress = if (length > 0) (received * 100 / length).toInt().coerceIn(0, 100) else null
+                            if (progress != null && progress != reported) { reported = progress; onProgress(progress) }
+                        }
+                    }
+                    if (digest.digest().hex() != release.sha256) throw UpdateException("更新包校验失败，请重试。")
+                    verifyPackage(part, release)
+                }
                 currentCoroutineContext().ensureActive()
                 check(part.renameTo(apk)) { "Cannot finish update file" }
                 completed = true
@@ -58,6 +87,20 @@ internal class AppUpdateRepository(private val context: Context, private val tra
             part.delete()
             if (!completed) apk.delete()
         }
+    }
+
+    private suspend fun hashFile(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().hex()
     }
 
     suspend fun verifyForInstall(file: File, release: UpdateRelease) = withContext(Dispatchers.IO) {
@@ -97,7 +140,22 @@ internal fun decodeManifest(json: String, installedCode: Long): UpdateRelease? {
     require(code > 0)
     if (code <= installedCode) return null
     fun string(key: String) = value.get(key).let { require(it is String); it }
-    return UpdatePolicy.release(code, string("versionName"), string("apkUrl"), string("sha256"))
+    val release = UpdatePolicy.release(code, string("versionName"), string("apkUrl"), string("sha256"))
+    // Unsupported or malformed optional patches must not disable full APK updates.
+    val patches = value.optJSONArray("patches") ?: return release
+    return release.copy(patches = (0 until minOf(patches.length(), 8)).mapNotNull { index ->
+        runCatching {
+            val patch = patches.getJSONObject(index)
+            require(patch.getString("format") == "pjdiff1")
+            val from = patch.get("fromVersionCode").let { require(it is Number); it.toString().toLong() }
+            val size = patch.get("size").let { require(it is Number); it.toString().toLong() }
+            val base = patch.getString("baseSha256").lowercase()
+            val hash = patch.getString("sha256").lowercase()
+            require(from in 1 until code && size in 1..UpdatePolicy.MAX_APK_BYTES)
+            require(base.matches(Regex("[0-9a-f]{64}")) && hash.matches(Regex("[0-9a-f]{64}")))
+            UpdatePatch(from, base, UpdatePolicy.httpsUrl(patch.getString("url")), hash, size)
+        }.getOrNull()
+    })
 }
 
 private fun ByteArray.hex() = joinToString("") { "%02x".format(it) }

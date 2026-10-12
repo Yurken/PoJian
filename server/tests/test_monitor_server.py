@@ -1016,6 +1016,27 @@ class AppUpdateEndpointTests(unittest.TestCase):
             "apkUrl": f"https://127.0.0.1:{self.server.server_port}/app-update/download",
             "sha256": "ab" * 32})
 
+    def test_r2_manifest_returns_direct_download_and_legacy_route_redirects(self):
+        source = m.R2UpdateSource("https://updates.example.com")
+        url = "https://updates.example.com/updates/releases/42-" + "ab" * 32 + "/PoJian.apk"
+        source.manifest = lambda: {"version_code": 42, "version_name": "0.5.13", "sha256": "ab" * 32,
+                                   "apk_url": url, "patches": []}
+        server, thread = self.start_server(source)
+        try:
+            connection = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=3)
+            connection.request("GET", "/app-update")
+            reply = connection.getresponse()
+            self.assertEqual(reply.status, 200)
+            self.assertEqual(json.loads(reply.read())["apkUrl"], url)
+            connection.request("GET", "/app-update/download")
+            reply = connection.getresponse()
+            self.assertEqual(reply.status, 302)
+            self.assertEqual(reply.getheader("Location"), url)
+            self.assertEqual(reply.read(), b"")
+            connection.close()
+        finally:
+            server.shutdown(); server.server_close(); thread.join()
+
     def test_manifest_apk_url_honours_public_base_override(self):
         self.updates.manifest = lambda: {"version_code": 41, "version_name": "0.5.7",
                                          "sha256": "ab" * 32, "apk_size": 500}
@@ -1052,6 +1073,21 @@ class AppUpdateEndpointTests(unittest.TestCase):
 
 
 class AppUpdateSourceTests(unittest.TestCase):
+    def test_r2_source_reads_bounded_public_manifest_and_rejects_external_apk(self):
+        source = m.R2UpdateSource("https://updates.example.com/")
+        self.assertTrue(source.configured)
+        value = {"versionCode": 42, "versionName": "0.5.13", "sha256": "ab" * 32,
+                 "apkUrl": "https://updates.example.com/updates/releases/42/PoJian.apk"}
+        source._public_get = lambda url: _FakeAssetStream(json.dumps(value).encode())
+        self.assertEqual(source.manifest()["version_code"], 42)
+        source._assets = None
+        value["apkUrl"] = "https://other.example.com/app.apk"
+        with self.assertRaises(m.UpstreamError):
+            source.manifest()
+        with patch.dict(os.environ, {"EMERGE_APP_UPDATE_R2_BASE": "https://updates.example.com"}):
+            self.assertIsInstance(m.AppUpdateSource.from_env(), m.R2UpdateSource)
+        self.assertFalse(m.R2UpdateSource("http://example.com").configured)
+
     def source(self, api_responses):
         value = m.AppUpdateSource("octo/repo", "ghp_test-token")
         calls = []

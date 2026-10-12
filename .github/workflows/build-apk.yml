@@ -13,6 +13,9 @@ on:
       - 'scripts/*android-signing*'
       - 'scripts/verify-apk-signing.py'
       - 'scripts/tests/test_android_signing.py'
+      - 'scripts/apk_delta.py'
+      - 'scripts/publish_r2.py'
+      - 'scripts/tests/test_r2_updates.py'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -60,9 +63,16 @@ jobs:
       - name: Build signed release APK
         env:
           ORG_GRADLE_PROJECT_pojian.serviceToken: ${{ secrets.POJIAN_SERVICE_TOKEN }}
+          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
         run: |
           python3 -c 'import os, sys; sys.exit(0 if os.environ.get("ORG_GRADLE_PROJECT_pojian.serviceToken") else "POJIAN_SERVICE_TOKEN is missing")'
-          bash ./gradlew :app:assembleRelease --no-daemon --console=plain
+          UPDATE_ARGS=()
+          if [ -n "$R2_BUCKET" ]; then
+            PYTHONPATH=scripts python3 -c 'import os; from publish_r2 import public_base; public_base(os.environ["R2_PUBLIC_BASE_URL"])'
+            UPDATE_ARGS+=("-Ppojian.updateManifestUrl=${R2_PUBLIC_BASE_URL%/}/updates/latest.json")
+          fi
+          bash ./gradlew :app:assembleRelease --no-daemon --console=plain "${UPDATE_ARGS[@]}"
 
       - name: Verify APK signature
         run: |
@@ -84,6 +94,7 @@ jobs:
           compression-level: 0
 
       - name: Publish APK to Releases
+        id: release
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -123,3 +134,20 @@ jobs:
               --notes "使用项目固定签名的 Release APK，本地与 CI 共用同一签名。固定签名版本之间支持覆盖升级。此前临时 Debug 签名版本不兼容，请保留旧应用及数据，完成备份迁移前不要卸载。" \
               --latest
           fi
+          echo "published=true" >> "$GITHUB_OUTPUT"
+
+      - name: Test R2 publisher and delta format
+        run: python3 -m unittest discover -s scripts/tests -p test_r2_updates.py
+
+      - name: Publish APK and incremental update to Cloudflare R2
+        if: github.ref == 'refs/heads/main' && steps.release.outputs.published == 'true' && vars.R2_BUCKET != ''
+        env:
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python3 -c 'import os; required=["R2_ACCOUNT_ID","R2_BUCKET","R2_PUBLIC_BASE_URL","R2_ACCESS_KEY_ID","R2_SECRET_ACCESS_KEY"]; assert all(os.environ.get(k) for k in required), "R2 configuration incomplete"'
+          python3 -m pip install 'boto3>=1.35,<2'
+          python3 scripts/publish_r2.py

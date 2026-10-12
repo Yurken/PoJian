@@ -36,6 +36,8 @@ python server/monitor_server.py
 - `GET /status` 的 `fact_checks` 按抽取、检索、证据分析、引文校验阶段统计错误类型，也统计正常结论；不记录声明、网页内容或提供方原始响应，重启后计数清零。
 - `GET /app-update`：应用内自动更新的 JSON 清单（`versionCode`、`versionName`、`apkUrl`、`sha256`），由服务端用 `EMERGE_APP_UPDATE_TOKEN` 从私有仓库的最新 GitHub Release 代理生成，60 秒缓存；公开，不携带也不接受服务令牌。
 - `GET /app-update/download`：安装包字节流（`PoJian.apk`），同样从私有 Release 代理，服务端持有令牌、客户端不持有；公开。令牌未配置时两个端点返回 404。
+
+配置 `EMERGE_APP_UPDATE_R2_BASE` 后，更新清单改从公开 R2 桶读取，返回 R2 的 APK 地址；下载端点直接重定向至 R2，不再经服务器转发 APK。此模式不需要 GitHub 只读令牌或 R2 上传密钥。完整配置见 [R2 更新](../docs/R2_UPDATES.md)。
 - `GET /admin`：自包含的中文管理台页面（令牌登录后可用），每 5 秒轮询 `/status`；纯旧服务 `emerge_server.py` 同样提供这两个入口，但只含文字模型信息、无配置管理。
 - `POST /config/update`（仅监测服务，须令牌）：更新生效中的文字/视觉/检索配置与每日限额，校验后原子写入状态目录的 `runtime-config.json`（0600）并即时生效，无需重启；密钥字段留空表示保持不变。
 - `POST /config/profile/save|apply|delete`（须令牌）：命名保存当前配置、应用或删除已保存配置（最多 10 套）；应用后即时生效。接口响应与 `/status` 中的密钥始终只显示尾四位。
