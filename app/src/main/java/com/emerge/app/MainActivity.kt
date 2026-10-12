@@ -134,7 +134,10 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         }
     }) { padding ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            val contentModifier = Modifier.padding(padding).widthIn(max = 760.dp).fillMaxWidth()
+            val contentModifier = Modifier
+                .padding(padding)
+                .padding(top = 12.dp)
+                .widthIn(max = 760.dp).fillMaxWidth()
             when {
                 showAudioRecords -> AudioRecordsScreen(audioSessions, onSession = { audioDetailId = it.id },
                     onImport = audioActions.onImport, onBack = { showAudioRecords = false }, modifier = contentModifier,

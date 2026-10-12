@@ -27,7 +27,8 @@ def request_data(**updates):
 
 
 def claim(**updates):
-    return {"quote": QUOTE, "topic": "产品评测", "subject": "某产品", "dimension": "测试结果", "stance": "结果提升",
+    return {"quote": QUOTE, "check_quote": updates.get("quote", QUOTE) if updates.get("factual", True) else "",
+            "topic": "产品评测", "subject": "某产品", "dimension": "测试结果", "stance": "结果提升",
             "evidence": "根据报告，测试采用相同的条件", "conditions": "相同条件", "factual": True, "uncertain": False, **updates}
 
 
@@ -83,15 +84,42 @@ class MonitorTimeoutTests(unittest.TestCase):
         self.assertEqual(caught.exception.status, 504)
         post.assert_not_called()
 
-    def test_extraction_search_and_verification_share_one_deadline(self):
+    def test_extraction_and_search_leave_verification_time_within_total_deadline(self):
         providers = FakeProviders()
         with patch.object(m.time, "monotonic", return_value=1000), \
                 patch.object(providers, "model", wraps=providers.model) as model, \
                 patch.object(providers, "search", wraps=providers.search) as search:
             m.analyze_monitor(m.validate_monitor(request_data()), providers)
         self.assertEqual(model.call_count, 2)
-        self.assertEqual([call.args[2] for call in model.call_args_list], [1110, 1110])
-        self.assertEqual(search.call_args.args[1], 1110)
+        self.assertEqual([call.args[2] for call in model.call_args_list], [1045, 1110])
+        self.assertEqual(search.call_args.args[1], 1040)
+
+    def test_slow_early_stages_still_leave_alignment_time(self):
+        provider = FakeProviders()
+        clock, deadlines = [1000.0], []
+        original_model, original_search = provider.model, provider.search
+        def model(system, user, deadline, image=""):
+            deadlines.append((system, deadline - clock[0]))
+            if system == m.EXTRACT_PROMPT:
+                clock[0] += 44
+            return original_model(system, user, deadline, image)
+        def search(query, deadline):
+            deadlines.append(("search", deadline - clock[0]))
+            clock[0] = deadline
+            return original_search(query, deadline)
+        with patch.object(m.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(provider, "model", side_effect=model), patch.object(provider, "search", side_effect=search):
+            result = m.analyze_monitor(m.validate_monitor(request_data()), provider)
+        self.assertEqual([budget for _, budget in deadlines], [45, 40, 26])
+        self.assertEqual(result["claims"][0]["verdict"], "contradicted")
+
+    def test_semantics_without_fact_check_keeps_full_budget(self):
+        provider = FakeProviders()
+        with patch.object(m.time, "monotonic", return_value=1000), \
+                patch.object(provider, "model", wraps=provider.model) as model:
+            m.analyze_monitor(m.validate_monitor(request_data(check_facts=False)), provider)
+        self.assertEqual(model.call_args.args[2], 1110)
+        self.assertEqual(provider.search_calls, 0)
 
 
 class InputTests(unittest.TestCase):
@@ -655,10 +683,10 @@ class ConfigApiTests(unittest.TestCase):
         providers = m.Providers(self.config, reloaded)
         reply = {"results": [{"url": "https://example.org/r", "title": "报告",
                               "raw_content": "原始正文内容"}]}
-        with patch.object(m, "post_json", side_effect=[m.UpstreamError("Provider rejected the request"), reply]) as mocked:
+        with patch.object(m, "post_json", side_effect=[m.MonitorProviderError("Rejected", "authentication"), reply, reply]) as mocked:
             sources = providers.search("问题", m.time.monotonic() + 60)
         self.assertEqual(len(sources), 1)
-        self.assertEqual(mocked.call_count, 2)
+        self.assertEqual(mocked.call_count, 3)
         used_keys = [call.args[1] for call in mocked.call_args_list]
         self.assertNotEqual(used_keys[0], used_keys[1])
         self.assertTrue(set(used_keys) <= set(reloaded.search_keys()))
@@ -711,6 +739,28 @@ class ConfigApiTests(unittest.TestCase):
             status, body = self.call("/config/test", {"target": "text"})
             self.assertEqual(status, 200)
             self.assertEqual(body, {"ok": False, "error": "Provider rejected the request"})
+
+    def test_evidence_probe_uses_selected_key_without_changing_configuration(self):
+        self.runtime.update({"search_key": "first-secret second-secret"})
+        reply = {"results": [{"url": "https://example.org/report", "raw_content": "Original evidence"}]}
+        with patch.object(m, "post_json", side_effect=[reply, reply]) as post:
+            status, body = self.call("/config/test", {"target": "retrieval", "mode": "evidence", "key_index": 1})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["mode"], "evidence")
+        self.assertEqual(body["source_count"], 1)
+        self.assertEqual(post.call_count, 2)
+        self.assertTrue(all(call.args[1] == "second-secret" for call in post.call_args_list))
+        self.assertEqual(self.runtime.search_keys(), ["first-secret", "second-secret"])
+        self.assertNotIn("second-secret", json.dumps(body))
+
+    def test_invalid_evidence_probe_rejected_before_any_provider_call(self):
+        with patch.object(m, "post_json") as post:
+            for updates in ({"key_index": 999}, {"key_index": True}, {"query": ""}, {"mode": []}):
+                with self.subTest(updates=updates):
+                    status, _ = self.call("/config/test", {"target": "retrieval", "mode": "evidence", **updates})
+                    self.assertEqual(status, 400)
+        post.assert_not_called()
         self.assertEqual(self.call("/config/test", {"target": "other"})[0], 400)
 
 
