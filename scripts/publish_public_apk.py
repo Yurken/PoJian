@@ -1,8 +1,10 @@
 """Publish signed APK and optional verified delta to a separate public release repository."""
+import argparse
 import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -30,6 +32,8 @@ class ReleaseStore:
         info = json.loads(gh("api", f"repos/{repo}"))
         if info["private"]:
             raise ValueError("APK distribution repository must be public")
+        if not info.get("permissions", {}).get("push"):
+            raise ValueError("APK_RELEASE_TOKEN has no write access to the public release repository")
         self.target = info["default_branch"]
 
     def release(self, tag=None):
@@ -59,6 +63,27 @@ class ReleaseStore:
         gh("release", "edit", tag, "--repo", self.repo, "--draft=false", "--latest")
 
 
+def preflight(repo, environ):
+    if not (environ.get("GH_TOKEN") or "").strip():
+        raise ValueError("APK_RELEASE_TOKEN is missing; configure it in the source repository Actions secrets")
+    return ReleaseStore(repo)
+
+
+def verify_release(store, tag, manifest, root):
+    release = store.release(tag)
+    if not release or release["draft"] or release.get("prerelease"):
+        raise ValueError("Public release is not published")
+    store.download(release, "update.json", root / "published.json")
+    if json.loads((root / "published.json").read_text()) != manifest:
+        raise ValueError("Published update manifest does not match this APK")
+    assets = {asset["name"]: asset for asset in release["assets"]}
+    for name, size, digest in [("PoJian.apk", manifest["size"], manifest["sha256"]),
+                              *[(p["url"].rsplit("/", 1)[1], p["size"], p["sha256"]) for p in manifest["patches"]]]:
+        asset = assets.get(name)
+        if not asset or asset["size"] != size or asset.get("digest") not in (None, "sha256:" + digest):
+            raise ValueError("Published APK or patch asset is missing or does not match the manifest")
+
+
 def publish(store, apk, code, name, certificate):
     if not 0 < apk.stat().st_size <= MAX_APK or code <= 0 or not re.fullmatch(r"\d+\.\d+\.\d+", name):
         raise ValueError("Invalid APK release")
@@ -75,6 +100,7 @@ def publish(store, apk, code, name, certificate):
             store.download(existing, "update.json", root / "existing.json")
             saved = json.loads((root / "existing.json").read_text())
             if saved.get("version_code") == code and saved.get("sha256") == digest:
+                verify_release(store, tag, saved, root)
                 print("Identical public release already published")
                 return saved
             raise ValueError("Refusing to overwrite an already published APK version")
@@ -106,11 +132,25 @@ def publish(store, apk, code, name, certificate):
         for artifact in artifacts + [info]:
             store.upload(tag, artifact)
         store.publish(tag)
+        verify_release(store, tag, manifest, root)
         print(f"Public release {tag} published; patches: {[p['size'] for p in manifest['patches']]}")
         return manifest
 
 
 if __name__ == "__main__":
-    metadata = json.loads(Path("release-apk/update.json").read_text())
-    publish(ReleaseStore(os.environ["APK_RELEASE_REPOSITORY"]), Path("release-apk/PoJian.apk"),
-            metadata["version_code"], metadata["version_name"], Path("app/signing-certificate.sha256").read_text())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true", help="Check credentials and repository access without publishing")
+    arguments = parser.parse_args()
+    try:
+        store = preflight(os.environ["APK_RELEASE_REPOSITORY"], os.environ)
+        if arguments.check:
+            print(f"Public release credentials and repository access checked: {store.repo}")
+        else:
+            metadata = json.loads(Path("release-apk/update.json").read_text())
+            manifest = publish(store, Path("release-apk/PoJian.apk"), metadata["version_code"],
+                               metadata["version_name"], Path("app/signing-certificate.sha256").read_text())
+            if os.environ.get("GITHUB_STEP_SUMMARY"):
+                with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+                    summary.write(f"Published [{manifest['versionName']}](https://github.com/{store.repo}/releases/tag/v{manifest['versionName']})\n")
+    except (KeyError, ValueError, RuntimeError, OSError) as error:
+        sys.exit(f"::error::{error}")

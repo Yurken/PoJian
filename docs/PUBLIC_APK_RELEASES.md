@@ -17,7 +17,11 @@ App 更新地址为 `https://github.com/baijiamin/PoJian-Releases/releases/lates
 
 ## 发布与迁移
 
-main 构建成功且本次提交具有正确的 `v<versionName>` Tag 时，流水线保留源码仓库 Release，再向公开仓库发布。公开 Release 先保持 draft，APK、可选补丁和清单全部上传后才公开为 Latest。令牌未配置时明确标记跳过，不能认为自动发布已启用；首次版本可以由维护者使用本地已授权登录发布。
+main 本次提交具有正确的 `v<versionName>` Tag 时，流水线先检查 `APK_RELEASE_TOKEN`、目标仓库公开状态及写入权限，再构建固定签名 APK。令牌缺失、仓库不可访问或没有写入权限时直接失败，不再将跳过公开发布报告为成功。没有 Tag 的提交仍构建并上传 APK artifact，跳过两处 Release 发布，不自动创建 Tag。
+
+构建及签名验证成功后，先向公开仓库发布，再保留源码仓库 Release。公开 Release 先保持 draft，APK、可选补丁和清单全部上传后才公开为 Latest；随后重新读取清单并检查 APK／补丁资产的大小与 GitHub 返回的摘要。全部检查通过后才记录发布成功及公开 Release 链接。修正 Secret 后可重新运行失败的流水线；已经完整发布的相同 APK 可幂等重试，不覆盖已发布版本的不同内容。
+
+维护者可使用有目标仓库写入权限的凭据先检查配置：`GH_TOKEN=... APK_RELEASE_REPOSITORY=baijiamin/PoJian-Releases python3 scripts/publish_public_apk.py --check`。`--check` 只读取仓库信息，不发布或修改 Release。
 
 差分沿用 `pjdiff1`，只对紧邻上一版且同签名的 APK 生成；还原摘要验证通过且至少节省20%时提供。客户端基础包或补丁不匹配时下载完整 APK。首次版本仅有全量 APK。
 

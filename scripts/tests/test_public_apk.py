@@ -4,9 +4,11 @@ import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from publish_public_apk import publish, validate_repo
+from apk_delta import sha256
+from publish_public_apk import preflight, publish, validate_repo
 
 
 class FakeStore:
@@ -25,13 +27,16 @@ class FakeStore:
     def prepare(self, tag, name, existing):
         self.calls.append("prepare")
         if existing is None:
-            self.releases[tag] = {"tag_name": tag, "draft": True, "files": {}}
+            self.releases[tag] = {"tag_name": tag, "draft": True, "files": {}, "assets": []}
 
     def upload(self, tag, path):
         if self.fail_upload:
             raise OSError("upload failed")
         self.calls.append(path.name)
         self.releases[tag]["files"][path.name] = path.read_bytes()
+        assets = self.releases[tag]["assets"]
+        assets[:] = [asset for asset in assets if asset["name"] != path.name]
+        assets.append({"name": path.name, "size": path.stat().st_size, "digest": "sha256:" + sha256(path)})
 
     def publish(self, tag):
         self.calls.append("publish")
@@ -94,6 +99,48 @@ class PublicApkTests(unittest.TestCase):
         for value in ("https://github.com/repo", "repo", "owner/repo/more", "owner/repo\n"):
             with self.assertRaises(ValueError):
                 validate_repo(value)
+
+    def test_missing_token_fails_before_any_github_request(self):
+        with patch("publish_public_apk.gh") as request:
+            for token in (None, "", " "):
+                with self.subTest(token=token), self.assertRaisesRegex(ValueError, "APK_RELEASE_TOKEN is missing"):
+                    preflight("owner/public-apk", {"GH_TOKEN": token})
+            request.assert_not_called()
+
+    def test_preflight_rejects_private_or_unwritable_repository(self):
+        for private, push in ((True, True), (False, False), (False, None)):
+            info = dict(private=private, default_branch="main", permissions=dict(push=push))
+            with self.subTest(private=private, push=push), patch("publish_public_apk.gh", return_value=json.dumps(info)), self.assertRaises(ValueError):
+                preflight("owner/public-apk", {"GH_TOKEN": "fixture"})
+
+    def test_preflight_only_reads_repository_metadata(self):
+        info = dict(private=False, default_branch="main", permissions=dict(push=True))
+        with patch("publish_public_apk.gh", return_value=json.dumps(info)) as request:
+            self.assertEqual("owner/public-apk", preflight("owner/public-apk", {"GH_TOKEN": "fixture"}).repo)
+            request.assert_called_once_with("api", "repos/owner/public-apk")
+
+    def test_retry_rejects_published_release_with_missing_or_changed_apk(self):
+        for corrupt in ("missing", "digest", "size"):
+            store, apk = FakeStore(), self.apk("old")
+            publish(store, apk, 40, "0.5.18", "cert")
+            asset = next(a for a in store.releases[store.latest]["assets"] if a["name"] == "PoJian.apk")
+            if corrupt == "missing":
+                store.releases[store.latest]["assets"].remove(asset)
+            elif corrupt == "digest":
+                asset["digest"] = "sha256:" + "0" * 64
+            else:
+                asset["size"] += 1
+            with self.subTest(corrupt=corrupt), self.assertRaisesRegex(ValueError, "asset is missing or does not match"):
+                publish(store, apk, 40, "0.5.18", "cert")
+
+    def test_incomplete_publication_is_reported_as_failure(self):
+        store = FakeStore()
+        original = store.publish
+        def omit_apk(tag):
+            original(tag)
+            store.releases[tag]["assets"] = [a for a in store.releases[tag]["assets"] if a["name"] != "PoJian.apk"]
+        with patch.object(store, "publish", side_effect=omit_apk), self.assertRaisesRegex(ValueError, "asset is missing or does not match"):
+            publish(store, self.apk("new"), 40, "0.5.18", "cert")
 
 
 if __name__ == "__main__":

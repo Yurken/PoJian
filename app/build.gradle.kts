@@ -13,6 +13,10 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
+val publicApkRepository = providers.gradleProperty("pojian.apkReleaseRepository").getOrElse("baijiamin/PoJian-Releases")
+require(publicApkRepository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"))) { "Invalid APK release repository" }
+val publicUpdateManifestUrl = "https://github.com/$publicApkRepository/releases/latest/download/update.json"
+
 // Both local builds and CI use the same private key; no temporary debug fallback.
 val signingProperties = Properties().apply {
     val path = providers.environmentVariable("POJIAN_SIGNING_PROPERTIES").orNull
@@ -88,15 +92,18 @@ android {
     }
     buildTypes {
         getByName("debug") { signingConfig = signingConfigs.getByName("pojian") }
-        getByName("release") { signingConfig = signingConfigs.getByName("pojian") }
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("pojian")
+            buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$publicUpdateManifestUrl\"")
+        }
     }
     defaultConfig {
         // Stable install identity lets existing users keep their local records on upgrade.
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 50
-        versionName = "0.5.28"
+        versionCode = 51
+        versionName = "0.5.29"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -114,10 +121,9 @@ android {
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
         // Public release metadata is readable without any download token.
-        // Override with the pojian.updateManifestUrl Gradle property, or set it empty in
-        // local.properties to disable update checks and network requests.
+        // Debug builds may override or disable checks; release builds use the public repository.
         val updateManifestUrl = providers.gradleProperty("pojian.updateManifestUrl").orNull
-            ?: localServiceProperties.getProperty("pojian.updateManifestUrl", "https://github.com/baijiamin/PoJian-Releases/releases/latest/download/update.json")
+            ?: localServiceProperties.getProperty("pojian.updateManifestUrl", publicUpdateManifestUrl)
         require(updateManifestUrl.length <= 300 && updateManifestUrl.all { it.code in 32..126 }) { "Invalid update manifest URL format" }
         val escapedUpdateManifestUrl = updateManifestUrl.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$escapedUpdateManifestUrl\"")
