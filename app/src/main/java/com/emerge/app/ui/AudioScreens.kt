@@ -300,7 +300,7 @@ private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compac
                     modifier = Modifier.fillMaxWidth().padding(10.dp).testTag("audio-live-transcript"))
             } else {
                 MetadataText("实时转写")
-                QuoteBlock(task.partialText, Modifier.testTag("audio-live-transcript"))
+                QuoteBlock(task.partialText, Modifier.testTag("audio-live-transcript"), fromAudio = true)
             }
         } else MetadataText(if (task.phase == AudioTaskPhase.CAPTURING)
             "等待音频输入…" else "等待识别结果…")
@@ -377,8 +377,10 @@ fun AudioRecordsScreen(
                 }
                 MetadataText("${audioDate(session.createdAt)} · ${session.sourceLabel} · 音频 ${audioTimestamp(session.durationMillis)}")
                 val excerpt = session.segments.joinToString(" ") { it.correctedText ?: it.originalText }
-                Text(excerpt.ifBlank { session.errorMessage ?: "尚未识别到文字" }, color = if (excerpt.isBlank()) Muted else Ink,
-                    style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                AudioSourceContent(fromAudio = excerpt.isNotBlank()) {
+                    Text(excerpt.ifBlank { session.errorMessage ?: "尚未识别到文字" }, color = if (excerpt.isBlank()) Muted else Ink,
+                        style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
                 session.analysisLabel?.let { MetadataText(it) }
                 Text("查看转写 ›", color = Accent, style = MaterialTheme.typography.labelLarge)
             }
@@ -443,7 +445,7 @@ fun AudioSessionDetailSheet(
                                     MetadataText(if (claim.startMillis != null && claim.endMillis != null)
                                         "依据出处 · 音频 ${audioTimestamp(claim.startMillis)} — ${audioTimestamp(claim.endMillis)}"
                                         else "来自转写的依据")
-                                    QuoteBlock(claim.evidence)
+                                    QuoteBlock(claim.evidence, fromAudio = true)
                                 } else MetadataText("未识别到依据")
                                 val comparison = listOf(claim.relation, claim.novelty).filter { it.isNotBlank() }.joinToString(" · ")
                                 if (comparison.isNotBlank()) MetadataText(comparison)
@@ -478,10 +480,10 @@ fun AudioSessionDetailSheet(
                                 style = MaterialTheme.typography.labelMedium)
                         }
                         MetadataText("原始转写")
-                        QuoteBlock(segment.originalText)
+                        QuoteBlock(segment.originalText, fromAudio = true)
                         if (!segment.correctedText.isNullOrBlank() && segment.correctedText != segment.originalText) {
                             MetadataText("修订后（用于回顾）")
-                            QuoteBlock(segment.correctedText)
+                            QuoteBlock(segment.correctedText, fromAudio = true)
                         }
                         if (editingId == segment.id) {
                             PojianTextField(value = draft, onValueChange = { draft = it },

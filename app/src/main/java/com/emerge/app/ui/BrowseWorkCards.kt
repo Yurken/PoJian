@@ -138,7 +138,7 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
                             else -> "转写"
                         }
                         MetadataText("$source · ${format.format(Instant.ofEpochMilli(row.timestamp))}")
-                        QuoteBlock(rememberOriginalText(row))
+                        QuoteBlock(rememberOriginalText(row), fromAudio = row.sourceType.startsWith("audio_"))
                     }
                 }
             }

@@ -143,13 +143,15 @@ fun RecordsScreen(events: List<BrowseEvent>, count: Int, appNames: Map<String, S
                     } else MetadataText(if (durationKnown) "停留时长 ${formatDuration(event.durationMillis)} · ${if (event.identityMethod == "author_title") "作者及标题匹配" else if (event.identityMethod == "platform_id") "平台标识" else "作品未识别"}"
                         else "时长未统计")
                     if (expanded) {
-                        QuoteBlock(rememberOriginalText(event))
+                        QuoteBlock(rememberOriginalText(event), fromAudio = fromAudio)
                         MetadataText("记录 #${event.id} · ${event.packageName}")
                         if (!fromAudio) {
                             CaptureVisibilityBreakdown(event, ObservationWindow(0, Long.MAX_VALUE, zone))
                         }
-                    } else Text(rememberOriginalText(event), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                        color = Ink, style = MaterialTheme.typography.bodyMedium)
+                    } else AudioSourceContent(fromAudio) {
+                        Text(rememberOriginalText(event), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            color = Ink, style = MaterialTheme.typography.bodyMedium)
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         PojianActionChip(
                             text = if (expanded) "收起原文" else "查看原文 ›",

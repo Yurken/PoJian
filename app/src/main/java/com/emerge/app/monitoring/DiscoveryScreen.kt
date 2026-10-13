@@ -4,6 +4,7 @@ import com.emerge.app.ui.PojianSecondaryButton
 import com.emerge.app.ui.PojianTextButton
 import com.emerge.app.ui.PojianSegmentedTabs
 import com.emerge.app.ui.SourceAppText
+import com.emerge.app.ui.AudioSourceContent
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -270,8 +271,10 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
                     Column(Modifier.testTag("discovery-original-${event.id}"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
                             "${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
-                        Text(event.visibleText, style = MaterialTheme.typography.bodyMedium,
-                            maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
+                        AudioSourceContent(event.sourceType.startsWith("audio_")) {
+                            Text(event.visibleText, style = MaterialTheme.typography.bodyMedium,
+                                maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
+                        }
                         PojianTextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "收起原文" else "展开原文") }
                     }
                 }
@@ -346,8 +349,10 @@ private fun FactCheckDetailContent(finding: MonitorFinding, originals: List<Brow
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
                             "${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
-                        Text(event.visibleText, style = MaterialTheme.typography.bodyMedium,
-                            maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
+                        AudioSourceContent(event.sourceType.startsWith("audio_")) {
+                            Text(event.visibleText, style = MaterialTheme.typography.bodyMedium,
+                                maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
+                        }
                     }
                     FactDetailAction(if (expanded) "收起原文" else "展开原文",
                         onClick = { expanded = !expanded }, expanded = expanded)

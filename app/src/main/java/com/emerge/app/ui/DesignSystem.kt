@@ -180,7 +180,7 @@ private fun HelpDialog(title: String, body: String, onDismiss: () -> Unit) {
 
 /** Selectable source excerpt with a leading brand accent that grows with the text. */
 @Composable
-internal fun QuoteBlock(text: String, modifier: Modifier = Modifier) {
+internal fun QuoteBlock(text: String, modifier: Modifier = Modifier, fromAudio: Boolean = false) {
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp),
@@ -190,13 +190,14 @@ internal fun QuoteBlock(text: String, modifier: Modifier = Modifier) {
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
             Box(Modifier.width(4.dp).fillMaxHeight().background(Accent))
-            SelectionContainer(Modifier.weight(1f)) {
-                Text(
-                    text = text,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    lineHeight = 22.sp
-                )
+            SelectionContainer(Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 10.dp)) {
+                AudioSourceContent(fromAudio) {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        lineHeight = 22.sp
+                    )
+                }
             }
         }
     }
