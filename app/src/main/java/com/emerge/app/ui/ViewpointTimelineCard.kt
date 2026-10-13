@@ -32,7 +32,7 @@ import java.time.format.DateTimeFormatter
 
 internal data class ViewpointTimelineUiState(val buckets: List<ViewpointBucket>, val index: Int,
     val hasSelection: Boolean, val select: (Int) -> Unit, val window: ObservationWindow,
-    val groups: List<ViewpointShare>, val period: StatisticsPeriod, val zone: ZoneId)
+    val groups: List<ViewpointShare>, val period: StatisticsPeriod, val zone: ZoneId, val clearSelection: () -> Unit)
 
 @Composable
 internal fun rememberViewpointTimelineState(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
@@ -44,7 +44,7 @@ internal fun rememberViewpointTimelineState(events: List<BrowseEvent>, period: S
     val index = (selected ?: latest).coerceIn(0, buckets.lastIndex)
     val window = remember(period, now, zone) { ObservationWindow.forPeriod(period, now, zone) }
     val groups = remember(buckets) { ViewpointTimeline.groups(buckets.flatMap { it.items }) }
-    return ViewpointTimelineUiState(buckets, index, selected != null, { selected = it }, window, groups, period, zone)
+    return ViewpointTimelineUiState(buckets, index, selected != null, { selected = it }, window, groups, period, zone, { selected = null })
 }
 
 /** The chart is a separate sticky item. A zero-height end marker releases it after the viewpoint section. */
@@ -84,7 +84,7 @@ private fun ViewpointTimelineChart(state: ViewpointTimelineUiState, plotHeight: 
                 Row(Modifier.horizontalScroll(scroll), verticalAlignment = Alignment.Bottom) {
                     buckets.forEachIndexed { i, b ->
                         Column(Modifier.width(width).clickable(role = Role.Button) { state.select(i) }.testTag("viewpoint-bar-$i")
-                            .semantics { contentDescription = "${b.label}，${b.items.size}个作品，点击查看作品"; selected = i == state.index },
+                            .semantics { contentDescription = "${b.label}，${b.items.size}个作品，点击查看主题观点"; selected = i == state.index },
                             horizontalAlignment = Alignment.CenterHorizontally) {
                             Canvas(Modifier.fillMaxWidth().height(plotHeight).padding(horizontal = 6.dp)) {
                                 listOf(0f, .5f, 1f).forEach { fraction ->
@@ -118,14 +118,15 @@ private fun ViewpointTimelineContent(state: ViewpointTimelineUiState, appNames: 
     val format = remember(state.zone) { DateTimeFormatter.ofPattern("M/d HH:mm").withZone(state.zone) }
     WhiteCard {
         if (state.hasSelection) Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetadataText("${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                MetadataText("${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
+                PojianTextButton(onClick = state.clearSelection) { Text("全部观点") }
+            }
             if (bucket.items.isEmpty()) MetadataText("该时段暂无作品。")
             key(state.period, bucket.start) {
                 BrowseWorkCards(bucket.items, bucket.start, bucket.end, appNames, state.zone, onScrolling = onWorkScrolling)
             }
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        }
-        DailyViewpointDistribution(state.groups, "${format.format(Instant.ofEpochMilli(state.window.start))} — ${format.format(Instant.ofEpochMilli(state.window.end))}", appNames, state.window.start, state.window.end)
+        } else DailyViewpointDistribution(state.groups, "${format.format(Instant.ofEpochMilli(state.window.start))} — ${format.format(Instant.ofEpochMilli(state.window.end))}", appNames, state.window.start, state.window.end)
     }
 }
 
@@ -144,6 +145,7 @@ internal fun ViewpointSources(share: ViewpointShare, start: Long, end: Long, nam
                 item.quote?.takeIf { it != share.label }?.let { QuoteBlock(it) }
                 item.claims.map { it.evidence }.filter { it.isNotBlank() && it != item.quote }
                     .distinct().forEach { QuoteBlock(it) }
+                if (initiallyShowRaw) WorkAnalysisContent(item, ObservationWindow(start, end, ZoneId.systemDefault()))
                 PojianTextButton(onClick = { raw = !raw }, modifier = Modifier.align(Alignment.End)) {
                     Text(if (raw) "收起原文" else "查看原文 ›")
                 }

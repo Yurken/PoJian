@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 import sqlite3
 import time
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server"))
+from claim_presentation import validate_presentation
 
 ROOT = Path(__file__).resolve().parents[1]
 ZONE = timezone(timedelta(hours=8))
@@ -55,7 +58,7 @@ def audit(database, source, output):
         db.row_factory = sqlite3.Row
         check(db.execute("PRAGMA integrity_check").fetchone()[0] == "ok", "SQLite integrity")
         check(not db.execute("PRAGMA foreign_key_check").fetchall(), "Foreign keys")
-        check(db.execute("PRAGMA user_version").fetchone()[0] == 1, "Schema version")
+        check(db.execute("PRAGMA user_version").fetchone()[0] == 2, "Schema version")
         count_report = {}
         for name, count in source_manifest["counts"].items():
             path = next(source.glob(f"*/{name}.jsonl"))
@@ -70,6 +73,15 @@ def audit(database, source, output):
         check(db.execute("""SELECT count(*) FROM increment_history h JOIN increments i ON i.id=h.increment_id
             WHERE h.observed_at>=i.query_at OR h.available_at>=i.query_at""").fetchone()[0] == 0, "Future history")
         check(db.execute("SELECT count(*) FROM project_contacts").fetchone()[0] == count_report["contacts"], "Projection fan-out")
+        presentations = db.execute("""SELECT p.payload,v.text,p.provenance,p.available_at,v.available_at
+            FROM claim_presentations p JOIN versions v ON v.id=p.version_id AND v.work_id=p.work_id""").fetchall()
+        check(len(presentations) == count_report["versions"], "Presentation coverage")
+        categories = {}
+        for payload, content, provenance, ready, version_ready in presentations:
+            value = json.loads(payload)
+            check(validate_presentation(value, content) == value, "Presentation field contract")
+            check(provenance == "AI_authored_rules_unreviewed" and ready == version_ready, "Presentation provenance/time")
+            categories[value["category"]] = categories.get(value["category"], 0) + 1
         profiles = [dict(r) for r in db.execute("""SELECT p.*,
             (SELECT MAX(d.start)+43200000 FROM user_days d WHERE d.profile_id=p.id) AS now
             FROM profiles p ORDER BY ordinal""")]
@@ -103,6 +115,7 @@ def audit(database, source, output):
     result = dict(status="passed", database_sha256=digest, bytes=database.stat().st_size,
                   lossless_tables=count_report, profiles=len(profiles), expected_windows=len(profiles) * 6,
                   integrity="ok", foreign_key_errors=0, projected_contacts=count_report["contacts"],
+                  presentation_count=len(presentations), presentation_categories=categories,
                   profile_query_host_ms_mean=sum(query_times) / len(query_times), profile_query_host_ms_max=max(query_times),
                   query_plan=plan, runtime="host Python SQLite, not Android", device_execution=False)
     (output / "database-audit.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf8", newline="\n")

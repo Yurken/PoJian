@@ -77,11 +77,13 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("viewpoint-bar-0").performClick()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details")))
-        compose.onNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
+        compose.onAllNodesWithText(original).assertCountEquals(0)
         compose.onNode(hasText("1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
         compose.onNode(hasText("2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
         saveScreenshot("emerge-viewpoint-details.png")
+        compose.onNodeWithTag("work-card-${BrowseWorkKey.of(records.first())}").performClick()
+        compose.onNodeWithTag("work-detail-content").performScrollToNode(hasText(original))
+        compose.onAllNodesWithText(original).onFirst().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, analysisCalls) }
     }
 
@@ -120,6 +122,8 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onAllNodesWithText("就业焦虑").onFirst().assertIsDisplayed()
+        compose.onNodeWithTag("daily-viewpoint-pie").assertDoesNotExist()
+        compose.onNodeWithText("全部观点").performClick()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
         compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("就业焦虑，2个作品，50.0%；女性独立，1个作品，25.0%；未识别，1个作品，25.0%")
         saveScreenshot("emerge-daily-viewpoint-pie.png")

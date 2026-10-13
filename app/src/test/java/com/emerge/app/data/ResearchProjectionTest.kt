@@ -26,6 +26,7 @@ class ResearchProjectionTest {
         assertEquals(data.events.sumOf { it.durationMillis }, window.unionDuration(data.events))
         assertTrue(data.works.all { it.nativeId.isEmpty() && it.workKey.startsWith("synthetic:") })
         assertEquals(1, data.mediaTypes.size)
+        assertTrue(data.semantics.all { it.claims.single().presentation != null })
     }
 
     @Test fun anotherProfileCannotBeCombinedWithSelectedHistory() {
@@ -69,5 +70,20 @@ class ResearchProjectionTest {
         spans.put(spans.getJSONArray(0))
         row.put("contact_json", contact.toString())
         assertThrows(IllegalArgumentException::class.java) { decode(root) }
+    }
+
+    @Test fun mismatchedOrFuturePresentationCannotLeakIntoAnEarlierVisit() {
+        for (field in listOf("presentation_version_id", "presentation_work_id", "presentation_provenance", "presentation_available_at")) {
+            val root = fixture()
+            val row = root.getJSONArray("contacts").getJSONObject(0)
+            row.put(field, if (field == "presentation_available_at") row.getLong("timestamp") + 1 else "unrelated")
+            assertThrows(IllegalArgumentException::class.java) { decode(root) }
+        }
+    }
+
+    @Test fun legacyProjectionWithoutPresentationStillLoadsAsUnassessed() {
+        val root = fixture()
+        root.getJSONArray("contacts").objects().forEach { it.remove("presentation_json") }
+        assertTrue(decode(root).semantics.all { it.claims.single().presentation == null })
     }
 }

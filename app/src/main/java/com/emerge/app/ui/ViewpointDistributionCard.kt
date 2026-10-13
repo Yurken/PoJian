@@ -175,8 +175,10 @@ private fun ViewpointTopicCard(topic: ViewpointTopic, expanded: Boolean, onToggl
             }
             if (expanded) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (topic.structured) topic.groups.forEach { share ->
-                        key(share.key) { StructuredViewpointCard(share) { onSource(share) } }
+                    if (topic.structured) topic.groups.sortedWith(compareBy<ViewpointShare> {
+                        it.items.minOfOrNull { item -> item.record.timestamp } ?: Long.MAX_VALUE
+                    }.thenBy { it.key }).forEach { share ->
+                        key(share.key) { StructuredViewpointCard(share, start, end) { onSource(share) } }
                     } else topic.groups.forEach { share ->
                         ViewpointSources(share, start, end, names, "pie-$date")
                     }
@@ -187,23 +189,25 @@ private fun ViewpointTopicCard(topic: ViewpointTopic, expanded: Boolean, onToggl
 }
 
 @Composable
-private fun StructuredViewpointCard(share: ViewpointShare, onSource: () -> Unit) {
+private fun StructuredViewpointCard(share: ViewpointShare, start: Long, end: Long, onSource: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val claim = share.items.firstOrNull()?.claims?.firstOrNull()
     val uncertain = claim?.confirmed == false
-    val accent = if (uncertain) scheme.tertiary else distributionGreen()
-    val title = claim?.stance?.takeIf { it.isNotBlank() } ?: claim?.quote ?: share.label
+    val window = remember(start, end) { ObservationWindow(start, end, java.time.ZoneId.systemDefault()) }
+    val duration = if (share.items.any { it.durationMillis(window) == null }) null
+        else window.unionDuration(share.items.flatMap { it.records }.filter { it.sourceType == "accessibility" }.distinctBy { it.id })
+    val level = WorkTopicPresentation.impact(share.items.flatMap { it.claims }, duration)
+    val accent = impactColor(level)
+    val title = claim?.let(WorkTopicPresentation::phrase) ?: share.label
     Surface(shape = RoundedCornerShape(12.dp), color = accent.copy(alpha = .035f),
         border = BorderStroke(1.dp, accent.copy(alpha = .17f)), modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                claim?.dimension?.takeIf { it.isNotBlank() }?.let { DistributionBadge(it, accent) }
+                DistributionBadge("影响提示${level.label}", accent)
                 if (uncertain) DistributionBadge("待确认", scheme.tertiary)
             }
             Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = scheme.onSurface)
-            claim?.conditions?.takeIf { it.isNotBlank() && it != title }?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
-            }
+            MetadataText(duration?.let(::formatDuration) ?: "时长未统计")
             HorizontalDivider(color = accent.copy(alpha = .13f))
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalArrangement = Arrangement.spacedBy(4.dp)) {

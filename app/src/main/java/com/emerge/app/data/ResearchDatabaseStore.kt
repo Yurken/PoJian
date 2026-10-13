@@ -11,13 +11,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
+import com.emerge.app.analysis.ClaimPresentation
+import com.emerge.app.analysis.ClaimPresentationCodec
 
 data class ResearchProfile(val id: String, val ordinal: Int, val concentration: String, val anxiety: String, val now: Long) {
     val label: String get() = "虚拟用户 ${ordinal.toString().padStart(3, '0')}"
     val conditions: String get() = "预设：集中度${if (concentration == "high") "高" else "低"} · 焦虑表达${if (anxiety == "high") "高" else "低"}"
 }
 data class ResearchOverview(val workCount: Int, val versionCount: Int, val contactCount: Int, val profiles: List<ResearchProfile>)
-data class ResearchWork(val id: String, val media: String, val domain: String, val split: String, val text: String)
+data class ResearchWork(val id: String, val media: String, val domain: String, val split: String, val text: String,
+    val presentation: ClaimPresentation? = null)
 
 /** Immutable experiment store. Deliberately never passed to Room BrowseRepository, monitoring or upload. */
 object ResearchDatabaseStore {
@@ -30,7 +33,7 @@ object ResearchDatabaseStore {
             val path = installer.install(File(context.noBackupFilesDir, "research"), metadata,
                 { context.assets.open("synthetic/research-v2.sqlite.gz") }, { task.ensureActive() })
             SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY).use { db ->
-                check(db.version == 1)
+                check(db.version == 2)
                 check(db.rawQuery("SELECT value FROM metadata WHERE key='kind'", null).use {
                     it.moveToFirst() && it.getString(0) == "controlled_synthetic_research"
                 })
@@ -61,11 +64,15 @@ object ResearchDatabaseStore {
     /** Bounded corpus pages: no full-corpus decoding during Compose layout or scrolling. */
     suspend fun works(context: Context, page: Int): List<ResearchWork> = read(context) { db, _ ->
         require(page >= 0 && page <= 10000)
-        db.rawQuery("""SELECT w.id,w.media_type,w.domain,w.split,v.text FROM works w
-            JOIN versions v ON v.work_id=w.id AND v.ordinal=3 ORDER BY w.id LIMIT 40 OFFSET ?""",
+        db.rawQuery("""SELECT w.id,w.media_type,w.domain,w.split,v.text,p.payload FROM works w
+            JOIN versions v ON v.work_id=w.id AND v.ordinal=3
+            LEFT JOIN claim_presentations p ON p.version_id=v.id AND p.work_id=w.id ORDER BY w.id LIMIT 40 OFFSET ?""",
             arrayOf((page * 40).toString())).use { cursor ->
             buildList { while (cursor.moveToNext()) add(ResearchWork(cursor.getString(0), cursor.getString(1),
-                cursor.getString(2), cursor.getString(3), cursor.getString(4))) }
+                cursor.getString(2), cursor.getString(3), cursor.getString(4),
+                if (cursor.isNull(5)) null else ClaimPresentationCodec.decode(JSONObject(cursor.getString(5))).also {
+                    check(it.validFor(cursor.getString(4)))
+                })) }
         }
     }
 

@@ -1,4 +1,4 @@
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 CREATE TABLE metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
 CREATE TABLE works (
  id TEXT PRIMARY KEY NOT NULL, package_name TEXT NOT NULL, media_type TEXT NOT NULL,
@@ -17,6 +17,11 @@ CREATE TABLE arguments (
  FOREIGN KEY(version_id, work_id) REFERENCES versions(id, work_id)
 );
 CREATE INDEX arguments_work ON arguments(work_id);
+CREATE TABLE claim_presentations (
+ version_id TEXT PRIMARY KEY NOT NULL, work_id TEXT NOT NULL, available_at INTEGER NOT NULL,
+ provenance TEXT NOT NULL CHECK(provenance = 'AI_authored_rules_unreviewed'), payload TEXT NOT NULL,
+ FOREIGN KEY(version_id, work_id) REFERENCES versions(id, work_id)
+);
 CREATE TABLE emotions (
  id TEXT PRIMARY KEY NOT NULL, version_id TEXT NOT NULL, work_id TEXT NOT NULL,
  expression TEXT NOT NULL, attribution TEXT NOT NULL, holder TEXT NOT NULL, payload TEXT NOT NULL,
@@ -71,10 +76,12 @@ CREATE TABLE safety_labels (id TEXT PRIMARY KEY NOT NULL REFERENCES safety(id), 
 CREATE VIEW project_contacts AS
 SELECT c.row_id, c.profile_id, c.work_id, c.timestamp, c.payload AS contact_json,
  w.package_name, w.media_type, w.author_id, v.observed_at, v.available_at, v.text,
- a.payload AS argument_json
+ a.payload AS argument_json, p.payload AS presentation_json, p.version_id AS presentation_version_id,
+ p.work_id AS presentation_work_id, p.available_at AS presentation_available_at, p.provenance AS presentation_provenance
 FROM contacts c JOIN works w ON w.id=c.work_id
  JOIN versions v ON v.id=c.version_id AND v.work_id=c.work_id
- JOIN arguments a ON a.version_id=v.id AND a.work_id=v.work_id;
+ JOIN arguments a ON a.version_id=v.id AND a.work_id=v.work_id
+ LEFT JOIN claim_presentations p ON p.version_id=v.id AND p.work_id=v.work_id;
 CREATE VIEW project_emotions AS
 SELECT c.profile_id, c.work_id, c.timestamp, v.text, e.payload AS emotion_json
 FROM contacts c JOIN versions v ON v.id=c.version_id AND v.work_id=c.work_id

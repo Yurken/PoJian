@@ -49,6 +49,13 @@ object ResearchProjection {
             require(claim.getString("version_id") == contact.getString("version_id") &&
                 claim.getString("work_id") == row.getString("work_id"))
             claim.put("evidence_origins", claim.getJSONArray("source_origins"))
+            if (row.has("presentation_json") && !row.isNull("presentation_json")) {
+                require(row.getString("presentation_version_id") == contact.getString("version_id") &&
+                    row.getString("presentation_work_id") == row.getString("work_id") &&
+                    row.getLong("presentation_available_at") <= event.timestamp &&
+                    row.getString("presentation_provenance") == "AI_authored_rules_unreviewed")
+                claim.put("presentation", JSONObject(row.getString("presentation_json")))
+            }
             requireNotNull(SemanticsCodec.decode(BrowseSemantic(event.id, event.visibleText, event.timestamp,
                 JSONArray().put(claim).toString(), "synthetic_annotation"))).also { require(it.validFor(event)) }
         }

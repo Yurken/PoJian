@@ -10,7 +10,8 @@ data class ViewpointClaim(val quote: String, val topic: String = "", val subject
     val dimension: String = "", val stance: String = "", val conditions: String = "",
     val uncertain: Boolean = false, val analysisSource: String = "local_rules",
     val record: BrowseEvent? = null, val zoneId: String = ZoneId.systemDefault().id,
-    val evidence: String = "") {
+    val evidence: String = "", val presentation: ClaimPresentation? = null,
+    val inputKind: String = "", val analyzedAt: Long = 0) {
     private fun normalized(value: String) = value.trim().replace(Regex("\\s+"), " ").lowercase()
     val confirmed: Boolean get() = !uncertain && topic.isNotBlank() && subject.isNotBlank() && dimension.isNotBlank() && stance.isNotBlank()
     val key: String get() = if (analysisSource == "structured_model")
@@ -65,7 +66,9 @@ object ViewpointTimeline {
         val model = visits.filter { it.analysisSource == "structured_model" }
         val used = model.ifEmpty { visits }
         val representative = used.firstOrNull { claims(it).isNotEmpty() } ?: used.first()
-        val all = used.flatMap(::claims).distinctBy { it.key }
+        val all = used.flatMap(::claims).groupBy { it.key }.values.map { versions ->
+            versions.maxWith(compareBy<ViewpointClaim> { it.analyzedAt }.thenBy { it.record?.timestamp ?: 0 })
+        }
         representative.copy(label = all.firstOrNull()?.label, quote = all.firstOrNull()?.quote,
             emotional = used.any { it.emotional }, claims = all, records = records(visits))
     }
@@ -115,11 +118,13 @@ object ViewpointTimeline {
         val candidates = selected.associateWith { event ->
             val model = modelResults[event.id]?.takeIf { it.validFor(event) }
             val modelClaims = model?.claims?.map { ViewpointClaim(it.quote, it.topic, it.subject,
-                it.dimension, it.stance, it.conditions, it.uncertain, "structured_model", event, zone.id, it.evidence) }
+                it.dimension, it.stance, it.conditions, it.uncertain, "structured_model", event, zone.id, it.evidence,
+                it.presentation, model.inputKind, model.analyzedAt) }
             val attached = materials[event.id].orEmpty().filter { it.packageName == event.packageName && it.workKey == event.workKey }
-            val attachedClaims = attached.flatMap { material -> modelResults[material.id]?.takeIf { it.validFor(material) }
-                ?.claims.orEmpty().map { ViewpointClaim(it.quote,it.topic,it.subject,it.dimension,it.stance,it.conditions,
-                    it.uncertain,"structured_model",material,zone.id,it.evidence) } }
+            val attachedClaims = attached.flatMap { material ->
+                val result = modelResults[material.id]?.takeIf { it.validFor(material) }
+                result?.claims.orEmpty().map { ViewpointClaim(it.quote,it.topic,it.subject,it.dimension,it.stance,it.conditions,
+                    it.uncertain,"structured_model",material,zone.id,it.evidence,it.presentation,result!!.inputKind,result.analyzedAt) } }
             // A report may be stale; only the full input snapshot can authorize a model result here.
             val reportClaims = observations[event.id].orEmpty().filter {
                 it.analysisSource == "local_rules" && event.visibleText.contains(it.quote)

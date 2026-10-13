@@ -126,6 +126,7 @@ CI 需要仓库 Secret `POJIAN_SERVICE_TOKEN` 及[四项签名 Secrets](docs/AND
 | [AI 合成演示数据](docs/SYNTHETIC_DATA.md) | 独立数据库、信息茧房与焦虑场景、复现与验证 |
 | [论文受控合成数据](docs/RESEARCH_SYNTHETIC_DATA.md) | 七种组合、8,400 作品、划分协议与实际离线结果 |
 | [项目实验数据库](docs/PROJECT_RESEARCH_DATABASE.md) | 可查询 SQLite、200 名虚拟用户隔离、App 接入与验证 |
+| [主题观点与分析数据](docs/VIEWPOINT_TOPICS.md) | 主题卡片、短观点、内容影响与时长、原文分析及数据来源 |
 | [固定签名配置](docs/ANDROID_SIGNING.md) | 签名密钥恢复与 CI Secrets |
 | [应用自动更新](docs/app-updates.md) | 更新接口、校验与分发 |
 | [服务端网关](server/README.md) | 部署、管理台与模型配置 |

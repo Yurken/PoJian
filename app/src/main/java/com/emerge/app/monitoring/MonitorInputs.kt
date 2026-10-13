@@ -57,9 +57,11 @@ object MonitorInputs {
             .thenByDescending { it.timestamp }.thenByDescending { it.id })
         claims.forEach { claim ->
             val owner = ordered.firstOrNull { event ->
-                EventSemantics(event.id, event.visibleText, analyzedAt, listOf(claim), kind).validFor(event)
+                EventSemantics(event.id, event.visibleText, analyzedAt, listOf(claim.copy(presentation = null)), kind).validFor(event)
             }
-            if (owner != null) assigned.getValue(owner.id).add(claim)
+            // A batch-wide assessment may cite another segment; never attach that evidence to this work.
+            if (owner != null) assigned.getValue(owner.id).add(claim.copy(
+                presentation = claim.presentation?.takeIf { it.validFor(owner.visibleText) }))
         }
         return snapshots.distinctBy { it.id }.mapNotNull { event ->
             val units = assigned[event.id].orEmpty()

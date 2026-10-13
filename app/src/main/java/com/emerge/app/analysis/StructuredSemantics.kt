@@ -15,7 +15,8 @@ data class ArgumentUnit(
     /** Verbatim people or case entities within evidence, not the claim subject or post author. */
     val evidenceActors: List<String> = emptyList(),
     /** Verbatim names of the original evidence material, not the post or its publisher. */
-    val evidenceOrigins: List<String> = emptyList()
+    val evidenceOrigins: List<String> = emptyList(),
+    val presentation: ClaimPresentation? = null
 )
 
 /** analyzedAt selects a result version. The associated event supplies the browsing time. */
@@ -34,6 +35,7 @@ data class EventSemantics(
                     claim.topic.length <= 80 && claim.subject.length <= 100 && claim.dimension.length <= 80 &&
                     claim.stance.length <= 200 && claim.conditions.length <= 200 && claim.evidence.length <= 500 &&
                     (claim.evidence.isEmpty() || claim.evidence.isNotBlank() && inputText.contains(claim.evidence)) &&
+                    (claim.presentation?.validFor(inputText) != false) &&
                     listOf(claim.evidenceActors, claim.evidenceOrigins).all { anchors ->
                         anchors.size <= 4 && anchors.distinct().size == anchors.size &&
                             anchors.all { it.isNotBlank() && it.length <= 80 && claim.evidence.contains(it) }

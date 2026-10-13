@@ -21,7 +21,12 @@
       "observed_at": 1791526860000,
       "available_at": 1791526861000,
       "text": "职业教育需要增加实际操作：一段虚构观察\n作者先提出“在岗位要求相近时以及资源不足时，职业教育需要增加实际操作”。\n虚构档案syn-source-42f627acce920888记录了40次尝试，其中12次完成岗位要求的核对。安排与实际需求的匹配程度可能影响结果；先核对具体条件，再制定分步计划。\n朋友告诉我，他因等待回复时无法安排接下来的生活觉得焦虑；我只是在转述。\n评论者说：“我因得到具体反馈后能重新安排下一步感到安心。”这不代表正文作者的感受。",
-      "argument_json": "{\"version_id\":\"syn-version-90a8e7368419ece2\",\"work_id\":\"syn-work-bac1ca60e51c6c80\",\"split\":\"train\",\"quote\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\",\"topic\":\"就业与教育\",\"subject\":\"职业教育\",\"dimension\":\"职业教育需要增加实际操作\",\"stance\":\"支持有条件采用\",\"conditions\":\"在岗位要求相近时以及资源不足时\",\"evidence\":\"虚构档案syn-source-42f627acce920888记录了40次尝试，其中12次完成岗位要求的核对。安排与实际需求的匹配程度可能影响结果；先核对具体条件，再制定分步计划。\",\"uncertain\":false,\"source_origin\":\"syn-source-42f627acce920888\",\"source_origins\":[\"syn-source-42f627acce920888\"],\"relation\":\"author_claim\",\"quote_span\":[26,54],\"evidence_span\":[57,147]}"
+      "argument_json": "{\"version_id\":\"syn-version-90a8e7368419ece2\",\"work_id\":\"syn-work-bac1ca60e51c6c80\",\"split\":\"train\",\"quote\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\",\"topic\":\"就业与教育\",\"subject\":\"职业教育\",\"dimension\":\"职业教育需要增加实际操作\",\"stance\":\"支持有条件采用\",\"conditions\":\"在岗位要求相近时以及资源不足时\",\"evidence\":\"虚构档案syn-source-42f627acce920888记录了40次尝试，其中12次完成岗位要求的核对。安排与实际需求的匹配程度可能影响结果；先核对具体条件，再制定分步计划。\",\"uncertain\":false,\"source_origin\":\"syn-source-42f627acce920888\",\"source_origins\":[\"syn-source-42f627acce920888\"],\"relation\":\"author_claim\",\"quote_span\":[26,54],\"evidence_span\":[57,147]}",
+      "presentation_json": "{\"category\":\"就业\",\"viewpoint\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\",\"anxiety\":{\"level\":\"medium\",\"reason\":\"片段将担忧归因于等待回复时无法安排接下来的生活。反复接触可能放大担忧，不代表观看者已经焦虑。\",\"evidence\":\"朋友告诉我，他因等待回复时无法安排接下来的生活觉得焦虑；我只是在转述。\"},\"cocoon\":{\"level\":\"low\",\"reason\":\"观点保留了具体条件或反对意见。若长期排除其他条件和反例，仍可能收窄视角；单条作品不能证明形成茧房。\",\"evidence\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\"},\"cognition\":{\"level\":\"low\",\"reason\":\"观点限定了适用处境，应核对条件再应用；其中的虚构数值不能作为现实证据。\",\"evidence\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\"},\"suggestions\":[\"围绕“职业教育”比较不同来源的解释和反例，再决定是否采用。\",\"重复刷到相似说法时先暂停，核对适用条件，再补充不同处境的材料。\"]}",
+      "presentation_version_id": "syn-version-90a8e7368419ece2",
+      "presentation_work_id": "syn-work-bac1ca60e51c6c80",
+      "presentation_available_at": 1791526861000,
+      "presentation_provenance": "AI_authored_rules_unreviewed"
     },
     {
       "row_id": 25087,
@@ -35,7 +40,12 @@
       "observed_at": 1791526860000,
       "available_at": 1791526861000,
       "text": "职业教育需要增加实际操作：一段虚构观察\n作者先提出“在岗位要求相近时以及资源不足时，职业教育需要增加实际操作”。\n虚构档案syn-source-42f627acce920888记录了40次尝试，其中12次完成岗位要求的核对。安排与实际需求的匹配程度可能影响结果；先核对具体条件，再制定分步计划。\n朋友告诉我，他因等待回复时无法安排接下来的生活觉得焦虑；我只是在转述。\n评论者说：“我因得到具体反馈后能重新安排下一步感到安心。”这不代表正文作者的感受。",
-      "argument_json": "{\"version_id\":\"syn-version-90a8e7368419ece2\",\"work_id\":\"syn-work-bac1ca60e51c6c80\",\"split\":\"train\",\"quote\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\",\"topic\":\"就业与教育\",\"subject\":\"职业教育\",\"dimension\":\"职业教育需要增加实际操作\",\"stance\":\"支持有条件采用\",\"conditions\":\"在岗位要求相近时以及资源不足时\",\"evidence\":\"虚构档案syn-source-42f627acce920888记录了40次尝试，其中12次完成岗位要求的核对。安排与实际需求的匹配程度可能影响结果；先核对具体条件，再制定分步计划。\",\"uncertain\":false,\"source_origin\":\"syn-source-42f627acce920888\",\"source_origins\":[\"syn-source-42f627acce920888\"],\"relation\":\"author_claim\",\"quote_span\":[26,54],\"evidence_span\":[57,147]}"
+      "argument_json": "{\"version_id\":\"syn-version-90a8e7368419ece2\",\"work_id\":\"syn-work-bac1ca60e51c6c80\",\"split\":\"train\",\"quote\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\",\"topic\":\"就业与教育\",\"subject\":\"职业教育\",\"dimension\":\"职业教育需要增加实际操作\",\"stance\":\"支持有条件采用\",\"conditions\":\"在岗位要求相近时以及资源不足时\",\"evidence\":\"虚构档案syn-source-42f627acce920888记录了40次尝试，其中12次完成岗位要求的核对。安排与实际需求的匹配程度可能影响结果；先核对具体条件，再制定分步计划。\",\"uncertain\":false,\"source_origin\":\"syn-source-42f627acce920888\",\"source_origins\":[\"syn-source-42f627acce920888\"],\"relation\":\"author_claim\",\"quote_span\":[26,54],\"evidence_span\":[57,147]}",
+      "presentation_json": "{\"category\":\"就业\",\"viewpoint\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\",\"anxiety\":{\"level\":\"medium\",\"reason\":\"片段将担忧归因于等待回复时无法安排接下来的生活。反复接触可能放大担忧，不代表观看者已经焦虑。\",\"evidence\":\"朋友告诉我，他因等待回复时无法安排接下来的生活觉得焦虑；我只是在转述。\"},\"cocoon\":{\"level\":\"low\",\"reason\":\"观点保留了具体条件或反对意见。若长期排除其他条件和反例，仍可能收窄视角；单条作品不能证明形成茧房。\",\"evidence\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\"},\"cognition\":{\"level\":\"low\",\"reason\":\"观点限定了适用处境，应核对条件再应用；其中的虚构数值不能作为现实证据。\",\"evidence\":\"在岗位要求相近时以及资源不足时，职业教育需要增加实际操作\"},\"suggestions\":[\"围绕“职业教育”比较不同来源的解释和反例，再决定是否采用。\",\"重复刷到相似说法时先暂停，核对适用条件，再补充不同处境的材料。\"]}",
+      "presentation_version_id": "syn-version-90a8e7368419ece2",
+      "presentation_work_id": "syn-work-bac1ca60e51c6c80",
+      "presentation_available_at": 1791526861000,
+      "presentation_provenance": "AI_authored_rules_unreviewed"
     }
   ],
   "emotions": [

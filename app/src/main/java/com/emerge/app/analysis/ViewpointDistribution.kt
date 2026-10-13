@@ -36,7 +36,9 @@ object ViewpointDistribution {
                 ?: claim?.topic?.trim()?.takeIf { it.isNotEmpty() } ?: "观点待确认"
         } else shares.first().label
         ViewpointTopic(key, title, shares)
-    }.sortedWith(compareByDescending<ViewpointTopic> { it.workCount }.thenBy { it.title })
+    }.sortedWith(compareBy<ViewpointTopic> { topic ->
+        topic.groups.flatMap { it.items }.minOfOrNull { it.record.timestamp } ?: Long.MAX_VALUE
+    }.thenBy { it.title })
 
     fun filter(topics: List<ViewpointTopic>, topicKey: String? = null,
         state: ViewpointFilter = ViewpointFilter.ALL, query: String = ""): List<ViewpointTopic> {

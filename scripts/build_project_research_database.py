@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import sqlite3
+from research_presentations import make_presentation, PROVENANCE
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "app/src/main/assets/synthetic"
@@ -61,6 +62,14 @@ def build(source, output):
         insert("versions", "id,work_id,ordinal,observed_at,available_at,text,payload",
                ((r["id"], r["work_id"], r["version"], r["observed_at"], r["available_at"], r["text"], dump(r)) for r in rows["versions"]))
         insert("arguments", "version_id,work_id,payload", ((r["version_id"], r["work_id"], dump(r)) for r in rows["arguments"]))
+        versions = {r["id"]: r for r in rows["versions"]}
+        emotions_by_version = {}
+        for emotion in rows["emotions"]:
+            emotions_by_version.setdefault(emotion["version_id"], []).append(emotion)
+        insert("claim_presentations", "version_id,work_id,available_at,provenance,payload",
+               ((a["version_id"], a["work_id"], versions[a["version_id"]]["available_at"], PROVENANCE,
+                 dump(make_presentation(versions[a["version_id"]], a, emotions_by_version.get(a["version_id"], []))))
+                for a in rows["arguments"]))
         insert("emotions", "id,version_id,work_id,expression,attribution,holder,payload",
                ((r["id"], r["version_id"], r["work_id"], r["expression"], r["attribution"], r["holder"], dump(r)) for r in rows["emotions"]))
         insert("profiles", "id,ordinal,user_split,concentration,anxiety,payload",
@@ -92,7 +101,8 @@ def build(source, output):
     asset_manifest = dict(format_version=1, dataset_id=manifest["dataset_id"], synthetic=True,
                           real_participants=0, annotation_status=manifest["annotation_status"],
                           database_sha256=digest(path), database_bytes=path.stat().st_size,
-                          source_manifest_sha256=digest(manifest_path), counts=manifest["counts"])
+                          source_manifest_sha256=digest(manifest_path), counts=manifest["counts"],
+                          database_schema_version=2, presentation_count=len(rows["arguments"]), presentation_provenance=PROVENANCE)
     (output / "research-v2.json").write_text(dump(asset_manifest) + "\n", encoding="utf8", newline="\n")
     return path, asset_manifest
 

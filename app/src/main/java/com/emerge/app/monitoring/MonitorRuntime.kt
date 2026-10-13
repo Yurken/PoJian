@@ -399,7 +399,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 }
                 ArgumentUnit(string("quote", true), string("topic"), string("subject"),
                     string("dimension"), string("stance"), string("evidence"),
-                    string("conditions"), uncertain, anchors("evidence_actors"), anchors("evidence_origins"))
+                    string("conditions"), uncertain, anchors("evidence_actors"), anchors("evidence_origins"),
+                    if (row.has("presentation")) com.emerge.app.analysis.ClaimPresentationCodec.decode(row.getJSONObject("presentation")) else null)
             }
             val available = input.text + if (input.kind == "frame") "\n$observed" else ""
             val validationEvent = BrowseEvent(id = 1, packageName = input.packageName, timestamp = input.at,

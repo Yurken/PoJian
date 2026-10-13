@@ -60,6 +60,15 @@ class ProjectResearchDatabaseTest(unittest.TestCase):
             self.source.execute("DELETE FROM contacts")
         self.assertEqual(33360, self.source.execute("SELECT count(*) FROM contacts").fetchone()[0])
 
+    def test_presentation_cannot_attach_to_another_work_or_claim_real_provenance(self):
+        self.copy("claim_presentations", "version_id=?", (self.contact["version_id"],))
+        other = self.source.execute("SELECT id FROM works WHERE id<>? LIMIT 1", (self.contact["work_id"],)).fetchone()[0]
+        self.copy("works", "id=?", (other,))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE claim_presentations SET work_id=?", (other,))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE claim_presentations SET provenance='online_model'")
+
 
 if __name__ == "__main__":
     unittest.main()

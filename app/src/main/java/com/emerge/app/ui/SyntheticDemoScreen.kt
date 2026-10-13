@@ -183,11 +183,17 @@ private fun ResearchWorksDialog(total: Int, onClose: () -> Unit) {
                             items(works.orEmpty(), key = { it.id }) { work ->
                                 WhiteCard {
                                     MetadataText("${work.media} · ${work.domain} · ${when (work.split) { "train" -> "训练集"; "validation" -> "验证集"; else -> "测试集" }}")
-                                    Text(work.text.lineSequence().first(), style = MaterialTheme.typography.titleSmall)
+                                    Text(work.presentation?.viewpoint ?: work.text.lineSequence().first(), style = MaterialTheme.typography.titleSmall)
                                     TextButton(onClick = { expanded = if (expanded == work.id) null else work.id }) {
                                         Text(if (expanded == work.id) "收起" else "查看详情")
                                     }
-                                    if (expanded == work.id) QuoteBlock(work.text)
+                                    if (expanded == work.id) {
+                                        QuoteBlock(work.text)
+                                        work.presentation?.let {
+                                            MetadataText("AI 合成分析（未人工复核）")
+                                            PresentationAnalysis(it)
+                                        }
+                                    }
                                 }
                             }
                         }
