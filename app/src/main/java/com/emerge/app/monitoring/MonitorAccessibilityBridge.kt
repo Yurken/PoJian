@@ -128,8 +128,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             }
             windowId = root.windowId
             root.getBoundsInScreen(bounds)
-            val text = visibleText(root)
-            if (com.emerge.app.capture.WorkIdentityExtractor.isRecommendationList(name, text)) {
+            val (structureText, text) = visibleText(root)
+            if (com.emerge.app.capture.WorkIdentityExtractor.isRecommendationList(name, structureText)) {
                 clearScreen(); hide(); return
             }
             val token = screenScope.token(name, windowId, revision, text)
@@ -138,8 +138,9 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         } finally { root.recycle() }
     }
     @Suppress("DEPRECATION")
-    private fun visibleText(root: AccessibilityNodeInfo): String {
+    private fun visibleText(root: AccessibilityNodeInfo): Pair<String, String> {
         val lines = linkedSetOf<String>(); var count = 0; var characters = 0
+        val content = linkedSetOf<String>()
         sensitiveInputVisible = false
         fun visit(node: AccessibilityNodeInfo, depth: Int) {
             if (++count > 1500 || depth > 40) { sensitiveInputVisible = true; return }
@@ -149,6 +150,11 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                 return
             }
             if (node.isVisibleToUser && Rect.intersects(rectangle, bounds)) {
+                if (characters < 6000) {
+                    com.emerge.app.capture.PlatformTextCleaner.nodeText(node.text?.toString()?.take(2000).orEmpty(),
+                        node.contentDescription?.toString()?.take(2000).orEmpty(), node.viewIdResourceName.orEmpty())
+                        .lines().filter(String::isNotBlank).forEach(content::add)
+                }
                 listOf(node.text, node.contentDescription).forEach { value ->
                     val line = value?.toString()?.trim()?.take(2000)
                     if (characters < 6000 && !line.isNullOrBlank() && lines.add(line)) characters += line.length
@@ -159,7 +165,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                 node.getChild(i)?.let { child -> try { visit(child, depth + 1) } finally { child.recycle() } }
             }
         }
-        visit(root, 0); return lines.joinToString("\n").take(6000)
+        visit(root, 0)
+        return lines.joinToString("\n").take(6000) to content.joinToString("\n").take(6000)
     }
 
     @Suppress("DEPRECATION")

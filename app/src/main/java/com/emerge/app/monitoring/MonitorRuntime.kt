@@ -429,11 +429,12 @@ class MonitorRuntime(private val app: EmergeApplication) {
             }
             if (!current(input)) return ProcessResult.CANCELLED
             val targets = input.snapshots.toMutableList()
-            if (input.kind == "frame" && observed.isNotBlank() && targets.none { observed in it.visibleText }) {
+            val observedContent = com.emerge.app.capture.PlatformTextCleaner.clean(observed)
+            if (input.kind == "frame" && observedContent.isNotBlank() && targets.none { observedContent in it.visibleText }) {
                 // A visual-model transcription is explicitly marked; it adds no measured viewing duration.
                 val parent = targets.singleOrNull { it.sourceType == "accessibility" && it.packageName == input.packageName }
                 val visual = BrowseEvent(packageName = input.packageName, timestamp = input.at,
-                    eventType = 0, visibleText = observed, sourceType = "visual_model", parentEventId = parent?.id,
+                    eventType = 0, visibleText = observedContent, sourceType = "visual_model", parentEventId = parent?.id,
                     workKey = parent?.workKey, identityMethod = parent?.identityMethod ?: "unknown")
                 val id = app.repository.saveCapture(visual, false, input.deletion) {
                     current(input) && app.audioCoordinator.settings.config.value == service

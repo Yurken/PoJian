@@ -149,7 +149,8 @@ internal fun ViewpointSources(share: ViewpointShare, start: Long, end: Long, nam
                 PojianTextButton(onClick = { raw = !raw }, modifier = Modifier.align(Alignment.End)) {
                     Text(if (raw) "收起原文" else "查看原文 ›")
                 }
-                if (raw) item.records.map { it.visibleText }.distinctBy(BrowseWorkKey::normalize).forEach { QuoteBlock(it) }
+                if (raw) item.records.map { rememberOriginalText(it) }.filter(String::isNotBlank)
+                    .distinctBy(BrowseWorkKey::normalize).forEach { QuoteBlock(it) }
             }
         }
     }
