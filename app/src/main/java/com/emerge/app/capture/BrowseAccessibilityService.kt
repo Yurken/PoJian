@@ -21,6 +21,15 @@ open class BrowseAccessibilityService : AccessibilityService() {
     private var settingsJob: Job? = null
     private var monitorBridge: com.emerge.app.monitoring.MonitorAccessibilityBridge? = null
     private var latestType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+    private var screenReceiverRegistered = false
+    private val screenReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                sessions.reset()
+                monitorBridge?.invalidateCapture()
+            }
+        }
+    }
     private val app get() = application as EmergeApplication
     private val supported = setOf(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
         AccessibilityEvent.TYPE_WINDOWS_CHANGED, AccessibilityEvent.TYPE_VIEW_SCROLLED,
@@ -28,6 +37,12 @@ open class BrowseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        if (!screenReceiverRegistered) {
+            val filter = android.content.IntentFilter(Intent.ACTION_SCREEN_OFF)
+            if (android.os.Build.VERSION.SDK_INT >= 33) registerReceiver(screenReceiver, filter, RECEIVER_NOT_EXPORTED)
+            else @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(screenReceiver, filter)
+            screenReceiverRegistered = true
+        }
         monitorBridge?.stop()
         monitorBridge = com.emerge.app.monitoring.MonitorAccessibilityBridge(this, app).also { it.start() }
         if (!scope.isActive) scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -42,6 +57,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 pending?.cancel()
                 sampleMutex.withLock {
                     sessions.reset()
+                    monitorBridge?.invalidateCapture()
                     app.captureDiagnostics.update { it.copy(result = when {
                         !enabled -> "采集已暂停"
                         packages.isEmpty() -> "请先选择要记录的应用，当前不会读取任何内容"
@@ -64,6 +80,8 @@ open class BrowseAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         monitorBridge?.onEvent(event)
         if (event == null || event.eventType !in supported) return
+        if (event.eventType in setOf(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED, AccessibilityEvent.TYPE_WINDOWS_CHANGED))
+            observeBoundary()
         app.captureDiagnostics.update { it.copy(connected = true, eventsReceived = it.eventsReceived + 1) }
         if (!app.captureSettings.enabled.value || app.captureSettings.allowedPackages.value.isEmpty()) return
         // Events also come from status bars, keyboards and accessibility overlays.
@@ -83,6 +101,21 @@ open class BrowseAccessibilityService : AccessibilityService() {
         sampleMutex.withLock { captureWindow(type) }
     }
 
+    /** Notice exits before the debounced sample, including a short app switch between periodic ticks. */
+    @Suppress("DEPRECATION")
+    private fun observeBoundary() {
+        val power = getSystemService(android.os.PowerManager::class.java)
+        val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+        if (!power.isInteractive || keyguard.isKeyguardLocked) { sessions.reset(); return }
+        val root = rootInActiveWindow ?: run { sessions.pause(); return }
+        try {
+            val active = root.packageName?.toString()
+            if (active == packageName || active == "com.android.settings") sessions.reset()
+            else if (excluded(active)) sessions.pause()
+            else if (sessions.packageName != null && active != sessions.packageName) sessions.reset()
+        } finally { root.recycle() }
+    }
+
     @Suppress("DEPRECATION")
     private suspend fun captureWindow(type: Int) {
         if (!app.captureSettings.enabled.value || app.captureSettings.allowedPackages.value.isEmpty()) {
@@ -94,6 +127,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
         if (!power.isInteractive || keyguard.isKeyguardLocked) { sessions.reset(); return }
         val now = System.currentTimeMillis()
         val generation = app.repository.captureGeneration
+        val bridgeRevision = monitorBridge?.captureRevision ?: -1L
         var root: AccessibilityNodeInfo? = null
         try {
             root = rootInActiveWindow
@@ -124,14 +158,14 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 app.captureDiagnostics.update { it.copy(result = "可以访问窗口，但读不到可见文字（受画面或节点限制）") }
                 return
             }
-            if (WorkIdentityExtractor.isRecommendationList(activePackage, text)) {
+            if (WorkIdentityExtractor.isRecommendationList(activePackage, text, identityNodes)) {
                 sessions.reset()
                 app.captureDiagnostics.update { it.copy(result = "当前是推荐列表，摘要不计为已浏览作品；打开单篇后开始计数") }
                 return
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) { sessions.reset(); return }
             val elapsed = android.os.SystemClock.elapsedRealtime()
-            val hint = WorkIdentityExtractor.extract(activePackage, text, identityNodes)
+            val hint = app.repository.resolveHint(activePackage, WorkIdentityExtractor.extract(activePackage, text, identityNodes))
             if (hint.page == WorkPage.NON_CONTENT ||
                 (hint.page == WorkPage.COMMENTS && !sessions.canAttachComments(activePackage))) {
                 sessions.pause()
@@ -139,16 +173,20 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 return
             }
             val sample = sessions.sample(activePackage, text, now, elapsed, type, hint)
+            if (monitorBridge?.captureRevision != bridgeRevision) { sessions.pause(); return }
             val id = app.repository.saveCapture(sample.event, sample.continuing, generation,
                 work = sample.work, sampleText = sample.rawText) {
-                app.captureSettings.isPermissionCurrent(activePackage, permission) && sessions.isCurrent(sample)
+                app.captureSettings.isPermissionCurrent(activePackage, permission) && sessions.isCurrent(sample) && monitorBridge?.captureRevision == bridgeRevision
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) {
                 sessions.reset()
                 return
             }
             if (!sessions.isCurrent(sample)) return
+            if (id == null && monitorBridge?.captureRevision != bridgeRevision) { sessions.pause(); return }
             sessions.saved(sample, id)
+            if (id != null && monitorBridge?.captureRevision == bridgeRevision)
+                monitorBridge?.observed(sample.event.copy(id = id), hint, root.windowId, bridgeRevision)
             app.captureDiagnostics.update { it.copy(lastSaved = if (id == null) it.lastSaved else now,
                 result = when {
                     id == null -> "记录已删除或采集范围有变化，本次采样已丢弃"
@@ -209,6 +247,10 @@ open class BrowseAccessibilityService : AccessibilityService() {
         return super.onUnbind(intent)
     }
     override fun onDestroy() {
+        if (screenReceiverRegistered) {
+            unregisterReceiver(screenReceiver)
+            screenReceiverRegistered = false
+        }
         monitorBridge?.stop(); monitorBridge = null
         app.captureDiagnostics.update { it.copy(connected = false, result = "辅助功能服务已停止") }
         scope.cancel()

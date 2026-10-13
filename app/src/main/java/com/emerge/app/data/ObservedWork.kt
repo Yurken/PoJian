@@ -10,7 +10,9 @@ data class ObservedWork(
     val title: String,
     val author: String,
     val identityMethod: String,
-    val firstSeenAt: Long
+    val firstSeenAt: Long,
+    @ColumnInfo(defaultValue = "'legacy'") val identityEvidence: String = "legacy",
+    @ColumnInfo(defaultValue = "''") val nativeId: String = ""
 )
 
 @Entity(tableName = "browse_samples", foreignKeys = [ForeignKey(

@@ -104,12 +104,13 @@ class InterfaceUiTest {
         compose.onNodeWithTag("hourly-hour-options").assertDoesNotExist()
         compose.onNodeWithText("观点对比").assertDoesNotExist()
         compose.onNodeWithText("长期观察").assertDoesNotExist()
-        listOf("导出 PDF", "导出文本").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
+        listOf("导出 PDF", "导出文本", "预览文件").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
         compose.runOnIdle { state.value = state.value.copy(stale = false, running = true) }
-        listOf("导出 PDF", "导出文本").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
+        listOf("导出 PDF", "导出文本", "预览文件").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
         compose.runOnIdle { state.value = state.value.copy(running = false, exporting = true) }
-        listOf("导出 PDF", "导出文本").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
+        listOf("导出 PDF", "导出文本", "预览文件").forEach { compose.onNodeWithText(it).assertIsNotEnabled() }
         compose.runOnIdle { state.value = state.value.copy(exporting = false) }
+        compose.onNodeWithTag("report-preview-open").assertIsEnabled()
         compose.onNodeWithText("导出 PDF").assertIsEnabled().performClick()
         compose.onNodeWithText("导出文本").assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(listOf(report to true, report to false), exports) }

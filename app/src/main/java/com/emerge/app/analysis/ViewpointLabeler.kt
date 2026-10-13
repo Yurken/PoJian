@@ -2,6 +2,19 @@ package com.emerge.app.analysis
 
 /** Explicit offline phrase rules. Unmatched sentences are never used as labels. */
 object ViewpointLabeler {
+    fun compact(quote: String): String {
+        if (Regex("如果|只有|除非|条件").containsMatchIn(quote)) {
+            val faithful = quote.trim().replace(Regex("\\s+"), " ")
+            return if (faithful.length <= 28) faithful else faithful.take(27) + "…"
+        }
+        if (quote.contains("女性") && quote.contains("经济独立") && !Regex("不应该|反对|不支持|不必|无需|不需要|不要|不能").containsMatchIn(quote)) return "女性经济独立"
+        if (Regex("职业|工作|专业").containsMatchIn(quote) && Regex("能力|技能").containsMatchIn(quote) &&
+            Regex("提升|提高|学习").containsMatchIn(quote) && !Regex("不必|无需|不能|不要").containsMatchIn(quote)) return "职业能力提升"
+        val known = if (Regex("如果|只有|除非|条件|反对|不支持|不应该|不需要").containsMatchIn(quote)) "未识别" else label(quote)
+        if (known != "未识别") return known
+        val text = quote.trim().replace(Regex("\\s+"), " ")
+        return if (text.length <= 28) text else text.take(27) + "…"
+    }
     private fun String.has(pattern: String) = Regex(pattern, RegexOption.IGNORE_CASE).containsMatchIn(this)
 
     fun label(text: String): String {

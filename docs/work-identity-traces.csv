@@ -1,0 +1,13 @@
+trajectory,samples,identity_pairs,baseline_identity_errors,fixed_identity_errors,baseline_boundary_errors,fixed_boundary_errors,expected_works,baseline_works,fixed_works,expected_duration_ms,baseline_duration_ms,fixed_duration_ms
+video-subtitles-pause,4,6,0,0,0,0,1,1,1,6000,6000,6000
+native-id-changing-caption,2,1,1,0,1,0,1,2,1,2000,0,2000
+same-author-different-work,2,1,1,0,1,0,2,1,2,0,2000,0
+different-works-same-opinion,2,1,1,0,0,0,2,1,2,0,0,0
+caption-expand-return,3,3,2,0,0,0,1,2,1,2000,2000,2000
+gallery-scroll-comments,5,10,0,0,0,0,1,1,1,8000,8000,8000
+return-known-work,3,3,2,0,2,0,2,1,2,0,4000,0
+across-app-return,3,3,0,0,0,0,2,2,2,0,0,0
+same-work-spacing,3,3,0,0,0,0,1,1,1,8000,8000,8000
+missing-root-no-time,2,1,0,0,1,0,1,1,1,0,0,0
+lock-and-return,2,1,0,0,0,0,1,1,1,0,0,0
+uncertain-identical-text,2,1,0,0,0,0,2,1,2,0,0,0

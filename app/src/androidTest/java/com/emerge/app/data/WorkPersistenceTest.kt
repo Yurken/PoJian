@@ -11,7 +11,36 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class WorkPersistenceTest {
-    @Test fun upgradeJoinsOnlyAdjacentIdenticalPostsAndKeepsRawSamples() = runBlocking {
+    @Test fun truncatedReturnResolvesOnlyAUniqueKnownFullCaption() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java).build()
+        try {
+            val repository = BrowseRepository(db)
+            val prefix = "这是同一个作者发布的足够长的文案开头"
+            db.browseEventDao().insertWork(ObservedWork("a","reader",prefix+"甲","作者","author_title",1000))
+            val short = com.emerge.app.capture.WorkHint(prefix,"作者",truncated=true)
+            assertEquals("a",repository.resolveHint("reader",short).key("reader"))
+            db.browseEventDao().insertWork(ObservedWork("b","reader",prefix+"乙","作者","author_title",2000))
+            assertNull(repository.resolveHint("reader",short).key("reader"))
+            assertNull(repository.resolveHint("other",short).key("other"))
+        } finally { db.close() }
+    }
+    @Test fun returnWithoutExposedNativeIdCanUseUniquePreviouslyObservedAuthorAndCaption() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val db = Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java).build()
+        try {
+            val repository = BrowseRepository(db)
+            val hint = com.emerge.app.capture.WorkHint("这是之前已经明确观察过的完整作品标题", "作者", nativeId="123456789")
+            val key = requireNotNull(hint.key("reader"))
+            db.browseEventDao().insertWork(ObservedWork(key,"reader",hint.title,hint.author,"platform_id",1000,"visible_platform_id",hint.nativeId))
+            val resolved = repository.resolveHint("reader",hint.copy(nativeId=""))
+            assertEquals(key,resolved.key("reader"))
+            assertEquals("unique_observed_author_caption",resolved.evidence)
+            assertEquals(hint.nativeId,resolved.nativeId)
+        } finally { db.close() }
+    }
+
+    @Test fun upgradeRepairsOnlySupportedIdentityAndPreservesAllVisitsAndSamples() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val db = Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java).build()
         try {
@@ -32,17 +61,19 @@ class WorkPersistenceTest {
             val repository = BrowseRepository(db)
             repository.repairAdjacentVisits()
             val rows = repository.allEvents.first().sortedBy { it.timestamp }
-            assertEquals(3, rows.size)
+            assertEquals(4, rows.size)
             assertEquals(first, rows.first().id)
-            assertEquals(5000L, rows.first().durationMillis) // Do not invent the one-second gap.
-            assertEquals(4, rows.first().sampleCount)
+            assertEquals(2000L, rows.first().durationMillis)
+            assertEquals(3000L, rows[1].durationMillis) // Revisit boundaries and missing seconds survive.
+            assertEquals(2, rows.first().sampleCount)
             assertEquals(rows.first().workKey, rows.last().workKey)
-            assertNotEquals(rows.first().workKey, rows[1].workKey)
+            assertEquals(rows.first().workKey, rows[1].workKey)
+            assertNotEquals(rows.first().workKey, rows[2].workKey)
             db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM browse_samples WHERE visitId = $first").use {
-                assertTrue(it.moveToFirst()); assertEquals(2, it.getInt(0))
+                assertTrue(it.moveToFirst()); assertEquals(1, it.getInt(0))
             }
             repository.repairAdjacentVisits()
-            assertEquals(3, repository.count.first())
+            assertEquals(4, repository.count.first())
             db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM browse_events WHERE sourceType = 'recommendation_list'").use {
                 assertTrue(it.moveToFirst()); assertEquals(1, it.getInt(0))
             }

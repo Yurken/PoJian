@@ -3,6 +3,12 @@
 package com.emerge.app.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -29,6 +35,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
@@ -227,8 +234,11 @@ internal fun PojianSegmentedTabs(labels: List<String>, selectedIndex: Int, onSel
 
 @Composable
 internal fun PojianNavigationBar(labels: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit,
-    icon: @Composable (Int) -> Unit) {
+    visible: Boolean = true, icon: @Composable (Int) -> Unit) {
     val scheme = MaterialTheme.colorScheme
+    AnimatedVisibility(visible, modifier = Modifier.testTag("main-navigation"),
+        enter = slideInVertically(tween(150)) { it } + expandVertically(tween(150), expandFrom = Alignment.Bottom),
+        exit = slideOutVertically(tween(150)) { it } + shrinkVertically(tween(150), shrinkTowards = Alignment.Bottom)) {
     Surface(color = scheme.surface) {
         Column(Modifier.navigationBarsPadding()) {
             HorizontalDivider(color = scheme.outlineVariant.copy(alpha = 0.5f))
@@ -248,6 +258,7 @@ internal fun PojianNavigationBar(labels: List<String>, selectedIndex: Int, onSel
                 }
             }
         }
+    }
     }
 }
 

@@ -21,6 +21,11 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class CaptureApp(val packageName: String, val label: String)
+data class ExportedReport(val uri: Uri, val pdf: Boolean)
+sealed interface ReportPreviewSource {
+    data class SavedFile(val file: ExportedReport) : ReportPreviewSource
+    data class Generated(val report: CognitiveReport) : ReportPreviewSource
+}
 
 class BrowseViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as EmergeApplication
@@ -45,6 +50,17 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     val appsLoading = appsLoadingState.asStateFlow()
     private val analysisState = MutableStateFlow(AnalysisState(purpose = preferences.getString("purpose", "").orEmpty()))
     val analysis = analysisState.asStateFlow()
+    private var lastExport: Pair<CognitiveReport, ExportedReport>? = null
+    private val reportPreviewState = MutableStateFlow<ReportPreviewSource?>(null)
+    val reportPreview = reportPreviewState.asStateFlow()
+    fun previewReport(report: CognitiveReport) {
+        val state = analysisState.value
+        if (state.running || state.exporting || state.stale || state.report !== report) return
+        reportPreviewState.value = lastExport?.takeIf { it.first === report }?.let {
+            ReportPreviewSource.SavedFile(it.second)
+        } ?: ReportPreviewSource.Generated(report)
+    }
+    fun dismissReportPreview() { reportPreviewState.value = null }
     private var period = StatisticsPeriod.DAY
     private var reportDay = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate()
     private var reportZone = ZoneId.systemDefault().id
@@ -137,6 +153,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         exportJob?.cancel()
         exportSnapshot = null
         exportGeneration = -1
+        lastExport = null
         analysisState.update { it.copy(report = if (clearReport) null else it.report,
             running = if (cancelAnalysis) false else it.running, exporting = false, error = null,
             stale = !clearReport && it.report != null,
@@ -183,6 +200,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     fun prepareExport(report: CognitiveReport): Boolean {
         val state = analysisState.value
         if (state.running || state.exporting || state.stale || state.report !== report) return false
+        reportPreviewState.value = null
         exportSnapshot = report
         exportGeneration = generation
         analysisState.update { it.copy(exporting = true, exportMessage = "请选择保存位置") }
@@ -225,7 +243,13 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     } ?: error("无法打开保存位置")
                 }
-                if (version == generation) analysisState.update { it.copy(exporting = false, exportMessage = "回顾已保存到所选位置") }
+                if (version == generation) {
+                    analysisState.update { it.copy(exporting = false, exportMessage = "回顾已保存到所选位置") }
+                    // Publish only after the destination stream has closed successfully. Preview reads that file.
+                    val file = ExportedReport(uri, pdf)
+                    lastExport = report to file
+                    reportPreviewState.value = ReportPreviewSource.SavedFile(file)
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 if (version == generation) analysisState.update { it.copy(exporting = false, exportMessage = "保存失败，请重试") }
@@ -288,6 +312,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun mutateHistory(success: String, removed: (List<BrowseEvent>) -> Boolean, action: suspend () -> Unit) {
         pendingMutations++
+        if (reportPreviewState.value is ReportPreviewSource.Generated) reportPreviewState.value = null
         invalidate("记录正在删除")
         viewModelScope.launch {
             try {

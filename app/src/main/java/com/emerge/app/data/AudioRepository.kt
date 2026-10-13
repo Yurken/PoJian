@@ -47,10 +47,15 @@ class AudioRepository(private val database: BrowseDatabase) {
         audio.transcriptAt(sessionId, startMillis, endMillis)?.let { return@withTransaction it }
         val receivedAt = System.currentTimeMillis()
         val timestamp = if (session.source == AudioSource.PLAYBACK) session.startedAt + startMillis else receivedAt
+        val parent = if (session.source == AudioSource.PLAYBACK && session.startedAt <= Long.MAX_VALUE - endMillis)
+            com.emerge.app.capture.MaterialWorkBinding.playbackParent(
+                events.coveringVisits(session.packageName, timestamp, session.startedAt + endMillis),
+                session.packageName, timestamp, session.startedAt + endMillis) else null
         val eventId = events.insert(BrowseEvent(packageName = session.packageName, timestamp = timestamp,
             eventType = 0, visibleText = originalText, endTimestamp = timestamp, durationMillis = 0, sampleCount = 0,
             sourceType = "audio_${session.source}", audioSessionId = sessionId,
-            mediaStartMillis = startMillis, mediaEndMillis = endMillis))
+            mediaStartMillis = startMillis, mediaEndMillis = endMillis, parentEventId = parent?.id,
+            workKey = parent?.workKey, identityMethod = parent?.identityMethod ?: "unknown"))
         val transcript = AudioTranscript(sessionId = sessionId, browseEventId = eventId,
             offsetStartMillis = startMillis, offsetEndMillis = endMillis, originalText = originalText, createdAt = receivedAt)
         val id = audio.insertTranscript(transcript)
@@ -59,6 +64,7 @@ class AudioRepository(private val database: BrowseDatabase) {
         if (audio.trimsAudio()) audio.invalidateAllAnalyses()
         audio.invalidateTrimmedSessions()
         events.trim()
+        events.trimWorks()
         audio.transcript(id)
     }
 
@@ -106,6 +112,7 @@ class AudioRepository(private val database: BrowseDatabase) {
         val session = audio.session(id) ?: return@withTransaction
         audio.invalidateLaterAnalyses(session.startedAt, session.id)
         audio.deleteSession(id)
+        events.trimWorks()
     }
 
     companion object {

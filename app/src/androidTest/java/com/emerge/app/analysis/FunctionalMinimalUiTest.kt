@@ -2,12 +2,16 @@ package com.emerge.app.analysis
 
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -22,6 +26,7 @@ import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -72,11 +77,13 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("viewpoint-bar-0").performClick()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details")))
-        compose.onNode(hasText(original) and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
-        compose.onNode(hasText("本时段停留时长 1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
-        compose.onNode(hasText("本时段停留时长 2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
+        compose.onAllNodesWithText(original).assertCountEquals(0)
+        compose.onNode(hasText("1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
+        compose.onNode(hasText("2 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertDoesNotExist()
         saveScreenshot("emerge-viewpoint-details.png")
+        compose.onNodeWithTag("work-card-${BrowseWorkKey.of(records.first())}").performClick()
+        compose.onNodeWithTag("work-detail-content").performScrollToNode(hasText(original))
+        compose.onAllNodesWithText(original).onFirst().assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, analysisCalls) }
     }
 
@@ -115,6 +122,8 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onAllNodesWithText("就业焦虑").onFirst().assertIsDisplayed()
+        compose.onNodeWithTag("daily-viewpoint-pie").assertDoesNotExist()
+        compose.onNodeWithText("全部观点").performClick()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
         compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("就业焦虑，2个作品，50.0%；女性独立，1个作品，25.0%；未识别，1个作品，25.0%")
         saveScreenshot("emerge-daily-viewpoint-pie.png")
@@ -139,30 +148,18 @@ class FunctionalMinimalUiTest {
         compose.runOnIdle { assertEquals(1, downloadCalls); assertEquals(0, startCalls); assertEquals(0, pauseCalls) }
     }
 
-    @Test fun repeatedAnonymousQuotesDisplayOnceWithCombinedTimeAndOriginalText() {
+    @Test fun identicalTextWithoutIdentityEvidenceKeepsFourWorkCards() {
         val midnight = LocalDate.of(2026, 10, 12).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val now = midnight + 12 * 3600000L
-        val quote = "楼下大爷说的话，我是不会轻易相信的。"
-        val rows = listOf(0L, 4000L, 1000L, 0L).mapIndexed { index, duration ->
-            val at = midnight + 3600000L + index * 60000L
-            BrowseEvent(index + 1L, "com.sina.weibo", at, 32, quote, endTimestamp = at + duration,
-                durationMillis = duration, sampleCount = 2, workKey = "visit:$index", identityMethod = "session_estimate")
+        val rows = (1L..4).map { id -> BrowseEvent(id, "com.sina.weibo", midnight+3600000L,32,
+            "楼下大爷说的话，我是不会轻易相信的。",workKey="visit:$id",identityMethod="session_estimate") }
+        render { BrowseWorkCards(ViewpointTimeline.build(rows,StatisticsPeriod.DAY,now,ZoneId.systemDefault()).flatMap { it.items },
+            midnight,now,mapOf("com.sina.weibo" to "微博")) }
+        compose.onAllNodes(hasTestTag("work-card-${BrowseWorkKey.of(rows.first())}")).assertCountEquals(1)
+        for(row in rows) {
+            compose.onNodeWithTag("work-card-list").performScrollToNode(hasTestTag("work-card-${BrowseWorkKey.of(row)}"))
+            compose.onNodeWithTag("work-card-${BrowseWorkKey.of(row)}").assertExists()
         }
-        render { OverviewScreen(calculateStatistics(rows, StatisticsPeriod.DAY, now), StatisticsPeriod.DAY, {},
-            active = false, statusLabel = "已暂停", appNames = mapOf("com.sina.weibo" to "微博"),
-            onRecords = {}, onSettings = {}, rawEvents = rows, now = now) }
-        val distribution = hasAnyAncestor(hasTestTag("daily-viewpoint-pie"))
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
-        compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("未识别，1个作品，100.0%")
-        compose.onNode(hasText("未识别") and distribution).performClick()
-        compose.onAllNodes(hasText(quote) and distribution).assertCountEquals(1)
-        compose.onNode(hasText("本时段停留时长 5 秒") and distribution).assertExists()
-        compose.onAllNodes(hasText("查看原文 ›") and distribution).assertCountEquals(1)
-        compose.onNode(hasText("查看原文 ›") and distribution).performScrollTo().performClick()
-        compose.onAllNodes(hasText(quote) and distribution).assertCountEquals(2)
-        compose.onNode(hasText("收起原文") and distribution).performClick()
-        compose.onAllNodes(hasText(quote) and distribution).assertCountEquals(1)
-        saveScreenshot("pojian-deduplicated-viewpoints.png")
     }
 
     @Test fun oneWorkWithTwoModelViewpointsUsesIndependentSharesAndPreservesQuotes() {
@@ -190,7 +187,42 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("viewpoint-bar-6").performClick()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details")))
-        compose.onNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertIsDisplayed()
+        compose.onAllNodes(hasTestTag("work-card-${BrowseWorkKey.of(row)}")).assertCountEquals(1)
+    }
+
+    @Test fun chartStaysPinnedAndNavigationHidesDuringBothDirectionsOfWorkScrolling() {
+        val midnight = LocalDate.of(2026, 10, 13).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val now = midnight + 12 * 3600000L
+        val records = (1L..40).map { id -> BrowseEvent(id, "reader", midnight + 3600000L, 32,
+            "职业能力需要持续提升，作品 $id 的项目经历", workKey = "scroll-work-$id", sampleCount = 1) }
+        val hidden = mutableStateOf(false)
+        render {
+            Scaffold(bottomBar = {
+                PojianNavigationBar(listOf("概览", "发现", "设置"), 0, {}, visible = !hidden.value) { Text("•") }
+            }) { padding ->
+                OverviewScreen(calculateStatistics(records, StatisticsPeriod.WEEK, now), StatisticsPeriod.WEEK, {},
+                    false, "已暂停", mapOf("reader" to "测试阅读器"), {}, {}, Modifier.padding(padding),
+                    rawEvents = records, now = now, onViewpointScrolling = { hidden.value = it })
+            }
+        }
+        compose.onNodeWithTag("overview-list").performScrollToIndex(4)
+        compose.onNodeWithTag("viewpoint-bar-6").performClick()
+        val chartTop = compose.onNodeWithTag("viewpoint-chart-pinned").fetchSemanticsNode().boundsInRoot.top
+        for (direction in listOf(-1f, 1f)) {
+            compose.mainClock.autoAdvance = false
+            compose.onNodeWithTag("work-card-list").performTouchInput {
+                down(center)
+                moveBy(Offset(0f, direction * 90f), delayMillis = 200)
+            }
+            compose.mainClock.advanceTimeBy(200)
+            compose.onNodeWithTag("main-navigation").assertDoesNotExist()
+            val movedTop = compose.onNodeWithTag("viewpoint-chart-pinned").fetchSemanticsNode().boundsInRoot.top
+            assertTrue(kotlin.math.abs(chartTop - movedTop) < 8f)
+            compose.onNodeWithTag("work-card-list").performTouchInput { advanceEventTime(400); up() }
+            compose.mainClock.autoAdvance = true
+            compose.waitUntil(5000) { !hidden.value }
+            compose.onNodeWithTag("main-navigation").assertIsDisplayed()
+        }
     }
 
     @Test fun cloudMasterSwitchHasAnIndependentCallback() {

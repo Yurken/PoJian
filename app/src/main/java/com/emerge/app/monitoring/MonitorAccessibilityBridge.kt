@@ -52,6 +52,11 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private var lastMaterial: Pair<String, BrowseEvent>? = null
     private var sensitiveInputVisible = false
     private var shotPending = false
+    private val localThumbnails = LocalThumbnailCapture(service, app, scope) { shotPending }
+    val captureRevision: Long get() = localThumbnails.revision
+    fun observed(event: BrowseEvent, hint: com.emerge.app.capture.WorkHint, window: Int, revision: Long) =
+        localThumbnails.observed(event, hint, window, revision)
+    fun invalidateCapture() = localThumbnails.invalidate()
     private var windowId = -1
     private var bounds = Rect()
     private val position = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,
@@ -87,6 +92,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     }
     fun onEvent(event: AccessibilityEvent?) {
         if (event == null || event.packageName?.toString() == service.packageName) return
+        localThumbnails.invalidate()
         if (event.eventType in setOf(AccessibilityEvent.TYPE_VIEW_SCROLLED, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)) {
             revision++
             // Revoke screen binding immediately; do not wait for the next periodic sample.
@@ -101,6 +107,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         if (it.isBlank()) "" else "$it:${monitor.samplingRevision}"
     }
     private fun clearScreen() {
+        localThumbnails.invalidate()
         monitor.clearScreen()
         sampling.observeContext("", SystemClock.elapsedRealtime())
         lastMaterial = null
@@ -135,7 +142,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         val lines = linkedSetOf<String>(); var count = 0; var characters = 0
         sensitiveInputVisible = false
         fun visit(node: AccessibilityNodeInfo, depth: Int) {
-            if (++count > 1500 || depth > 40 || characters >= 6000) return
+            if (++count > 1500 || depth > 40) { sensitiveInputVisible = true; return }
             val rectangle = Rect(); node.getBoundsInScreen(rectangle)
             if (node.isPassword || node.isEditable) {
                 if (node.isVisibleToUser && Rect.intersects(rectangle, bounds)) sensitiveInputVisible = true
@@ -144,11 +151,11 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             if (node.isVisibleToUser && Rect.intersects(rectangle, bounds)) {
                 listOf(node.text, node.contentDescription).forEach { value ->
                     val line = value?.toString()?.trim()?.take(2000)
-                    if (!line.isNullOrBlank() && lines.add(line)) characters += line.length
+                    if (characters < 6000 && !line.isNullOrBlank() && lines.add(line)) characters += line.length
                 }
             }
             for (i in 0 until node.childCount) {
-                if (count >= 1500 || characters >= 6000) break
+                if (count >= 1500) { sensitiveInputVisible = true; break }
                 node.getChild(i)?.let { child -> try { visit(child, depth + 1) } finally { child.recycle() } }
             }
         }
@@ -158,7 +165,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     @Suppress("DEPRECATION")
     private fun screenshot(manual: Boolean) {
         val state = monitor.state.value
-        if (state.currentPackage.isBlank() || !app.captureSettings.enabled.value || !monitor.config.value.visual || shotPending) return
+        if (state.currentPackage.isBlank() || !app.captureSettings.enabled.value || !monitor.config.value.visual || shotPending || localThumbnails.pending) return
         if (sensitiveInputVisible) { monitor.notice("输入区域可见，已跳过画面采样"); return }
         if (!monitor.canSampleFrame(manual)) {
             if (manual) monitor.notice("待处理内容已满，本次未核查")
@@ -178,6 +185,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         val capturedBounds = Rect(bounds)
         val token = state.contextToken
         val sampleScope = samplingScope()
+        val capturedWork = localThumbnails.currentEvent(state.currentPackage, capturedWindow)
+        val captureRevision = localThumbnails.revision
         val generation = app.repository.captureGeneration
         val at = System.currentTimeMillis()
         // On Android 11–13 the API captures a display: avoid input methods and another focused window.
@@ -201,8 +210,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                         refresh()
                         if (sensitiveInputVisible || samplingScope() != sampleScope || windowId != capturedWindow ||
                             !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
-                        val parent = withContext(Dispatchers.IO) { MonitorInputs.screenSnapshot(
-                            app.repository.allEvents.first(), state.currentPackage, state.screenText, at) }
+                        val parent = capturedWork?.takeIf { localThumbnails.revision == captureRevision }
+                            ?.takeIf { app.repository.findEvent(it.id)?.workKey == it.workKey }
                         val previous = if (manual) null else sampling.previousFingerprint(SystemClock.elapsedRealtime())
                         val prepared = withContext(Dispatchers.Default) {
                             val wrapped = Bitmap.wrapHardwareBuffer(hardware, result.colorSpace)
@@ -224,7 +233,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                             } finally { wrapped?.recycle() }
                         }
                         refresh()
-                        if (prepared == null || sensitiveInputVisible || samplingScope() != sampleScope || windowId != capturedWindow ||
+                        if (prepared == null || sensitiveInputVisible || samplingScope() != sampleScope || localThumbnails.revision != captureRevision || windowId != capturedWindow ||
                             !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
                         val (encoded, recognized) = prepared
                         sampling.sampled(sampleScope, encoded.image == null)
@@ -236,13 +245,13 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                             if (retained != null && app.repository.findEvent(retained.id) == retained) retained else {
                                 val event = ScreenTextMaterial.event(state.currentPackage, extra, at, parent)
                                 app.repository.saveCapture(event, false, generation) {
-                                    samplingScope() == sampleScope && app.captureSettings.isPermissionCurrent(state.currentPackage, permission)
+                                    samplingScope() == sampleScope && localThumbnails.revision == captureRevision && app.captureSettings.isPermissionCurrent(state.currentPackage, permission)
                                 }?.let { event.copy(id = it).also { saved -> lastMaterial = sampleScope to saved } }
                             }
                         }
                         if (app.repository.captureGeneration != generation || samplingScope() != sampleScope ||
                             !app.captureSettings.isPermissionCurrent(state.currentPackage, permission)) return@launch
-                        val accepted = monitor.submitFrame(state.currentPackage, state.screenText, image, token, at, manual, material) { success ->
+                        val accepted = monitor.submitFrame(state.currentPackage, state.screenText, image, token, at, manual, material, boundParent = parent) { success ->
                             scope.launch { sampling.completed(sampleScope, encoded.fingerprint, success, SystemClock.elapsedRealtime()) }
                         }
                         if (!accepted) sampling.completed(sampleScope, encoded.fingerprint, false, SystemClock.elapsedRealtime())

@@ -14,6 +14,17 @@ class CaptureSettings(context: Context) {
     private val packagesState = MutableStateFlow(immutablePackages(preferences.getStringSet("allowed_packages", emptySet()).orEmpty()))
     val enabled: StateFlow<Boolean> = enabledState.asStateFlow()
     val allowedPackages: StateFlow<Set<String>> = packagesState.asStateFlow()
+    private val thumbnailsState = MutableStateFlow(preferences.getBoolean("local_thumbnails", false))
+    val localThumbnails: StateFlow<Boolean> = thumbnailsState.asStateFlow()
+    @Volatile internal var thumbnailRevision = 0L
+        private set
+    fun setLocalThumbnails(value: Boolean) = synchronized(lock) {
+        if (thumbnailsState.value != value) {
+            check(preferences.edit().putBoolean("local_thumbnails", value).commit())
+            thumbnailRevision++
+            thumbnailsState.value = value
+        }
+    }
     internal val authorizationRevision: Long get() = synchronized(lock) { revision }
 
     fun setEnabled(value: Boolean) = synchronized(lock) {

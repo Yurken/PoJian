@@ -9,7 +9,7 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ViewpointTimelineTest {
-    @Test fun anonymousRepeatedWeiboSnapshotsCountOnceAndKeepEveryVisitDuration() {
+    @Test fun anonymousRepeatedTextRetainsUncertainWorksAndEveryVisitDuration() {
         val quote = "楼下大爷说的话，我是不会轻易相信的。"
         val rows = listOf(0L, 4000L, 1000L, 0L).mapIndexed { index, duration ->
             event(index + 1L, quote, now - 3_600_000L - index * 60_000L, "visit:$index").copy(
@@ -17,26 +17,25 @@ class ViewpointTimelineTest {
                 endTimestamp = now - 3_600_000L - index * 60_000L + duration)
         }
         val groups = ViewpointTimeline.groups(ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone).flatMap { it.items })
-        val item = ViewpointTimeline.details(groups.single().items).single()
-        assertEquals(1, groups.single().total)
-        assertEquals(quote, item.quote)
-        assertEquals(rows.map { it.id }.toSet(), item.records.map { it.id }.toSet())
-        assertEquals(5000L, item.durationMillis(ObservationWindow.forPeriod(StatisticsPeriod.DAY, now, zone)))
+        val details = ViewpointTimeline.details(groups.single().items)
+        assertEquals(4, groups.single().total)
+        assertEquals(4, details.size)
+        assertEquals(rows.map { it.id }.toSet(), details.flatMap { it.records }.map { it.id }.toSet())
         val stats = calculateStatistics(rows, StatisticsPeriod.DAY, now, zone)
-        assertEquals(1, stats.total)
+        assertEquals(4, stats.total)
         assertEquals(4, stats.visitCount)
         assertEquals(5000L, stats.observedDurationMillis)
-        assertEquals(1, stats.unidentifiedWorks)
+        assertEquals(4, stats.unidentifiedWorks)
     }
 
-    @Test fun identicalQuotesCollapseOnlyInDetailsWhenFullSourcesOrKnownWorksDiffer() {
+    @Test fun identicalQuotesGroupWithoutCollapsingDifferentWorkCards() {
         val quote = "楼下大爷说的话，我是不会轻易相信的。"
         val rows = listOf(event(1, "作者甲\n$quote", work = "visit:1"),
             event(2, "作者乙\n$quote", work = "visit:2")).map { it.copy(identityMethod = "session_estimate") }
         val group = ViewpointTimeline.groups(ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone).flatMap { it.items }).single()
         assertEquals(2, group.total)
         assertEquals(2, group.items.size)
-        assertEquals(rows.map { it.visibleText }.toSet(), ViewpointTimeline.details(group.items).single().records.map { it.visibleText }.toSet())
+        assertEquals(rows.map { it.visibleText }.toSet(), ViewpointTimeline.details(group.items).flatMap { it.records }.map { it.visibleText }.toSet())
         val known = rows.mapIndexed { i, row -> row.copy(visibleText = quote, identityMethod = "platform_id", workKey = "post:$i") }
         assertEquals(2, calculateStatistics(known, StatisticsPeriod.DAY, now, zone).total)
     }
@@ -50,17 +49,19 @@ class ViewpointTimelineTest {
         assertEquals(5, ViewpointTimeline.build(rows + otherApp, StatisticsPeriod.DAY, now, zone)[11].items.size)
     }
 
-    @Test fun anonymousVisitContinuationsAndExactRevisitsShareAnIdentityWithoutLosingQuotes() {
+    @Test fun anonymousContinuationSharesIdentityButTextCannotBridgeDistinctVisits() {
         val quote = "楼下大爷说的话，我是不会轻易相信的。"
         val rows = listOf(event(1, quote, work = "visit:a"),
             event(2, "$quote\n新增的正文内容", work = "visit:a"),
             event(3, "$quote\n新增的正文内容", work = "visit:b")).map { it.copy(identityMethod = "session_estimate") }
         val keys = BrowseWorkKey.resolve(rows)
-        assertEquals(1, keys.distinct().size)
-        assertEquals(1, BrowseWorkKey.resolve(rows.reversed()).distinct().size)
-        assertEquals(1, calculateStatistics(rows, StatisticsPeriod.DAY, now, zone).total)
-        val item = ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone)[11].items.single()
-        assertEquals(3, item.records.size)
+        assertEquals(2, keys.distinct().size)
+        assertEquals(keys[0], keys[1])
+        assertNotEquals(keys[1], keys[2])
+        assertEquals(2, BrowseWorkKey.resolve(rows.reversed()).distinct().size)
+        assertEquals(2, calculateStatistics(rows, StatisticsPeriod.DAY, now, zone).total)
+        val items = ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone)[11].items
+        assertEquals(listOf(1,2), items.map { it.records.size }.sorted())
     }
 
     @Test fun mergedDurationsAreClippedToTheSelectedBucketAndUnknownTimeStaysUnknown() {

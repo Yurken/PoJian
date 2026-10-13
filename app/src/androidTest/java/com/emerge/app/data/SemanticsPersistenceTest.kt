@@ -9,6 +9,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.emerge.app.analysis.ArgumentUnit
 import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.analysis.SemanticsCodec
+import com.emerge.app.analysis.ClaimPresentation
+import com.emerge.app.analysis.ImpactLevel
+import com.emerge.app.analysis.ImpactSignal
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
@@ -25,7 +28,7 @@ class SemanticsPersistenceTest {
         if (name == null) Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java).build()
         else Room.databaseBuilder(context, BrowseDatabase::class.java, name).addMigrations(
             BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3,
-            BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7).build()
+            BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8).build()
 
     private suspend fun encounter(repository: BrowseRepository, text: String = "岗位正在减少，因为招聘数量下降"):
         BrowseEvent {
@@ -49,7 +52,12 @@ class SemanticsPersistenceTest {
                 val event = encounter(repository, "岗位正在减少，因为小林引用《就业报告》描述招聘数量下降")
                 val result = semantics(event).copy(claims = listOf(semantics(event).claims.single().copy(
                     evidence = "小林引用《就业报告》描述招聘数量下降", evidenceActors = listOf("小林"),
-                    evidenceOrigins = listOf("《就业报告》"))))
+                    evidenceOrigins = listOf("《就业报告》"),
+                    presentation = ClaimPresentation("就业", "招聘岗位正在减少",
+                        ImpactSignal(ImpactLevel.MEDIUM, "连续接触可能放大就业担忧。", "岗位正在减少"),
+                        ImpactSignal(ImpactLevel.UNKNOWN, "缺少长期接触数据。", ""),
+                        ImpactSignal(ImpactLevel.UNKNOWN, "缺少判断适用范围的信息。", ""),
+                        listOf("比较不同地区和时间的招聘数据。")))))
                 assertTrue(repository.saveSemantics(event, result, repository.captureGeneration) { true })
                 event to result
             } finally { initial.close() }
@@ -240,7 +248,7 @@ class SemanticsPersistenceTest {
                 }).build())
             try { helper.writableDatabase } finally { helper.close() }
             val migrated = Room.databaseBuilder(context, BrowseDatabase::class.java, name)
-                .addMigrations(BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7).build()
+                .addMigrations(BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8).build()
             try {
                 val repository = BrowseRepository(migrated)
                 val event = requireNotNull(repository.findEvent(7))

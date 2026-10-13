@@ -38,9 +38,15 @@ class CognitiveAnalyzerTest {
         assertEquals(2, report.skippedRecords)
     }
     @Test fun repeatedScreensAreMergedWithinSession() {
-        val report = analyze(event(1, now - 5000, "当前就业形势很差"), event(2, now, "当前就业形势很差"))
+        val report = analyze(event(1, now - 5000, "当前就业形势很差").copy(workKey="a"), event(2, now, "当前就业形势很差").copy(workKey="a"))
         assertEquals(1, report.claims.size)
         assertEquals(1, report.mergedSnapshots)
+    }
+    @Test fun identicalLegacyTextDoesNotInventAWorkIdentity() {
+        val report = analyze(event(1, now - 5000, "当前就业形势很差"), event(2, now, "当前就业形势很差"))
+        assertEquals(2, report.claims.size)
+        assertEquals(0, report.mergedSnapshots)
+        assertEquals(2, report.workStatistics?.total)
     }
     @Test fun sameClaimWithNewEvidenceIsNotARepeat() {
         val report = analyze(event(1, now - 300_000, "当前就业形势很差，因为招聘岗位同比减少20%"),
@@ -107,7 +113,7 @@ class CognitiveAnalyzerTest {
     @Test fun changingCountersDoNotCreateRepeatedExposure() {
         val prose = "当前就业形势越来越差，因为招聘岗位数量同比下降20%"
         val report = analyze(*List(16) { index -> event(index + 1L, now - (15-index)*2000L,
-            "$prose\n${index + 100}点赞") }.toTypedArray())
+            "$prose\n${index + 100}点赞").copy(workKey="one-observed-work") }.toTypedArray())
         assertEquals(1, report.claims.size)
         assertEquals(15, report.mergedSnapshots)
         assertEquals(Increment.FIRST, report.claims.single().increment)

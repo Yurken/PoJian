@@ -46,9 +46,10 @@ class CaptureSessionTrackerTest {
         assertFalse(sample(elapsed = 3000).continuing)
     }
 
-    @Test fun timeGapAndApplicationChangesStartNewSessions() {
+    @Test fun missingSamplesExcludeTimeButOnlyApplicationOrClockChangesSplitVisits() {
         tracker.saved(sample(), 7L)
-        assertFalse(sample(elapsed = 8000).continuing)
+        assertTrue(sample(elapsed = 8000).continuing)
+        assertEquals(0L, sample(elapsed = 8000).event.durationMillis)
         assertFalse(sample(elapsed = 3000, packageName = "com.other").continuing)
         assertFalse(sample(elapsed = 900).continuing)
     }

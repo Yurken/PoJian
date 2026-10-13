@@ -78,36 +78,17 @@ object ExposureAnalyzer {
         val contacts = linkedMapOf<String, Contact>()
         screens.forEachIndexed { index, event ->
             checkCancellation()
-            // Reuse capture's work identity and full-snapshot deduplication, not a time bucket:
+            // Reuse capture's work identity, not a time bucket:
             // scrolling through many distinct works in one sitting must still count those works.
             val key = "${date(event.timestamp)}|${resolved[index]}"
             eventKeys[event.id] = key
             contacts.getOrPut(key) { Contact(key, event.timestamp, event.packageName) }
         }
-        // One retained playback session is one contact. Imported audio and unlinked visual material
-        // are not evidence of algorithmic exposure. Linked OCR inherits the original contact below.
-        events.filter { it.sourceType == "audio_playback" && it.timestamp <= now &&
-            !it.audioSessionId.isNullOrBlank() }.groupBy { it.packageName to it.audioSessionId }.forEach { (_, rows) ->
-            checkCancellation()
-            val first = rows.minBy { it.timestamp }
-            if (first.timestamp < previousStart) return@forEach
-            val overlapping = screens.filter { screen -> screen.packageName == first.packageName && rows.any { audio ->
-                audio.timestamp <= maxOf(screen.timestamp, screen.endTimestamp) &&
-                    maxOf(audio.timestamp, audio.endTimestamp) >= screen.timestamp } }
-            // Attach only to a single observed contact; ambiguous concurrent captures do not add votes.
-            val screenKeys = overlapping.mapNotNull { eventKeys[it.id] }.distinct()
-            val key = when (screenKeys.size) {
-                0 -> "${first.packageName}|audio|${first.audioSessionId}"
-                1 -> screenKeys.single()
-                else -> return@forEach
-            }
-            rows.forEach { eventKeys[it.id] = key }
-            contacts.getOrPut(key) { Contact(key, first.timestamp, first.packageName) }
-        }
-        events.filter { it.sourceType in setOf("screen_ocr", "visual_model") }.forEach { event ->
+        // Multimodal samples inherit an explicitly bound work; an audio session is not a platform work.
+        events.filter { it.sourceType in setOf("screen_ocr", "visual_model", "audio_playback") }.forEach { event ->
             val parent = event.parentEventId?.let(eventsById::get)
-            if (parent != null && parent.packageName == event.packageName)
-                eventKeys[parent.id]?.let { eventKeys[event.id] = it }
+            if (parent != null && parent.sourceType == "accessibility" && parent.packageName == event.packageName &&
+                parent.workKey == event.workKey) eventKeys[parent.id]?.let { eventKeys[event.id] = it }
         }
         claims.filter { it.timestamp in previousStart..now }.forEach { claim ->
             eventKeys[claim.eventId]?.let { contacts[it]?.claims?.add(claim) }

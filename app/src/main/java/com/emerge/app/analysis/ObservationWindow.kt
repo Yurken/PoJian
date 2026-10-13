@@ -96,4 +96,25 @@ class ObservationWindow(val start: Long, val end: Long, val zone: ZoneId) {
     }
 
     fun durationMillis(event: BrowseEvent): Long? = if (durationKnown(event)) slices(event).sumOf { it.durationMillis } else null
+
+    /** Sweep the union of measured intervals. Duplicate/overlapping visits cannot multiply time.
+     * Legacy proportional estimates retain their density; rounding can only reduce the result. */
+    fun unionDuration(events: List<BrowseEvent>): Long = unionSlices(events.filter(::durationKnown).flatMap(::slices))
+
+    fun unionSlices(slices: List<SessionSlice>): Long {
+        val valid = slices.filter { it.end > it.start && it.durationMillis > 0 }.sortedBy { it.start }
+        val boundaries = valid.flatMap { listOf(it.start, it.end) }.distinct().sorted()
+        val active = java.util.PriorityQueue<SessionSlice> { a,b ->
+            BigInteger.valueOf(b.durationMillis).multiply(BigInteger.valueOf(a.end-a.start))
+                .compareTo(BigInteger.valueOf(a.durationMillis).multiply(BigInteger.valueOf(b.end-b.start)))
+        }
+        var cursor=0; var total=0L
+        boundaries.zipWithNext().forEach { (start,end) ->
+            while(cursor < valid.size && valid[cursor].start <= start) active.add(valid[cursor++])
+            while(active.isNotEmpty() && active.peek().end <= start) active.poll()
+            active.peek()?.let { slice -> total += BigInteger.valueOf(end-start)
+                .multiply(BigInteger.valueOf(slice.durationMillis)).divide(BigInteger.valueOf(slice.end-slice.start)).toLong() }
+        }
+        return total
+    }
 }

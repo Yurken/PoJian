@@ -31,7 +31,7 @@ class MonitorTaskPersistenceTest {
         Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java).build()
     else Room.databaseBuilder(context, BrowseDatabase::class.java, name).addMigrations(
         BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4,
-        BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7).build()
+        BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8).build()
 
     private suspend fun event(db: BrowseDatabase, text: String = "招聘岗位正在减少，因为岗位同比减少20%",
         visibility: String? = null): BrowseEvent {

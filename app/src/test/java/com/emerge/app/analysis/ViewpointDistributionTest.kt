@@ -56,7 +56,7 @@ class ViewpointDistributionTest {
         assertEquals(4, selected.total)
         assertEquals(50.0, selected.percent, .001)
         assertEquals(setOf("18款未配置制动", "19款未配置制动"), ViewpointTimeline.details(selected.groups.single().items)
-            .single().claims.map { it.evidence }.toSet())
+            .flatMap { it.claims }.map { it.evidence }.toSet())
         assertTrue(ViewpointDistribution.filter(topics, stroller.key, ViewpointFilter.UNCERTAIN).isEmpty())
         assertTrue(ViewpointDistribution.filter(topics, query = "不存在的词语").isEmpty())
         assertEquals("第三方说法", ViewpointDistribution.filter(topics, state = ViewpointFilter.UNCERTAIN).single().title)

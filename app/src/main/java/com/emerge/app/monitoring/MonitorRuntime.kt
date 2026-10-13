@@ -159,7 +159,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 // Revisions and deletions invalidate derived comparisons, including in-flight requests.
                 if (previous != null && previous.any { (id, old) ->
                     val updated = events[id]
-                    updated == null || (updated.visibleText != old.visibleText && !MonitorInputs.isAppend(old, updated))
+                    updated == null || updated.workKey != old.workKey || updated.parentEventId != old.parentEventId || (updated.visibleText != old.visibleText && !MonitorInputs.isAppend(old, updated))
                 }) invalidate(clearSemantics = false)
                 textWake.trySend(Unit)
                 exposureJob?.cancel()
@@ -242,7 +242,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         (manual || state.value.pending < MonitorTaskStore.CAPACITY)
 
     internal fun submitFrame(packageName: String, text: String, image: String, token: String, at: Long,
-        manual: Boolean = false, material: BrowseEvent? = null, completed: (Boolean) -> Unit = {}): Boolean {
+        manual: Boolean = false, material: BrowseEvent? = null, boundParent: BrowseEvent? = null, completed: (Boolean) -> Unit = {}): Boolean {
         val permission = app.captureSettings.permissionToken(packageName) ?: return false
         if (!frameOutstanding.compareAndSet(false, true)) return false
         val inputEpoch = epoch.get()
@@ -254,7 +254,13 @@ class MonitorRuntime(private val app: EmergeApplication) {
             try {
                 if (material != null && (material.sourceType != ScreenTextMaterial.SOURCE || material.packageName != packageName ||
                     app.repository.findEvent(material.id) != material)) return@launch
-                val targets = listOfNotNull(MonitorInputs.screenSnapshot(app.repository.allEvents.first(), packageName, text, at), material)
+                val parent = boundParent ?: material?.parentEventId?.let { app.repository.findEvent(it) }
+                if (parent != null) {
+                    val retained = app.repository.findEvent(parent.id) ?: return@launch
+                    if (retained.sourceType != "accessibility" || retained.packageName != packageName ||
+                        retained.workKey != parent.workKey || retained != parent && !MonitorInputs.isAppend(parent, retained)) return@launch
+                }
+                val targets = listOfNotNull(parent, material)
                 val input = MonitorInput(if (manual) "manual-frame:$at" else "frame:$at", packageName, ScreenTextMaterial.inputText(text, material), at,
                     "frame", token, inputEpoch, permission, generation, screen.encounter.ifBlank { "screen:$at" },
                     image, targets, checkFacts)
@@ -393,7 +399,8 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 }
                 ArgumentUnit(string("quote", true), string("topic"), string("subject"),
                     string("dimension"), string("stance"), string("evidence"),
-                    string("conditions"), uncertain, anchors("evidence_actors"), anchors("evidence_origins"))
+                    string("conditions"), uncertain, anchors("evidence_actors"), anchors("evidence_origins"),
+                    if (row.has("presentation")) com.emerge.app.analysis.ClaimPresentationCodec.decode(row.getJSONObject("presentation")) else null)
             }
             val available = input.text + if (input.kind == "frame") "\n$observed" else ""
             val validationEvent = BrowseEvent(id = 1, packageName = input.packageName, timestamp = input.at,
@@ -424,8 +431,10 @@ class MonitorRuntime(private val app: EmergeApplication) {
             val targets = input.snapshots.toMutableList()
             if (input.kind == "frame" && observed.isNotBlank() && targets.none { observed in it.visibleText }) {
                 // A visual-model transcription is explicitly marked; it adds no measured viewing duration.
+                val parent = targets.singleOrNull { it.sourceType == "accessibility" && it.packageName == input.packageName }
                 val visual = BrowseEvent(packageName = input.packageName, timestamp = input.at,
-                    eventType = 0, visibleText = observed, sourceType = "visual_model")
+                    eventType = 0, visibleText = observed, sourceType = "visual_model", parentEventId = parent?.id,
+                    workKey = parent?.workKey, identityMethod = parent?.identityMethod ?: "unknown")
                 val id = app.repository.saveCapture(visual, false, input.deletion) {
                     current(input) && app.audioCoordinator.settings.config.value == service
                 }

@@ -18,6 +18,13 @@ interface BrowseEventDao {
     @Query("DELETE FROM browse_semantics")
     suspend fun clearSemantics()
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun insertWork(work: ObservedWork)
+    @Query("SELECT * FROM observed_works") fun observeWorks(): Flow<List<ObservedWork>>
+    @Query("SELECT * FROM observed_works WHERE packageName=:packageName AND author=:author AND identityMethod IN ('author_title','platform_id')")
+    suspend fun captionCandidates(packageName: String, author: String): List<ObservedWork>
+    @Query("UPDATE browse_events SET workKey=:key,identityMethod=:method WHERE parentEventId=:parent")
+    suspend fun updateMaterialIdentity(parent: Long, key: String?, method: String)
+    @Query("SELECT * FROM browse_events WHERE sourceType='accessibility' AND packageName=:pkg AND timestamp<=:start AND endTimestamp>=:end")
+    suspend fun coveringVisits(pkg: String, start: Long, end: Long): List<BrowseEvent>
     @Insert suspend fun insertSample(sample: BrowseSample)
     @Query("SELECT visibleText FROM browse_samples WHERE visitId = :visitId ORDER BY id DESC LIMIT 1")
     suspend fun lastSampleText(visitId: Long): String?
