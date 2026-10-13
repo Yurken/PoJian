@@ -456,6 +456,15 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(body["claims"][0]["verdict"], "contradicted")
         self.assertEqual(body["claims"][0]["evidence_actors"], [])
         self.assertEqual(body["claims"][0]["evidence_origins"], [])
+    def test_http_repeated_scoped_content_reuses_external_check(self):
+        for attempt in range(3):
+            status, body = self.call(body=request_data(id=f"attempt:{attempt}", content_scope="a" * 64))
+            self.assertEqual(200, status)
+            self.assertEqual(f"attempt:{attempt}", body["id"])
+            self.assertEqual("contradicted", body["claims"][0]["verdict"])
+            self.assertEqual(attempt > 0, body["coverage"]["check_reused"])
+        self.assertEqual(1, self.provider.search_calls)
+        self.assertEqual(4, self.provider.model_calls)
     def test_http_pipeline_preserves_evidence_identity_fields(self):
         self.provider.claims = [claim(evidence=IDENTITY_EVIDENCE, evidence_actors=["小李", "小王"],
                                      evidence_origins=["《就业调查》", "访谈原稿"])]

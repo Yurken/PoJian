@@ -126,7 +126,10 @@ private fun ViewpointTimelineContent(state: ViewpointTimelineUiState, appNames: 
             key(state.period, bucket.start) {
                 BrowseWorkCards(bucket.items, bucket.start, bucket.end, appNames, state.zone, onScrolling = onWorkScrolling)
             }
-        } else DailyViewpointDistribution(state.groups, "${format.format(Instant.ofEpochMilli(state.window.start))} — ${format.format(Instant.ofEpochMilli(state.window.end))}", appNames, state.window.start, state.window.end)
+        } else DailyViewpointDistribution(state.groups,
+            "${format.format(Instant.ofEpochMilli(state.window.start))} — ${format.format(Instant.ofEpochMilli(state.window.end))}",
+            appNames, state.window.start, state.window.end,
+            stateKey = "${state.period}:${Instant.ofEpochMilli(state.window.end).atZone(state.zone).toLocalDate()}")
     }
 }
 

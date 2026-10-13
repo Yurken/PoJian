@@ -24,6 +24,47 @@ import java.util.concurrent.atomic.AtomicInteger
 /** Real HTTP worker and Room, using only a loopback server and synthetic input. */
 @RunWith(AndroidJUnit4::class)
 class MonitorFramePipelineTest {
+    @Test fun repeatedManualTextClicksShareOnePersistentFactTask() = runBlocking {
+        fixture { f ->
+            f.response = { _, request -> reply(request).put("claims", JSONArray().put(JSONObject()
+                .put("quote", TEXT).put("verdict", "opinion").put("explanation", "本地回归响应"))) }
+            f.text(71)
+            assertFalse(f.received.receive().getBoolean("check_facts"))
+            withTimeout(5000) { f.app.monitorTasks.counts.first { it.queued == 0 && it.running == 0 } }
+            assertTrue(f.app.monitor.state.value.findings.none { it.kind == "fact" && it.packageName == PACKAGE })
+            val parent = requireNotNull(f.app.repository.findEvent(f.ids.last()))
+            f.app.monitor.setScreen(PACKAGE, parent.visibleText, "same-screen")
+            f.app.monitor.submitCurrentText()
+            assertTrue(withTimeout(5000) { f.received.receive() }.getBoolean("check_facts"))
+            withTimeout(5000) { f.app.monitorTasks.counts.first { it.queued == 0 && it.running == 0 } }
+            repeat(10) { delay(2); f.app.monitor.submitCurrentText() }
+            delay(500)
+            assertEquals("One analysis request and one fact request", 2, f.requestCount.get())
+        }
+    }
+
+    @Test fun completedFactWithBudgetExcludedCandidateIsReusedWithoutDuplicateFindings() = runBlocking {
+        fixture { f ->
+            f.response = { _, request -> reply(request)
+                .put("coverage", JSONObject().put("search_attempted", true))
+                .put("claims", JSONArray().apply {
+                    listOf("测试画面内容" to "insufficient", "本地回归检查" to "not_checked").forEach { (quote, verdict) ->
+                        put(JSONObject().put("quote", quote).put("verdict", verdict)
+                            .put("explanation", "本地回归响应").put("uncertain", true))
+                    }
+                })
+            }
+            assertTrue(f.frame("same-fact-pixels", manual = true).await())
+            val ids = f.app.monitor.state.value.findings.filter { it.kind == "fact" }.map { it.id }.toSet()
+            repeat(3) { assertTrue(f.frame("same-fact-pixels", manual = true).await()) }
+            assertEquals(1, f.requestCount.get())
+            val findings = f.app.monitor.state.value.findings.filter { it.kind == "fact" }
+            assertEquals(ids, findings.map { it.id }.toSet())
+            assertEquals(2, findings.size)
+            assertEquals(1, findings.count { it.verdict == "not_checked" })
+        }
+    }
+
     @Test fun cloudOptInDrainsBacklogBeyondCapacityWithoutFactChecksOrClientQuotas() = runBlocking {
         fixture { f ->
             val settings = f.app.audioCoordinator.settings

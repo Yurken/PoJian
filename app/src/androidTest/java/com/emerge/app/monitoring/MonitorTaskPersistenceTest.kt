@@ -77,7 +77,7 @@ class MonitorTaskPersistenceTest {
                 assertTrue(store.finish(lease, now + 1))
                 assertTrue(store.finish(lease, now + 2))
                 assertEquals("", reopened.monitorTaskDao().all().single().payload)
-                assertEquals(EnqueueResult.DUPLICATE, store.enqueue(saved, now + 3))
+                assertEquals(EnqueueResult.DUPLICATE, store.enqueue(saved.copy(requestId = "manual:after-restart"), now + 3))
                 assertNull(store.claim(now + 3))
                 assertEquals(1, store.counts.first().completed)
                 assertEquals(1, reopened.browseEventDao().chronologicalEvents().size)
@@ -138,9 +138,10 @@ class MonitorTaskPersistenceTest {
             val input = request(listOf(row))
             assertEquals(EnqueueResult.ENQUEUED, one.enqueue(input, now))
             assertEquals(EnqueueResult.DUPLICATE, two.enqueue(input, now))
+            assertEquals(EnqueueResult.DUPLICATE, two.enqueue(input.copy(requestId = "manual:double-tap"), now))
             repeat(5) { assertEquals(EnqueueResult.ENQUEUED,
-                one.enqueue(request(listOf(row), "capacity-$it"), now + it + 1)) }
-            assertEquals(EnqueueResult.FULL, two.enqueue(request(listOf(row), "capacity-overflow"), now + 10))
+                one.enqueue(request(listOf(event(first, "独立材料 $it 的合成原文")), "capacity-$it"), now + it + 1)) }
+            assertEquals(EnqueueResult.FULL, two.enqueue(request(listOf(event(first, "容量以外的独立材料")), "capacity-overflow"), now + 10))
             val gate = CompletableDeferred<Unit>()
             val results = listOf(one, two).map { store -> async(Dispatchers.IO) {
                 gate.await(); store.claim(now + 20)
@@ -150,7 +151,7 @@ class MonitorTaskPersistenceTest {
             assertEquals(2, leases.size)
             assertEquals(2, leases.map { it.task.id }.distinct().size)
             assertEquals(6, first.monitorTaskDao().pendingCount())
-            assertEquals(1, first.browseEventDao().chronologicalEvents().size)
+            assertEquals(7, first.browseEventDao().chronologicalEvents().size)
         } finally { first.close(); second.close(); context.deleteDatabase(name) }
     }
 
@@ -368,7 +369,7 @@ class MonitorTaskPersistenceTest {
             assertEquals("failed", db.monitorTaskDao().get(task.id)!!.status)
             assertEquals("invalid_payload", db.monitorTaskDao().get(task.id)!!.lastError)
             assertEquals("", db.monitorTaskDao().get(task.id)!!.payload)
-            assertEquals(EnqueueResult.ENQUEUED, store.enqueue(request(listOf(row), "ttl-task"), now))
+            assertEquals(EnqueueResult.ENQUEUED, store.enqueue(request(listOf(event(db, "另一份用于过期测试的材料")), "ttl-task"), now))
             store.prune(now + 24 * 60 * 60 * 1000L)
             assertTrue(db.monitorTaskDao().all().isEmpty())
             db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM monitor_task_inputs").use {

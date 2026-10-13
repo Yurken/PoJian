@@ -54,6 +54,9 @@ class MonitorTaskStore(private val database: BrowseDatabase,
         }
         val key = taskKey(request)
         if (dao.get(key) != null) return@transaction EnqueueResult.DUPLICATE
+        // Existing encrypted tasks retain their old IDs through an app upgrade.
+        if (dao.all().any { it.status in PENDING && load(it)?.let(::taskKey) == key })
+            return@transaction EnqueueResult.DUPLICATE
         if (dao.pendingCount() >= CAPACITY) return@transaction EnqueueResult.FULL
         val envelope = runCatching { cipher.seal(encode(request), key) }.getOrNull()
             ?: return@transaction EnqueueResult.INVALID
@@ -210,7 +213,7 @@ class MonitorTaskStore(private val database: BrowseDatabase,
 
     private fun load(task: MonitorTask): MonitorTaskRequest? = runCatching {
         decode(cipher.open(task.payload, task.id)).also {
-            require(validRequest(it) && taskKey(it) == task.id &&
+            require(validRequest(it) && (taskKey(it) == task.id || MonitorTaskIdentity.key(it, legacy = true) == task.id) &&
                 MonitorPolicy.hash(it.packageName) == task.scopeFingerprint &&
                 it.serviceFingerprint == task.serviceFingerprint && it.authorizationKey == task.authorizationKey)
         }
@@ -225,20 +228,8 @@ class MonitorTaskStore(private val database: BrowseDatabase,
         request.snapshots.all { it.id > 0 && it.packageName == request.packageName &&
             it.visibleText.isNotBlank() && it.visibleText.length <= 16_000 && it.sourceType != "visual_model" }
 
-    private fun fingerprint(event: BrowseEvent): String = MonitorPolicy.hash(JSONObject()
-        .put("package", event.packageName).put("source", event.sourceType).put("text", event.visibleText)
-        .put("timestamp", event.timestamp).put("audioSession", event.audioSessionId ?: JSONObject.NULL)
-        .put("mediaStart", event.mediaStartMillis).put("mediaEnd", event.mediaEndMillis)
-        .put("work", event.workKey ?: JSONObject.NULL).apply {
-            // Keep old task hashes stable for records without an OCR parent.
-            event.parentEventId?.let { put("parentEventId", it) }
-        }.toString())
-    private fun taskKey(request: MonitorTaskRequest): String = MonitorPolicy.hash(JSONObject()
-        .put("request", request.requestId).put("kind", request.kind).put("text", request.text)
-        .put("service", request.serviceFingerprint).put("authorization", request.authorizationKey)
-        .put("facts", request.checkFacts).put("inputs", JSONArray().apply {
-            request.snapshots.sortedBy { it.id }.forEach { put(JSONObject().put("id", it.id).put("hash", fingerprint(it))) }
-        }).toString())
+    private fun fingerprint(event: BrowseEvent): String = MonitorTaskIdentity.fingerprint(event)
+    private fun taskKey(request: MonitorTaskRequest): String = MonitorTaskIdentity.key(request)
 
     private fun encode(request: MonitorTaskRequest) = JSONObject().apply {
         put("requestId", request.requestId); put("packageName", request.packageName); put("kind", request.kind)

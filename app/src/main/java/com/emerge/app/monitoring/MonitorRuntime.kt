@@ -33,6 +33,7 @@ private data class MonitorInput(val id: String, val packageName: String, val tex
     val encounter: String, val image: String = "", val snapshots: List<BrowseEvent> = emptyList(),
     val checkFacts: Boolean = false, val lease: MonitorTaskLease? = null) {
     val key: String by lazy { MonitorPolicy.hash(packageName + "|" + kind + "|" + text + "|" + image) }
+    val factScope: String by lazy { MonitorFactResults.scope(packageName, snapshots, key) }
 }
 
 private data class MonitorFrameWork(val input: MonitorInput, val completed: (Boolean) -> Unit)
@@ -71,7 +72,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     val config = mutableConfig.asStateFlow()
     private val mutableState = MutableStateFlow(MonitorState(findings = readFindings()))
     val state = mutableState.asStateFlow()
-    private val cache = linkedMapOf<String, Pair<Long, JSONObject>>()
+    private val cache = MonitorResponseCache()
     private var previousEvents: Map<Long, BrowseEvent>? = null
     @Volatile private var connection: HttpURLConnection? = null
     @Volatile private var manualHandler: (() -> Unit)? = null
@@ -367,8 +368,11 @@ class MonitorRuntime(private val app: EmergeApplication) {
         try {
             val now = System.currentTimeMillis()
             val checkFacts = input.checkFacts
-            val cacheKey = input.key + ":" + checkFacts + ":" + MonitorPolicy.hash(service.endpoint + "|" + service.token)
-            val cached = synchronized(cache) { cache[cacheKey]?.takeIf { now >= it.first && now - it.first <= 300_000 }?.second }
+            // Keep work attribution, fact mode, authorization and relative-date context separate.
+            val observedDay = java.time.Instant.ofEpochMilli(input.at).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+            val cacheKey = input.factScope + ":" + input.key + ":" + observedDay + ":" + checkFacts + ":" +
+                authorizationKey() + ":" + MonitorPolicy.hash(service.endpoint + "|" + service.token)
+            val cached = cache.get(cacheKey, now)
             val json = if (cached != null) JSONObject(cached.toString()).put("id", input.id) else {
                 if (!current(input)) return ProcessResult.CANCELLED
                 app.audioCoordinator.settings.recordRequest()
@@ -424,7 +428,9 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 val verdict = if (row.optBoolean("uncertain", true) && rawVerdict in setOf("supported", "contradicted", "conflicting")) "insufficient" else rawVerdict
                 require(verdict in setOf("supported", "contradicted", "conflicting", "insufficient", "not_checked", "opinion"))
                 require(verdict !in setOf("supported", "contradicted", "conflicting") || sources.isNotEmpty()) { "服务未提供外部证据" }
-                MonitorFinding(input.id + ":$index", input.key, input.packageName, input.at, "fact", verdict,
+                MonitorFinding(MonitorFactResults.id(input.factScope, quote, row.optString("conditions"),
+                    row.optString("subject"), row.optString("dimension"), row.optString("check_quote")),
+                    input.key, input.packageName, input.at, "fact", verdict,
                     quote, row.getString("explanation").take(1000), sources, row.optString("topic", "").take(100), input.token, input.kind)
             }
             if (!current(input)) return ProcessResult.CANCELLED
@@ -455,18 +461,14 @@ class MonitorRuntime(private val app: EmergeApplication) {
             if (!current(input) || app.audioCoordinator.settings.config.value != service) return ProcessResult.CANCELLED
             input.lease?.let { if (!tasks.isLeaseCurrent(it, System.currentTimeMillis()) { current(input) }) return ProcessResult.CANCELLED }
             commit(input, outputs, service)
-            val retryableFactFailure = checkFacts && (0 until claims.length()).any { index ->
-                val claim = claims.getJSONObject(index)
-                claim.optString("verdict") == "not_checked" && claim.optJSONObject("check_error")?.optBoolean("retryable", false) == true
-            }
+            val retryableFactFailure = checkFacts && MonitorResponseCache.retryableFailure(json)
             // Keep the extracted viewpoints, but let the existing bounded queue retry
             // transient retrieval/model failures instead of permanently completing them.
             if (retryableFactFailure && input.lease != null) return ProcessResult.RETRY("fact_check_upstream")
             // Invalid or failed responses must never prevent a fresh network attempt.
-            if (cached == null && (!checkFacts || outputs.none { it.verdict == "not_checked" })) synchronized(cache) {
+            if (cached == null) synchronized(cache) {
                 if (current(input) && app.audioCoordinator.settings.config.value == service) {
-                    cache[cacheKey] = System.currentTimeMillis() to json
-                    while (cache.size > 32) cache.remove(cache.keys.first())
+                    cache.put(cacheKey, json, System.currentTimeMillis(), checkFacts)
                 }
             }
             notice(if (outputs.isEmpty()) "未提取到可核查陈述，不代表内容真实" else
@@ -484,7 +486,12 @@ class MonitorRuntime(private val app: EmergeApplication) {
     }
 
     @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, service: TextServiceConfig) {
-        if (!current(input) || app.audioCoordinator.settings.config.value != service) return
+        // Analysis-only samples still save semantics, but are not new fact-check submissions.
+        if (!input.checkFacts || !current(input) || app.audioCoordinator.settings.config.value != service) return
+        // A recovered result replaces the earlier failed-attempt placeholder for this material.
+        mutableState.update { state -> state.copy(findings = state.findings.filterNot {
+            it.kind == "fact" && it.contentKey == input.key && it.id.endsWith(":unchecked")
+        }) }
         outputs.forEach(::publish)
         // Longitudinal findings are rebuilt from retained Room records by the exposure observer.
     }
@@ -492,6 +499,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     private suspend fun request(input: MonitorInput, endpoint: String, token: String, checkFacts: Boolean): JSONObject {
         val payload = JSONObject().put("version", 1).put("id", input.id).put("text", input.text)
             .put("kind", input.kind).put("captured_at", input.at).put("check_facts", checkFacts)
+            .put("content_scope", MonitorPolicy.hash(input.factScope + ":" + authorizationKey() + ":" + serviceFingerprint()))
         if (input.image.isNotEmpty()) payload.put("image", input.image)
         val bytes = payload.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= 512 * 1024) { "当前画面过大，请缩小采样尺寸" }
@@ -519,12 +527,12 @@ class MonitorRuntime(private val app: EmergeApplication) {
     }
     @Synchronized private fun unchecked(input: MonitorInput, message: String) {
         if (!current(input)) return
-        publish(MonitorFinding(input.id + ":unchecked", input.key, input.packageName, input.at, "fact", "not_checked",
+        if (input.checkFacts) publish(MonitorFinding("fact:" + input.key + ":unchecked", input.key, input.packageName, input.at, "fact", "not_checked",
             input.text.take(160).ifBlank { "关键画面采样" }, message, contextToken = input.token, inputKind = input.kind))
         mutableState.update { it.copy(skipped = it.skipped + 1, notice = message) }
     }
     @Synchronized private fun publish(finding: MonitorFinding) {
-        mutableState.update { it.copy(findings = (listOf(finding) + it.findings.filterNot { old -> old.id == finding.id }).take(80)) }
+        mutableState.update { it.copy(findings = MonitorFactResults.upsert(it.findings, finding)) }
         prefs.edit().putString("findings", JSONArray().apply { state.value.findings.forEach { put(encode(it)) } }.toString()).apply()
     }
     @Synchronized fun invalidate(clearSemantics: Boolean = true) {
@@ -582,5 +590,5 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 (0 until minOf(s.length(), 4)).map { n -> s.getJSONObject(n).let { WebEvidence(it.getString("url"), it.getString("title"), it.getString("quote"), it.getString("excerpt")) } },
                 topic = j.optString("topic", ""), inputKind = j.optString("input", "text"))
         } }
-    }.getOrDefault(emptyList()).filter { it.kind != "cocoon" }
+    }.getOrDefault(emptyList()).filter { it.kind != "cocoon" }.let(MonitorFactResults::restore)
 }

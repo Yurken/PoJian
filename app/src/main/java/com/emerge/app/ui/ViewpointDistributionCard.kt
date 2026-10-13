@@ -1,4 +1,5 @@
 @file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class,
+    androidx.compose.foundation.ExperimentalFoundationApi::class,
     androidx.compose.material3.ExperimentalMaterial3Api::class)
 
 package com.emerge.app.ui
@@ -9,6 +10,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -34,20 +37,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.*
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
-internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: String, names: Map<String, String>, start: Long, end: Long) {
+internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: String, names: Map<String, String>, start: Long, end: Long,
+    stateKey: String = date) {
     val total = groups.firstOrNull()?.total ?: 0
     val topics = remember(groups) { ViewpointDistribution.topics(groups) }
-    var topicKey by rememberSaveable(date) { mutableStateOf<String?>(null) }
-    var filter by rememberSaveable(date) { mutableStateOf(ViewpointFilter.ALL) }
-    var query by rememberSaveable(date) { mutableStateOf("") }
-    var overrides by rememberSaveable(date) { mutableStateOf(mapOf<String, Boolean>()) }
-    var sourceKey by rememberSaveable(date) { mutableStateOf<String?>(null) }
+    var topicKey by rememberSaveable(stateKey) { mutableStateOf<String?>(null) }
+    var filter by rememberSaveable(stateKey) { mutableStateOf(ViewpointFilter.ALL) }
+    var query by rememberSaveable(stateKey) { mutableStateOf("") }
+    var overrides by rememberSaveable(stateKey) { mutableStateOf(mapOf<String, Boolean>()) }
+    var sourceKey by rememberSaveable(stateKey) { mutableStateOf<String?>(null) }
     // A refreshed analysis can replace topics while the selected date remains the same.
     val activeTopic = topicKey?.takeIf { selected -> topics.any { it.key == selected } }
     val visible = remember(topics, activeTopic, filter, query) {
         ViewpointDistribution.filter(topics, activeTopic, filter, query)
+    }
+    var pageIndex by rememberSaveable(stateKey, activeTopic, filter, query) { mutableIntStateOf(0) }
+    val entries = remember(visible) { ViewpointDistribution.entries(visible) }
+    val page = remember(entries, pageIndex) { ViewpointDistribution.page(entries, pageIndex) }
+    LaunchedEffect(page.index) { pageIndex = page.index }
+    val pageStart = remember { BringIntoViewRequester() }
+    val scope = rememberCoroutineScope()
+    fun changePage(index: Int) {
+        pageIndex = index
+        sourceKey = null
+        scope.launch { pageStart.bringIntoView() }
     }
     fun expanded(topic: ViewpointTopic) = overrides[topic.key] ?: topic.structured
     val allExpanded = visible.isNotEmpty() && visible.all(::expanded)
@@ -98,22 +114,28 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
                 }
             }
         }
-        // Keep the established per-claim percentages and accessibility contract, including overlapping works.
-        val visibleByKey = visibleGroups.associateBy { it.key }
+        if (page.count > 1) ViewpointPageControls(page.index, page.count, ::changePage,
+            Modifier.bringIntoViewRequester(pageStart).testTag("viewpoint-pages-top"))
+        // Read only the current page; preserve percentages against the full statistics window.
+        val pageKeys = page.topics.flatMap { it.groups }.map { it.key }.toSet()
+        val visibleByKey = visibleGroups.filter { it.key in pageKeys }.associateBy { it.key }
         Column(Modifier.fillMaxWidth().testTag("daily-viewpoint-pie").semantics {
             contentDescription = groups.mapNotNull { visibleByKey[it.key] }.joinToString("；") {
                 "${it.label}，${it.items.size}个作品，${percentage(it.percent)}%"
             }.ifBlank { "暂无作品" }
         }, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            visible.forEach { topic ->
+            page.topics.forEach { section ->
+                val topic = section.topic
                 key(date, topic.key) {
-                    ViewpointTopicCard(topic, expanded(topic), { overrides = overrides + (topic.key to !expanded(topic)) },
+                    ViewpointTopicCard(topic, section.groups, expanded(topic), { overrides = overrides + (topic.key to !expanded(topic)) },
                         { sourceKey = it.key }, date, names, start, end)
                 }
             }
             if (total == 0) MetadataText("当天没有保存的浏览作品。")
             else if (visible.isEmpty()) MetadataText("无匹配观点")
         }
+        if (page.count > 1) ViewpointPageControls(page.index, page.count, ::changePage,
+            Modifier.testTag("viewpoint-pages-bottom"))
     }
     if (source != null) {
         ModalBottomSheet(onDismissRequest = { sourceKey = null },
@@ -131,6 +153,16 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
 }
 
 @Composable
+private fun ViewpointPageControls(index: Int, count: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically) {
+        PojianTextButton(onClick = { onChange(index - 1) }, enabled = index > 0) { Text("上一页") }
+        MetadataText("${index + 1} / $count")
+        PojianTextButton(onClick = { onChange(index + 1) }, enabled = index + 1 < count) { Text("下一页") }
+    }
+}
+
+@Composable
 private fun TopicChip(text: String, selected: Boolean, accent: Color, onClick: () -> Unit, tag: String) {
     FilterChip(selected = selected, onClick = onClick, modifier = Modifier.heightIn(min = 48.dp).testTag(tag),
         label = { Text(text, style = MaterialTheme.typography.labelMedium) }, shape = RoundedCornerShape(12.dp),
@@ -140,7 +172,7 @@ private fun TopicChip(text: String, selected: Boolean, accent: Color, onClick: (
 }
 
 @Composable
-private fun ViewpointTopicCard(topic: ViewpointTopic, expanded: Boolean, onToggle: () -> Unit,
+private fun ViewpointTopicCard(topic: ViewpointTopic, pageGroups: List<ViewpointShare>, expanded: Boolean, onToggle: () -> Unit,
     onSource: (ViewpointShare) -> Unit, date: String, names: Map<String, String>, start: Long, end: Long) {
     val scheme = MaterialTheme.colorScheme
     val uncertain = topic.groups.any { group -> group.items.any { item ->
@@ -175,11 +207,9 @@ private fun ViewpointTopicCard(topic: ViewpointTopic, expanded: Boolean, onToggl
             }
             if (expanded) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (topic.structured) topic.groups.sortedWith(compareBy<ViewpointShare> {
-                        it.items.minOfOrNull { item -> item.record.timestamp } ?: Long.MAX_VALUE
-                    }.thenBy { it.key }).forEach { share ->
+                    if (topic.structured) pageGroups.forEach { share ->
                         key(share.key) { StructuredViewpointCard(share, start, end) { onSource(share) } }
-                    } else topic.groups.forEach { share ->
+                    } else pageGroups.forEach { share ->
                         ViewpointSources(share, start, end, names, "pie-$date")
                     }
                 }

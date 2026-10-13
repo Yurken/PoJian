@@ -103,6 +103,75 @@ class ViewpointDistributionTest {
         assertEquals(2L, local.groups.single().items.single().record.id)
     }
 
+    @Test fun largeSingleTopicSpansPagesWithoutLosingClaimsOrChangingStatistics() {
+        val topics = structuredTopics(17)
+        val topic = topics.single()
+        val entries = ViewpointDistribution.entries(topics)
+        val pages = (0..2).map { ViewpointDistribution.page(entries, it) }
+        assertEquals(listOf(8, 8, 1), pages.map { page -> page.topics.sumOf { it.groups.size } })
+        assertEquals(entries.map { it.share.key }, pages.flatMap { it.topics }.flatMap { it.groups }.map { it.key })
+        pages.forEach { page ->
+            assertEquals(3, page.count)
+            assertEquals(topic, page.topics.single().topic)
+            page.topics.single().groups.forEach { share ->
+                val original = topic.groups.single { it.key == share.key }
+                assertEquals(original, share)
+                assertEquals(17, share.total)
+            }
+        }
+    }
+
+    @Test fun pageLimitAppliesAcrossTopicsAndAfterSearch() {
+        val topics = structuredTopics(17, separateTopics = true)
+        val entries = ViewpointDistribution.entries(topics)
+        val first = ViewpointDistribution.page(entries, 0)
+        assertEquals(8, first.topics.size)
+        val second = ViewpointDistribution.page(entries, 1)
+        assertEquals(8, second.topics.size)
+        val filtered = ViewpointDistribution.filter(topics, topicKey = topics.last().key)
+        val page = ViewpointDistribution.page(ViewpointDistribution.entries(filtered), 2)
+        assertEquals(0, page.index)
+        assertEquals(1, page.count)
+        assertEquals(17, page.topics.single().topic.total)
+        assertEquals(topics.last().percent, page.topics.single().topic.percent, .001)
+    }
+
+    @Test fun localSourceRowsAreAlsoBoundedEvenWithOneSharedUnknownLabel() {
+        val rows = (1L..25L).map { event(it, "菜单") }
+        val topics = ViewpointDistribution.topics(groups(rows, emptyList()))
+        assertEquals(1, topics.size)
+        val entries = ViewpointDistribution.entries(topics)
+        val pages = (0..3).map { ViewpointDistribution.page(entries, it) }
+        val displayed = pages.map { page -> page.topics.flatMap { it.groups }.flatMap { it.items } }
+        assertEquals(listOf(8, 8, 8, 1), displayed.map { it.size })
+        assertEquals(25, displayed.flatten().map { it.workIdentity }.distinct().size)
+        assertEquals(rows.map { it.id }.toSet(), displayed.flatten().map { it.record.id }.toSet())
+        assertTrue(pages.all { it.topics.single().topic.workCount == 25 })
+        assertTrue(pages.all { it.topics.single().topic.percent == 100.0 })
+    }
+
+    @Test fun emptyExactBoundaryAndShrinkingDataKeepPageIndicesValid() {
+        val empty = ViewpointDistribution.page(emptyList(), 20)
+        assertEquals(0, empty.index)
+        assertEquals(1, empty.count)
+        assertTrue(empty.topics.isEmpty())
+        val entries = ViewpointDistribution.entries(structuredTopics(16))
+        assertEquals(2, ViewpointDistribution.page(entries, 0).count)
+        assertEquals(0, ViewpointDistribution.page(entries, -1).index)
+        assertEquals(1, ViewpointDistribution.page(entries, 100).index)
+        assertEquals(0, ViewpointDistribution.page(entries.take(7), 1).index)
+        assertTrue(ViewpointDistribution.page(ViewpointDistribution.entries(
+            ViewpointDistribution.filter(structuredTopics(16), query = "无匹配内容")), 1).topics.isEmpty())
+    }
+
+    private fun structuredTopics(size: Int, separateTopics: Boolean = false): List<ViewpointTopic> {
+        val rows = (1L..size.toLong()).map { id -> event(id, "能力 $id 需要提升").copy(
+            timestamp = now - 60_000 + id, endTimestamp = now - 60_000 + id) }
+        return ViewpointDistribution.topics(groups(rows, rows.map { row -> semantic(row,
+            argument(row.visibleText, "职业能力", "能力${row.id}", "需要提升", "").copy(
+                subject = if (separateTopics) "对象${row.id}" else "职业能力")) }))
+    }
+
     private fun groups(rows: List<BrowseEvent>, semantics: List<EventSemantics>) = ViewpointTimeline.groups(
         ViewpointTimeline.build(rows, StatisticsPeriod.DAY, now, zone, semantics = semantics).flatMap { it.items })
     private fun event(id: Long, text: String) = BrowseEvent(id, "reader", now - 60_000, 4096, text,

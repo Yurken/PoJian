@@ -14,7 +14,39 @@ enum class ViewpointFilter(val label: String) {
     ALL("全部状态"), MODEL("云端分析"), LOCAL("本地识别"), UNCERTAIN("待确认"), UNKNOWN("未识别")
 }
 
+/** Topic statistics retain the full filtered scope; only the displayed rows are sliced. */
+data class ViewpointPageEntry(val topic: ViewpointTopic, val share: ViewpointShare)
+data class ViewpointTopicPage(val topic: ViewpointTopic, val groups: List<ViewpointShare>)
+data class ViewpointPage(val index: Int, val count: Int, val topics: List<ViewpointTopicPage>)
+
 object ViewpointDistribution {
+    const val PAGE_SIZE = 8
+
+    fun entries(topics: List<ViewpointTopic>): List<ViewpointPageEntry> = topics.flatMap { topic ->
+        if (topic.structured) topic.groups.sortedWith(compareBy<ViewpointShare> {
+            it.items.minOfOrNull { item -> item.record.timestamp } ?: Long.MAX_VALUE
+        }.thenBy { it.key }).map { ViewpointPageEntry(topic, it) }
+        else topic.groups.flatMap { share ->
+            // Local topics display source rows inline. Bound those rows too, even when
+            // hundreds of works share one local label such as "未识别".
+            ViewpointTimeline.details(share.items).map { item ->
+                ViewpointPageEntry(topic, share.copy(items = listOf(item)))
+            }
+        }
+    }
+
+    fun page(entries: List<ViewpointPageEntry>, requestedIndex: Int): ViewpointPage {
+        val count = ((entries.size + PAGE_SIZE - 1) / PAGE_SIZE).coerceAtLeast(1)
+        val index = requestedIndex.coerceIn(0, count - 1)
+        val start = index * PAGE_SIZE
+        val topics = entries.subList(start, minOf(start + PAGE_SIZE, entries.size)).groupBy { it.topic.key }.values.map { rows ->
+            ViewpointTopicPage(rows.first().topic, rows.groupBy { it.share.key }.values.map { group ->
+                group.first().share.copy(items = group.flatMap { it.share.items })
+            })
+        }
+        return ViewpointPage(index, count, topics)
+    }
+
     fun topics(groups: List<ViewpointShare>): List<ViewpointTopic> = groups.groupBy { share ->
         val claim = share.items.firstOrNull()?.claims?.firstOrNull()
         when {

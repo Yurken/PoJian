@@ -6,6 +6,7 @@ import base64
 import binascii
 import datetime as dt
 import hmac
+import hashlib
 import ipaddress
 import io
 import json
@@ -26,6 +27,7 @@ from urllib.request import Request, build_opener
 
 from emerge_server import Config, ClientError, UpstreamError, NoRedirect, decode_json, integer, text, make_handler as legacy_handler
 from claim_presentation import validate_presentation
+from fact_check_cache import FactCheckCache
 try:
     from server import admin  # imported as part of the server package
 except ImportError:
@@ -876,6 +878,9 @@ def validate_monitor(payload: object) -> dict:
         raise ClientError("Invalid capture time")
     if type(payload.get("check_facts")) is not bool:
         raise ClientError("check_facts must be a boolean")
+    scope = payload.get("content_scope", "")
+    if not isinstance(scope, str) or scope and (len(scope) != 64 or any(c not in "0123456789abcdef" for c in scope)):
+        raise ClientError("Invalid content scope")
     image = payload.get("image", "")
     if not isinstance(image, str) or len(image) > 250_000:
         raise ClientError("Invalid image size")
@@ -894,7 +899,8 @@ def validate_monitor(payload: object) -> dict:
     if not image and not value.strip():
         raise ClientError("No observed content")
     return {"version": 1, "id": payload["id"], "kind": payload["kind"], "text": value,
-            "captured_at": payload["captured_at"], "check_facts": payload["check_facts"], "image": image}
+            "captured_at": payload["captured_at"], "check_facts": payload["check_facts"], "image": image,
+            "content_scope": scope}
 
 
 class _PageTextExtractor(HTMLParser):
@@ -1282,13 +1288,14 @@ def validate_verdict(value: dict, sources: list[dict]) -> dict:
     return {"verdict": value["verdict"], "explanation": value["explanation"], "sources": output}
 
 
-def analyze_monitor(source: dict, providers: Providers) -> dict:
+def analyze_monitor(source: dict, providers: Providers, fact_cache: FactCheckCache | None = None) -> dict:
     started = time.monotonic()
     deadline = started + MONITOR_TIMEOUT_SECONDS
     extraction_deadline = min(deadline, started + EXTRACTION_TIMEOUT_SECONDS) if source["check_facts"] else deadline
     extracted = providers.model(EXTRACT_PROMPT, {key: source[key] for key in ("text", "kind", "captured_at", "check_facts")}, extraction_deadline, source["image"])
     observed, claims = validate_extraction(extracted, source)
     searched = False
+    reused = False
     for claim in claims:
         claim.update(verdict="opinion" if not claim["factual"] else "not_checked", sources=[],
                      explanation="观点或价值表达，不按真假分类" if not claim["factual"] else "本次未进行外部证据核查")
@@ -1300,37 +1307,53 @@ def analyze_monitor(source: dict, providers: Providers) -> dict:
         if claim["uncertain"]:
             claim.update(verdict="insufficient", explanation="原句归属或上下文尚不明确，未进行外部核查")
             continue
-        if searched:
-            claim["explanation"] = "每次请求最多核查一条事实声明，本条超出本次取证预算"
-            continue
         if not providers.retrieval_available():
             claim["explanation"] = "尚未配置联网取证服务，不能用模型自身知识代替事实核查"
             continue
-        searched = True
         stage = "retrieval"
         try:
-            # Neutral, condition-preserving query; do not bias retrieval toward an assumed false verdict.
-            retrieval_deadline = min(time.monotonic() + RETRIEVAL_TIMEOUT_SECONDS,
-                                     deadline - ALIGNMENT_RESERVE_SECONDS)
-            check_quote, conditions = claim["check_quote"], claim["conditions"]
-            query = check_quote if not conditions or conditions in check_quote else check_quote + " " + conditions
-            sources = providers.search(query, retrieval_deadline)
-            if not sources:
-                claim.update(verdict="insufficient", explanation="未取得可用的网页正文；搜索摘要或没有结果不能证明真假")
-                continue
-            # The verify prompt needs bounded context; quotes are still validated against the full excerpt.
-            verify_sources = [{**row, "excerpt": row["excerpt"][:2500]} for row in sources]
-            stage = "alignment"
-            result = providers.model(VERIFY_PROMPT, {"claim": check_quote, "original_quote": claim["quote"], "conditions": conditions,
-                                     "captured_at": source["captured_at"], "sources": verify_sources}, deadline)
-            stage = "evidence"
-            claim.update(validate_verdict(result, sources))
+            def check():
+                nonlocal stage, searched
+                searched = True
+                # Preserve attribution, conditions and the original quotation in both query and key.
+                retrieval_deadline = min(time.monotonic() + RETRIEVAL_TIMEOUT_SECONDS,
+                                         deadline - ALIGNMENT_RESERVE_SECONDS)
+                check_quote, conditions = claim["check_quote"], claim["conditions"]
+                query = check_quote if not conditions or conditions in check_quote else check_quote + " " + conditions
+                sources = providers.search(query, retrieval_deadline)
+                if not sources:
+                    return dict(verdict="insufficient", sources=[], explanation="未取得可用的网页正文；搜索摘要或没有结果不能证明真假")
+                verify_sources = [{**row, "excerpt": row["excerpt"][:2500]} for row in sources]
+                stage = "alignment"
+                result = providers.model(VERIFY_PROMPT, {"claim": check_quote, "original_quote": claim["quote"], "conditions": conditions,
+                                         "captured_at": source["captured_at"], "sources": verify_sources}, deadline)
+                stage = "evidence"
+                return validate_verdict(result, sources)
+
+            if fact_cache is not None and source.get("content_scope"):
+                identity = {key: claim.get(key) for key in ("check_quote", "quote", "topic", "subject", "dimension",
+                                                           "stance", "conditions", "evidence", "evidence_actors", "evidence_origins")}
+                identity.update(scope=source["content_scope"], day=source["captured_at"] // 86_400_000,
+                                provider=providers.runtime.provider_settings(False) if isinstance(providers, Providers) else "fixture")
+                key = hashlib.sha256(json.dumps(identity, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
+                result, hit = fact_cache.run(key, deadline, check, allow_create=not searched)
+                reused = reused or hit
+            else:
+                result = None if searched else check()
+            if result is None:
+                claim["explanation"] = "每次请求最多核查一条事实声明，本条超出本次取证预算"
+            else:
+                claim.update(result)
+        except TimeoutError:
+            detail, explanation = fact_check_failure(stage, UpstreamError("Shared fact check deadline exceeded", 504))
+            claim.update(verdict="not_checked", sources=[], explanation=explanation, check_error=detail)
         except UpstreamError as error:
             detail, explanation = fact_check_failure(stage, error)
             claim.update(verdict="not_checked", sources=[], explanation=explanation, check_error=detail)
     return {"version": 1, "id": source["id"], "observed_text": observed, "claims": claims,
             "coverage": {"sampled_only": True, "claim_limit": 3, "fact_check_limit": 1,
-                         "search_attempted": searched, "visual_transcription_unverified": source["kind"] == "frame"}}
+                         "search_attempted": searched, "check_reused": reused,
+                         "visual_transcription_unverified": source["kind"] == "frame"}}
 
 
 def make_handler(config: Config, options: Options, budget: DailyBudget, providers: Providers | None = None,
@@ -1342,6 +1365,7 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
     providers = providers or Providers(config, runtime)
     statistics = stats or admin.Stats()
     fact_diagnostics = FactCheckDiagnostics()
+    fact_cache = FactCheckCache()
     sessions = admin.Sessions()
     throttle = admin.LoginThrottle()
     admin_user = options.admin_user or "admin"
@@ -1527,7 +1551,7 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
             try:
                 if not budget.reserve():
                     return self.send_json(429, {"error": "Daily monitor request budget exhausted"})
-                result = analyze_monitor(source, providers)
+                result = analyze_monitor(source, providers, fact_cache)
                 fact_diagnostics.record(result)
                 self.send_json(200, result)
             except ClientError:
