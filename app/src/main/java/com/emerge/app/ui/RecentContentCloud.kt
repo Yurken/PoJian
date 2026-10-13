@@ -103,20 +103,22 @@ private fun ContentWordCloud(words: List<ContentWord>, onWord: (ContentWord) -> 
                         val index = rowIndex * columns + columnIndex
                         val wordColor = readableCloudColor(colors[index % colors.size], .9f,
                             glow.compositeOver(scheme.surface))
-                        Column(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
+                        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
                             .clickable(role = Role.Button, onClickLabel = "查看相关内容") { onWord(word) }
                             .padding(horizontal = 6.dp, vertical = 4.dp).clearAndSetSemantics {
                                 contentDescription = "${word.text}，${word.recordCount} 条记录"
                                 role = Role.Button
                                 onClick(label = "查看相关内容") { onWord(word); true }
-                            }, horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(word.recordCount.toString(), modifier = Modifier.align(Alignment.End),
-                                color = wordColor, fontSize = 11.sp, lineHeight = 14.sp,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                                Text(word.text, color = wordColor, fontSize = 14.sp, lineHeight = 18.sp,
+                            }, contentAlignment = Alignment.Center) {
+                            // Measure the count first, then give the label the remaining width.
+                            // Both share the same vertical band; the badge cannot create a separate row.
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp),
+                                verticalAlignment = Alignment.Top) {
+                                Text(word.text, modifier = Modifier.weight(1f), color = wordColor, fontSize = 14.sp, lineHeight = 18.sp,
                                     textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
                                     fontWeight = FontWeight.Medium)
+                                Text(word.recordCount.toString(), color = wordColor, fontSize = 11.sp, lineHeight = 14.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
