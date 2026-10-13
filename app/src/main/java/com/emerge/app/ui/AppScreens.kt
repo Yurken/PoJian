@@ -38,7 +38,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     onPurposeChange: (String) -> Unit = {}, selectedAppCount: Int = 0,
     now: Long = System.currentTimeMillis(), audioContent: (@Composable () -> Unit)? = null,
     semantics: List<EventSemantics> = emptyList(), onViewpointScrolling: (Boolean) -> Unit = {},
-    canPreviewReport: Boolean = false, onPreviewReport: () -> Unit = {}) {
+    onPreviewReport: (CognitiveReport) -> Unit = {}) {
     val zone = ZoneId.systemDefault()
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val browsingCount = stats.visitCount
@@ -114,7 +114,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
         } else item(key = "analysis") {
             AnalysisCards(analysis, period, rawEvents, onAnalyze, onExport, onPurposeChange, appNames,
-                canPreviewReport = canPreviewReport, onPreviewReport = onPreviewReport)
+                onPreviewReport = onPreviewReport)
         }
         if (stats.total > 0) item(key = "source-distribution") {
             WhiteCard {

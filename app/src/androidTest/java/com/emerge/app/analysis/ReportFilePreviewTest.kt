@@ -4,7 +4,11 @@ import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -12,6 +16,11 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.emerge.app.MainActivity
 import com.emerge.app.ui.ExportedReport
 import com.emerge.app.ui.ReportFilePreview
+import com.emerge.app.ui.ReportPreviewSource
+import com.emerge.app.ui.ReportPreviewContent
+import com.emerge.app.ui.AnalysisCards
+import com.emerge.app.ui.StatisticsPeriod
+import com.emerge.app.data.BrowseEvent
 import com.emerge.app.ui.theme.EmergeTheme
 import java.io.File
 import java.util.UUID
@@ -25,6 +34,30 @@ import org.junit.runner.RunWith
 class ReportFilePreviewTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
+
+    @Test fun generatedReportOpensPdfAndTextWithoutChoosingAnExportDestination() {
+        val now = System.currentTimeMillis()
+        val records = listOf(BrowseEvent(101, "reader", now - 60_000, 32, "职业能力需要持续提升。"))
+        val report = CognitiveAnalyzer().analyze(records, StatisticsPeriod.DAY, now)
+        val preview = mutableStateOf<ReportPreviewSource?>(null)
+        var exportCalls = 0
+        compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                AnalysisCards(AnalysisState(report = report, active = true), StatisticsPeriod.DAY, records, {},
+                    onExport = { _, _ -> exportCalls++ },
+                    onPreviewReport = { preview.value = ReportPreviewSource.Generated(it) })
+            }
+            preview.value?.let { ReportFilePreview(it) { preview.value = null } }
+        } } }
+        compose.onNodeWithTag("report-preview-open").performScrollTo().assertIsEnabled().performClick()
+        compose.waitUntil(5000) { compose.onAllNodesWithTag("report-preview-pdf-page").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("report-preview-format-text").performClick()
+        compose.waitUntil(5000) { compose.onAllNodesWithTag("report-preview-text").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("report-preview-text").assertTextEquals(ReportPreviewContent.textPages(ReportExporter.text(report)).first())
+        compose.runOnIdle { assertEquals(0, exportCalls) }
+        compose.onNodeWithText("关闭").performClick()
+        compose.waitUntil(5000) { File(context.cacheDir, "report-previews").listFiles().orEmpty().none { it.extension == "tmp" } }
+    }
 
     @Test fun savedTextIsPagedAndCloseRemovesOnlyTemporaryPreviewCopy() {
         val file = File(context.cacheDir, "preview-test-${UUID.randomUUID()}.txt")
@@ -78,7 +111,7 @@ class ReportFilePreviewTest {
     private fun open(file: File, pdf: Boolean) {
         val visible = mutableStateOf(true)
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
-            if (visible.value) ReportFilePreview(ExportedReport(Uri.fromFile(file), pdf)) { visible.value = false }
+            if (visible.value) ReportFilePreview(ReportPreviewSource.SavedFile(ExportedReport(Uri.fromFile(file), pdf))) { visible.value = false }
         } } }
     }
 }

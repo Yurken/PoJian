@@ -126,13 +126,14 @@ object ReportExporter {
         appendLine("这份回顾在本机生成。语音转写在本机完成；配置云端并启用相应分析、实时核查或关键画面开关后，必要文字或采样画面会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
     }
 
-    fun writePdf(report: CognitiveReport, output: OutputStream) {
+    fun writePdf(report: CognitiveReport, output: OutputStream, checkCancellation: () -> Unit = {}) {
         val document = PdfDocument()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f; typeface = Typeface.create("sans-serif", Typeface.NORMAL) }
         var number = 0
         var page: PdfDocument.Page? = null
         var y = 0f
         fun newPage() {
+            checkCancellation()
             page?.let { document.finishPage(it) }
             number++
             page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, number).create())
@@ -145,6 +146,7 @@ object ReportExporter {
         try {
             newPage()
             text(report, appendixLimit = 100).lines().forEach { raw ->
+                checkCancellation()
                 val heading = raw.startsWith("#")
                 val text = raw.removePrefix("### ").removePrefix("## ").removePrefix("# ")
                 val fontSize = if (raw.startsWith("# ")) 20f else if (heading) 14f else 11f
@@ -155,6 +157,7 @@ object ReportExporter {
                 if (text.isEmpty()) { y += 8f; return@forEach }
                 var offset = 0
                 while (offset < text.length) {
+                    checkCancellation()
                     if (y + height > 785f) {
                         newPage()
                         paint.textSize = fontSize
@@ -176,6 +179,7 @@ object ReportExporter {
             }
             page?.let { document.finishPage(it) }
             page = null
+            checkCancellation()
             document.writeTo(output)
         } finally {
             page?.let { document.finishPage(it) }

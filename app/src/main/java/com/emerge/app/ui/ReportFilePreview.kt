@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.emerge.app.analysis.ReportExporter
 import kotlinx.coroutines.*
 import java.io.File
 import java.util.UUID
@@ -30,15 +31,16 @@ import kotlin.math.sqrt
 
 private data class PreviewDocument(val file: File, val pageCount: Int, val texts: List<String>? = null)
 
-/** Reads the exported SAF document, including non-seekable providers, without requiring a viewer app. */
+/** Previews either a generated file or the actual exported SAF document without a separate viewer. */
 @Composable
-internal fun ReportFilePreview(report: ExportedReport, onClose: () -> Unit) {
+internal fun ReportFilePreview(source: ReportPreviewSource, onClose: () -> Unit) {
     val context = LocalContext.current
-    var document by remember(report) { mutableStateOf<PreviewDocument?>(null) }
-    var error by remember(report) { mutableStateOf<String?>(null) }
-    var retry by remember { mutableIntStateOf(0) }
-    var page by rememberSaveable(report.uri.toString(), report.pdf) { mutableIntStateOf(0) }
-    LaunchedEffect(report, retry) {
+    var pdf by rememberSaveable(source) { mutableStateOf((source as? ReportPreviewSource.SavedFile)?.file?.pdf ?: true) }
+    var document by remember(source, pdf) { mutableStateOf<PreviewDocument?>(null) }
+    var error by remember(source, pdf) { mutableStateOf<String?>(null) }
+    var retry by remember(source, pdf) { mutableIntStateOf(0) }
+    var page by rememberSaveable(source, pdf) { mutableIntStateOf(0) }
+    LaunchedEffect(source, pdf, retry) {
         document = null; error = null
         val directory = File(context.cacheDir, "report-previews")
         val file = File(directory, "preview-${UUID.randomUUID()}.tmp")
@@ -49,11 +51,20 @@ internal fun ReportFilePreview(report: ExportedReport, onClose: () -> Unit) {
                 directory.listFiles()?.filter { it.name.startsWith("preview-") && it.extension == "tmp" && it.lastModified() < cutoff }
                     ?.forEach { it.delete() }
                 val task = currentCoroutineContext()
-                context.contentResolver.openInputStream(report.uri)?.use { input ->
-                    file.outputStream().use { output -> ReportPreviewContent.copy(input, output, checkCancellation = { task.ensureActive() }) }
-                } ?: error("Unavailable document")
+                file.outputStream().use { output ->
+                    when (source) {
+                        is ReportPreviewSource.SavedFile -> context.contentResolver.openInputStream(source.file.uri)?.use { input ->
+                            ReportPreviewContent.copy(input, output, checkCancellation = { task.ensureActive() })
+                        } ?: error("Unavailable document")
+                        is ReportPreviewSource.Generated -> {
+                            val bounded = ReportPreviewContent.boundedOutput(output, checkCancellation = { task.ensureActive() })
+                            if (pdf) ReportExporter.writePdf(source.report, bounded) { task.ensureActive() }
+                            else bounded.write(ReportExporter.text(source.report).toByteArray(Charsets.UTF_8))
+                        }
+                    }
+                }
                 check(file.length() > 0)
-                if (report.pdf) ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                if (pdf) ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                     PdfRenderer(fd).use { renderer ->
                         check(renderer.pageCount > 0)
                         PreviewDocument(file, renderer.pageCount)
@@ -73,6 +84,12 @@ internal fun ReportFilePreview(report: ExportedReport, onClose: () -> Unit) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("报告预览", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                     PojianTextButton(onClick = onClose) { Text("关闭") }
+                }
+                if (source is ReportPreviewSource.Generated) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(selected = pdf, onClick = { pdf = true }, label = { Text("PDF") },
+                        modifier = Modifier.testTag("report-preview-format-pdf"))
+                    FilterChip(selected = !pdf, onClick = { pdf = false }, label = { Text("文本") },
+                        modifier = Modifier.testTag("report-preview-format-text"))
                 }
                 val loaded = document
                 when {

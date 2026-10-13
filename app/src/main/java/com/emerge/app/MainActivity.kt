@@ -73,7 +73,6 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val diagnostics by model.diagnostics.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()
     val analysis by model.analysis.collectAsStateWithLifecycle()
-    val exportedReport by model.exportedReport.collectAsStateWithLifecycle()
     val reportPreview by model.reportPreview.collectAsStateWithLifecycle()
     val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) model.exportReport(uri, true) else model.cancelExport()
@@ -169,7 +168,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
                         if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
                     } }, semantics = semantics, onViewpointScrolling = { viewpointScrolling = it },
-                    canPreviewReport = exportedReport != null, onPreviewReport = model::previewLastExport)
+                    onPreviewReport = model::previewReport)
                 tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
                     onRecords = { showRecords = true }, events = all)
                 else -> SettingsScreen(permission, enabled, count, { value ->

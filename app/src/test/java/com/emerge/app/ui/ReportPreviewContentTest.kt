@@ -43,4 +43,28 @@ class ReportPreviewContentTest {
         }
         assertEquals(16_384, output.size())
     }
+
+    @Test fun generatedFileCannotExceedLimitAcrossSingleAndBulkWrites() {
+        val output = ByteArrayOutputStream()
+        val bounded = ReportPreviewContent.boundedOutput(output, limit = 5)
+        bounded.write(1)
+        bounded.write(byteArrayOf(2, 3))
+        bounded.write(byteArrayOf(0, 4, 5, 0), 1, 2)
+        assertArrayEquals(byteArrayOf(1, 2, 3, 4, 5), output.toByteArray())
+        assertThrows(ReportPreviewTooLarge::class.java) { bounded.write(6) }
+        assertThrows(ReportPreviewTooLarge::class.java) { bounded.write(byteArrayOf(6, 7)) }
+        assertEquals(5, output.size())
+    }
+
+    @Test fun closingPreviewCancelsGeneratedFileBeforeNextWrite() {
+        val output = ByteArrayOutputStream()
+        var cancelled = false
+        val bounded = ReportPreviewContent.boundedOutput(output, checkCancellation = {
+            if (cancelled) throw CancellationException()
+        })
+        bounded.write(byteArrayOf(1, 2))
+        cancelled = true
+        assertThrows(CancellationException::class.java) { bounded.write(byteArrayOf(3, 4)) }
+        assertArrayEquals(byteArrayOf(1, 2), output.toByteArray())
+    }
 }
