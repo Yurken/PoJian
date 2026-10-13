@@ -443,7 +443,7 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
         SourceAppText(item.packageName.takeUnless { current?.sourceType == "audio_import" },
             "记录 #${item.eventId} · ${reportTime(item.timestamp, zone)} · ${appNames[item.packageName] ?: item.packageName}",
             appName = appNames[item.packageName] ?: item.packageName)
-        QuoteBlock(item.quote)
+        QuoteBlock(item.quote, fromAudio = fromAudio)
         Text(item.increment.label, color = incrementColor(item.increment), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
@@ -463,7 +463,7 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("${fragment.type.label}${if (fragment.isNew) " · 新增" else ""}",
                         color = if (fragment.isNew) Accent else Muted, fontSize = 12.sp)
-                    QuoteBlock(fragment.text)
+                    QuoteBlock(fragment.text, fromAudio = fromAudio)
                     if (fragment.identity.actors.isNotEmpty()) MetadataText("案例当事对象：${fragment.identity.actors.joinToString("、")}")
                     if (fragment.identity.origins.isNotEmpty()) MetadataText("原材料线索：${fragment.identity.origins.joinToString("、")}")
                     if (fragment.identityUnresolved) MetadataText("材料关系待确认")
@@ -471,7 +471,7 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
             }
         } else if (item.evidence.isNotEmpty()) {
             Text(if (fromAudio) "依据片段（来自音频转写）" else "依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            item.evidence.forEach { QuoteBlock(it) }
+            item.evidence.forEach { QuoteBlock(it, fromAudio = fromAudio) }
         } else MetadataText("未识别到相关依据。")
         if (current != null) OriginalRecord(current, zone, appNames, "本条采集原文：")
         else {
@@ -502,8 +502,10 @@ private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<Strin
         event.visualSourceLabel?.let { MetadataText(it) }
         if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
         SelectionContainer {
-            Text(rememberOriginalText(event), color = Ink, fontSize = 14.sp, lineHeight = 24.sp,
-                maxLines = if (expanded) Int.MAX_VALUE else 3)
+            AudioSourceContent(event.sourceType.startsWith("audio_")) {
+                Text(rememberOriginalText(event), color = Ink, fontSize = 14.sp, lineHeight = 24.sp,
+                    maxLines = if (expanded) Int.MAX_VALUE else 3)
+            }
         }
         PojianTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp)) {
             Text(if (expanded) "收起原文" else "展开完整原文")
