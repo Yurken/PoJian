@@ -29,7 +29,7 @@ internal class CaptureSessionTracker {
     @Volatile private var revision = 0L
     val packageName: String? get() = session?.packageName
     fun canAttachComments(packageName: String): Boolean = session?.packageName == packageName &&
-        lastHint.page in setOf(WorkPage.VIDEO, WorkPage.CAPTION)
+        (lastHint.page in setOf(WorkPage.VIDEO, WorkPage.CAPTION) || lastHint.title.length >= 8 || lastHint.galleryTotal > 0)
 
     fun reset() {
         revision++
@@ -50,11 +50,19 @@ internal class CaptureSessionTracker {
         val region = VisibilityIntervals.region(hint)
         val inherited = hint.page == WorkPage.COMMENTS && canAttachComments(packageName)
         val matchedCaption = hint.matchesCaption(lastHint)
-        val effectiveHint = if (inherited || matchedCaption) lastHint else hint
+        val nativeSame = hint.nativeId.isNotBlank() && hint.nativeId == lastHint.nativeId
+        val nativeConflict = hint.nativeId.isNotBlank() && lastHint.nativeId.isNotBlank() && hint.nativeId != lastHint.nativeId
+        val effectiveHint = when {
+            inherited || matchedCaption && hint.truncated -> lastHint.copy(nativeId = hint.nativeId.ifBlank { lastHint.nativeId })
+            matchedCaption && hint.nativeId.isBlank() -> hint.copy(nativeId = lastHint.nativeId)
+            else -> hint
+        }
         val key = effectiveHint.key(packageName)
-        val conflictingIdentity = (key != null && lastHint.key(packageName) != null && key != lastHint.key(packageName)) ||
-            (hint.author.isNotBlank() && lastHint.author.isNotBlank() && hint.author != lastHint.author)
-        val same = !conflictingIdentity && (inherited || matchedCaption || (key != null && key == old?.workKey) ||
+        val conflictingIdentity = nativeConflict || !nativeSame && (
+            (!inherited && !matchedCaption && hint.title.isNotBlank() && lastHint.title.isNotBlank() && hint.title != lastHint.title) ||
+            (!matchedCaption && key != null && lastHint.key(packageName) != null && key != lastHint.key(packageName)) ||
+                (hint.author.isNotBlank() && lastHint.author.isNotBlank() && hint.author != lastHint.author))
+        val same = !conflictingIdentity && (inherited || nativeSame || matchedCaption || (key != null && key == old?.workKey) ||
             ContentContinuity.same(lastText, text) || hint.followsGallery(lastHint))
         // A deleted visible work must not become a new insert through clock or capacity splitting.
         if (deleted && old != null && old.packageName == packageName && same) {
@@ -63,8 +71,8 @@ internal class CaptureSessionTracker {
         val wallGap = old?.let { now - it.endTimestamp } ?: 0L
         val clockDiscontinuity = old != null && (wallGap < 0 || gap < 0 ||
             gap <= 6000 && kotlin.math.abs(wallGap - gap) > 1000)
-        var continuing = old != null && old.packageName == packageName && !clockDiscontinuity &&
-            (gap in 0..6000 || (paused && gap in 0..15_000) || deleted) && same
+        // Sampling delay alone is not a work/visit boundary. Only the observed gap contributes time.
+        var continuing = old != null && old.packageName == packageName && !clockDiscontinuity && same
         var intervals = if (continuing) old!!.visibilityIntervals else ""
         val measured = if (continuing && !paused && gap in 1..6000 && wallGap > 0) minOf(gap, wallGap) else 0L
         if (measured > 0) {
@@ -75,9 +83,12 @@ internal class CaptureSessionTracker {
         // Clock changes and interval capacity split a visit while retaining its known adjacent work identity.
         val splitSameWork = old != null && old.packageName == packageName && same &&
             (clockDiscontinuity || !continuing && measured > 0)
-        val content = if ((continuing || splitSameWork) && (key == null || work!!.identityMethod != "session_estimate")) work!! else ObservedWork(
-            key ?: "visit:${UUID.randomUUID()}", packageName, hint.title, hint.author,
-            if (key == null) "session_estimate" else hint.method, if (continuing) old!!.timestamp else now)
+        val promote = key != null && (work?.identityMethod == "session_estimate" ||
+            effectiveHint.nativeId.isNotBlank() && work?.identityMethod == "author_title")
+        val content = if ((continuing || splitSameWork) && !promote) work!! else ObservedWork(
+            key ?: "visit:${UUID.randomUUID()}", packageName, effectiveHint.title, effectiveHint.author,
+            if (key == null) "session_estimate" else effectiveHint.method, if (continuing) old!!.timestamp else now,
+            effectiveHint.evidence, effectiveHint.nativeId)
         val event = if (continuing) old!!.copy(
             workKey = content.workKey, identityMethod = content.identityMethod,
             visibleText = (old.visibleText.lines() + text.lines()).distinct().joinToString("\n").take(16000),

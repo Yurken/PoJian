@@ -13,6 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
@@ -23,6 +24,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,7 +37,8 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     onExport: (CognitiveReport, Boolean) -> Unit = { _, _ -> },
     onPurposeChange: (String) -> Unit = {}, selectedAppCount: Int = 0,
     now: Long = System.currentTimeMillis(), audioContent: (@Composable () -> Unit)? = null,
-    semantics: List<EventSemantics> = emptyList()) {
+    semantics: List<EventSemantics> = emptyList(), onViewpointScrolling: (Boolean) -> Unit = {},
+    canPreviewReport: Boolean = false, onPreviewReport: () -> Unit = {}) {
     val zone = ZoneId.systemDefault()
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val browsingCount = stats.visitCount
@@ -45,6 +50,20 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     }
     var showSources by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    var workScrolling by remember { mutableStateOf(false) }
+    val scrollingCallback by rememberUpdatedState(onViewpointScrolling)
+    LaunchedEffect(listState) {
+        snapshotFlow { workScrolling || (listState.isScrollInProgress &&
+            listState.layoutInfo.visibleItemsInfo.any { it.key == "viewpoint-content" }) }
+            .distinctUntilChanged().collectLatest { scrolling ->
+                if (!scrolling) delay(650)
+                scrollingCallback(scrolling)
+            }
+    }
+    DisposableEffect(Unit) { onDispose { scrollingCallback(false) } }
+    val timeline = if (rawEvents.isNotEmpty()) rememberViewpointTimelineState(rawEvents, period, now,
+        analysis.report?.takeUnless { analysis.stale }, semantics) else null
+    val plotHeight = (LocalConfiguration.current.screenHeightDp * .22f).coerceIn(64f, 156f).dp
     val cocoonVisible by remember { derivedStateOf {
         listState.layoutInfo.visibleItemsInfo.any { it.key == "cocoon" }
     } }
@@ -87,16 +106,15 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             }
         }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
-        if (rawEvents.isNotEmpty()) item(key = "viewpoint-timeline") {
-            ViewpointTimelineCard(rawEvents, period, now, analysis.report?.takeUnless { analysis.stale }, appNames, semantics)
-        }
+        timeline?.let { viewpointTimeline(it, appNames, plotHeight, onWorkScrolling = { workScrolling = it }) }
         if (rawEvents.isEmpty()) item(key = "start-guide") {
             WhiteCard {
                 SectionTitle("暂无记录", help = "选择应用，在系统辅助功能中启用「破茧浏览采集」，再打开采集开关。也可从采集工具导入音频。")
                 PojianButton(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("设置采集范围") }
             }
         } else item(key = "analysis") {
-            AnalysisCards(analysis, period, rawEvents, onAnalyze, onExport, onPurposeChange, appNames)
+            AnalysisCards(analysis, period, rawEvents, onAnalyze, onExport, onPurposeChange, appNames,
+                canPreviewReport = canPreviewReport, onPreviewReport = onPreviewReport)
         }
         if (stats.total > 0) item(key = "source-distribution") {
             WhiteCard {

@@ -95,8 +95,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 41
-        versionName = "0.5.19"
+        versionCode = 42
+        versionName = "0.5.20"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -140,6 +140,27 @@ tasks.register<JavaExec>("evaluateHistoryQuality") {
         "--repository", rootProject.projectDir.path)
     doFirst { classpath = tasks.named<Test>("testDebugUnitTest").get().classpath }
 }
+tasks.register<JavaExec>("evaluateSyntheticTraces") {
+    group = "verification"
+    description = "Replay authored synthetic page hints through the real capture tracker; no device."
+    dependsOn("compileDebugUnitTestKotlin")
+    workingDir(rootProject.projectDir)
+    mainClass.set("com.emerge.app.evaluation.SyntheticTraceEvaluator")
+    args(providers.gradleProperty("research.dataset").getOrElse(layout.buildDirectory.dir("research-synthetic-v2").get().asFile.path),
+        providers.gradleProperty("research.output").getOrElse(layout.buildDirectory.dir("reports/research-v2").get().asFile.path))
+    doFirst { classpath = tasks.named<Test>("testDebugUnitTest").get().classpath }
+}
+
+tasks.register<JavaExec>("evaluateResearchDatabase") {
+    group = "verification"
+    description = "Check every virtual profile and statistics window against independently queried SQLite data."
+    dependsOn("compileDebugUnitTestKotlin")
+    workingDir(rootProject.projectDir)
+    mainClass.set("com.emerge.app.evaluation.ResearchDatabaseEvaluator")
+    args(layout.buildDirectory.dir("reports/project-research-database").get().asFile.path)
+    doFirst { classpath = tasks.named<Test>("testDebugUnitTest").get().classpath }
+}
+
 dependencies {
     // Bundled Chinese OCR works without a first-run model download or Play Services.
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
@@ -156,6 +177,8 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     testImplementation("junit:junit:4.13.2")
+    // Run the production synthetic-data decoder on the JVM, without Android's JSON stubs.
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     // Uses the public input service on recent Android versions instead of removed reflection APIs.

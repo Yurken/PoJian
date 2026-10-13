@@ -21,6 +21,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 data class CaptureApp(val packageName: String, val label: String)
+data class ExportedReport(val uri: Uri, val pdf: Boolean)
 
 class BrowseViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as EmergeApplication
@@ -45,6 +46,12 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     val appsLoading = appsLoadingState.asStateFlow()
     private val analysisState = MutableStateFlow(AnalysisState(purpose = preferences.getString("purpose", "").orEmpty()))
     val analysis = analysisState.asStateFlow()
+    private val exportedReportState = MutableStateFlow<ExportedReport?>(null)
+    val exportedReport = exportedReportState.asStateFlow()
+    private val reportPreviewState = MutableStateFlow<ExportedReport?>(null)
+    val reportPreview = reportPreviewState.asStateFlow()
+    fun previewLastExport() { reportPreviewState.value = exportedReportState.value }
+    fun dismissReportPreview() { reportPreviewState.value = null }
     private var period = StatisticsPeriod.DAY
     private var reportDay = Instant.ofEpochMilli(System.currentTimeMillis()).atZone(ZoneId.systemDefault()).toLocalDate()
     private var reportZone = ZoneId.systemDefault().id
@@ -183,6 +190,8 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     fun prepareExport(report: CognitiveReport): Boolean {
         val state = analysisState.value
         if (state.running || state.exporting || state.stale || state.report !== report) return false
+        exportedReportState.value = null
+        reportPreviewState.value = null
         exportSnapshot = report
         exportGeneration = generation
         analysisState.update { it.copy(exporting = true, exportMessage = "请选择保存位置") }
@@ -225,7 +234,11 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                         }
                     } ?: error("无法打开保存位置")
                 }
-                if (version == generation) analysisState.update { it.copy(exporting = false, exportMessage = "回顾已保存到所选位置") }
+                if (version == generation) {
+                    analysisState.update { it.copy(exporting = false, exportMessage = "回顾已保存到所选位置") }
+                    // Publish only after the destination stream has closed successfully. Preview reads that file.
+                    ExportedReport(uri, pdf).also { exportedReportState.value = it; reportPreviewState.value = it }
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
                 if (version == generation) analysisState.update { it.copy(exporting = false, exportMessage = "保存失败，请重试") }

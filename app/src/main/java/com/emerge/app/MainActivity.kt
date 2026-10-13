@@ -73,6 +73,8 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val diagnostics by model.diagnostics.collectAsStateWithLifecycle()
     val message by model.message.collectAsStateWithLifecycle()
     val analysis by model.analysis.collectAsStateWithLifecycle()
+    val exportedReport by model.exportedReport.collectAsStateWithLifecycle()
+    val reportPreview by model.reportPreview.collectAsStateWithLifecycle()
     val pdfSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
         if (uri != null) model.exportReport(uri, true) else model.cancelExport()
     }
@@ -80,6 +82,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         if (uri != null) model.exportReport(uri, false) else model.cancelExport()
     }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var viewpointScrolling by remember { mutableStateOf(false) }
     var period by rememberSaveable { mutableStateOf(StatisticsPeriod.DAY) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var confirmClear by remember { mutableStateOf(false) }
@@ -129,7 +132,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     Scaffold(containerColor = PageBackground, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
         PojianNavigationBar(titles, selectedIndex = tab, onSelect = { index ->
             tab = index; showRecords = false; showCaptureTools = false; showAudioRecords = false
-        }) { index ->
+        }, visible = !(tab == 0 && !showRecords && !showCaptureTools && !showAudioRecords && viewpointScrolling)) { index ->
             Icon(painterResource(icons[index]), contentDescription = null, modifier = Modifier.size(23.dp))
         }
     }) { padding ->
@@ -165,7 +168,8 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     onExport = { report, pdf -> if (model.prepareExport(report)) {
                         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
                         if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
-                    } }, semantics = semantics)
+                    } }, semantics = semantics, onViewpointScrolling = { viewpointScrolling = it },
+                    canPreviewReport = exportedReport != null, onPreviewReport = model::previewLastExport)
                 tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
                     onRecords = { showRecords = true }, events = all)
                 else -> SettingsScreen(permission, enabled, count, { value ->
@@ -183,6 +187,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
             }
         }
     }
+    reportPreview?.let { ReportFilePreview(it, model::dismissReportPreview) }
     audioDetailId?.let { id -> audioSessions.firstOrNull { it.id == id }?.let { session ->
         AudioSessionDetailSheet(session, onDismiss = { audioDetailId = null }, onSaveSegment = audioModel::editSegment,
             onDelete = { app.monitor.invalidate(); audioModel.deleteSession(id); audioDetailId = null },

@@ -45,7 +45,8 @@ internal fun AnalysisCards(
     onAnalyze: (String) -> Unit,
     onExport: (CognitiveReport, Boolean) -> Unit,
     onPurposeChange: (String) -> Unit = {},
-    appNames: Map<String, String> = emptyMap()
+    appNames: Map<String, String> = emptyMap(),
+    canPreviewReport: Boolean = false, onPreviewReport: () -> Unit = {}
 ) {
     var showReport by rememberSaveable(period) { mutableStateOf(false) }
     val reportScroll = rememberScrollState()
@@ -113,6 +114,8 @@ internal fun AnalysisCards(
             }
             if (state.exporting) LinearProgressIndicator(Modifier.fillMaxWidth())
             state.exportMessage?.let { MetadataText(it) }
+            if (canPreviewReport && !state.exporting) PojianTextButton(onClick = onPreviewReport,
+                modifier = Modifier.align(Alignment.End).testTag("report-preview-open")) { Text("预览文件") }
         }
     }
 

@@ -1,28 +1,28 @@
 package com.emerge.app.ui
 
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.*
 import com.emerge.app.data.BrowseEvent
@@ -30,92 +30,102 @@ import java.time.ZoneId
 import java.time.Instant
 import java.time.format.DateTimeFormatter
 
+internal data class ViewpointTimelineUiState(val buckets: List<ViewpointBucket>, val index: Int,
+    val hasSelection: Boolean, val select: (Int) -> Unit, val window: ObservationWindow,
+    val groups: List<ViewpointShare>, val period: StatisticsPeriod, val zone: ZoneId)
+
 @Composable
-internal fun ViewpointTimelineCard(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    report: CognitiveReport?, appNames: Map<String, String>, semantics: List<EventSemantics> = emptyList()) {
-    val zone = ZoneId.systemDefault()
-    val buckets = remember(events, period, now, report, semantics) { ViewpointTimeline.build(events, period, now, zone, report, semantics) }
+internal fun rememberViewpointTimelineState(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
+    report: CognitiveReport?, semantics: List<EventSemantics> = emptyList(),
+    zone: ZoneId = ZoneId.systemDefault()): ViewpointTimelineUiState {
+    val buckets = remember(events, period, now, report, semantics, zone) { ViewpointTimeline.build(events, period, now, zone, report, semantics) }
     var selected by rememberSaveable(period) { mutableStateOf<Int?>(null) }
     val latest = buckets.indexOfLast { it.items.isNotEmpty() }.coerceAtLeast(0)
     val index = (selected ?: latest).coerceIn(0, buckets.lastIndex)
-    val bucket = buckets[index]
+    val window = remember(period, now, zone) { ObservationWindow.forPeriod(period, now, zone) }
+    val groups = remember(buckets) { ViewpointTimeline.groups(buckets.flatMap { it.items }) }
+    return ViewpointTimelineUiState(buckets, index, selected != null, { selected = it }, window, groups, period, zone)
+}
+
+/** The chart is a separate sticky item. A zero-height end marker releases it after the viewpoint section. */
+@OptIn(ExperimentalFoundationApi::class)
+internal fun LazyListScope.viewpointTimeline(state: ViewpointTimelineUiState, appNames: Map<String, String>,
+    plotHeight: Dp = 156.dp, onWorkScrolling: (Boolean) -> Unit = {}) {
+    stickyHeader(key = "viewpoint-timeline") {
+        Surface(color = PageBackground, modifier = Modifier.testTag("viewpoint-chart-pinned")) {
+            ViewpointTimelineChart(state, plotHeight)
+        }
+    }
+    item(key = "viewpoint-content") { ViewpointTimelineContent(state, appNames, onWorkScrolling) }
+    stickyHeader(key = "viewpoint-timeline-end") { Spacer(Modifier.height(0.dp)) }
+}
+
+@Composable
+private fun ViewpointTimelineChart(state: ViewpointTimelineUiState, plotHeight: Dp) {
+    val buckets = state.buckets
+    val bucket = buckets[state.index]
     val maximum = buckets.maxOfOrNull { it.items.size }?.coerceAtLeast(1) ?: 1
     val scroll = rememberScrollState()
     val step = with(LocalDensity.current) { 38.dp.roundToPx() }
-    LaunchedEffect(period, scroll.maxValue) {
-        if (selected == null && buckets.size > 7) scroll.scrollTo((latest * step - step * 3).coerceIn(0, scroll.maxValue))
+    LaunchedEffect(state.period, scroll.maxValue) {
+        if (!state.hasSelection && buckets.size > 7) scroll.scrollTo((state.index * step - step * 3).coerceIn(0, scroll.maxValue))
     }
-    val date = if (period == StatisticsPeriod.WEEK) Instant.ofEpochMilli(bucket.start).atZone(zone).toLocalDate()
-        else Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-    val dayEnd = if (date == today) now else date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() - 1
-    val dayGroups = remember(events, date, dayEnd, report, semantics) {
-        ViewpointTimeline.groups(ViewpointTimeline.build(events, StatisticsPeriod.DAY, dayEnd, zone,
-            report?.takeIf { it.period == StatisticsPeriod.DAY.label }, semantics).flatMap { it.items })
-    }
-    val total = dayGroups.firstOrNull()?.total ?: 0
-    val works = dayGroups.flatMap { it.items }.distinctBy { it.workIdentity }
-    val format = DateTimeFormatter.ofPattern("M/d HH:mm").withZone(zone)
+    val total = state.groups.firstOrNull()?.total ?: 0
+    val works = state.groups.flatMap { it.items }.distinctBy { it.workIdentity }
     WhiteCard {
-        SectionTitle("浏览趋势", help = "各时段独立去重，同一作品可能跨时段出现，数量不能直接相加。\n\n${bucket.items.count { it.analysisSource == "structured_model" }}/${bucket.items.size} 个作品有云端采样结果，其余使用本地识别。采样仅覆盖部分内容，可查看原文核对。\n\n观点分布统计范围为当天 $total 个去重作品，含未识别部分；一部作品可含多个观点，各组比例之和可能超过 100%。${works.count { it.analysisSource == "structured_model" }}/$total 个作品有有效云端采样结果，其余使用本地识别。云端分析按主题、对象、维度、条件和立场归组；信息不明确时标为待确认，未提取观点时标为未识别。采样不代表整部作品已分析，音频和视觉文字不单独增加作品数或停留时长。")
+        SectionTitle("浏览趋势", help = analysisSourceLabel("各时段独立去重，同一作品可能跨时段出现，数量不能直接相加。\n\n${bucket.items.count { it.analysisSource == "structured_model" }}/${bucket.items.size} 个作品有云端采样结果，其余使用本地识别。采样仅覆盖部分内容，可查看原文核对。\n\n观点分布统计范围为当前范围 $total 个去重作品，含未识别部分；一部作品可含多个观点，各组比例之和可能超过 100%。${works.count { it.analysisSource == "structured_model" }}/$total 个作品有有效云端采样结果，其余使用本地识别。云端分析按主题、对象、维度、条件和立场归组；信息不明确时标为待确认，未提取观点时标为未识别。采样不代表整部作品已分析，音频和视觉文字不单独增加作品数或停留时长。"))
         Text("${bucket.label} · ${bucket.items.size} 个作品", style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.fillMaxWidth().height(230.dp)) {
-            Column(Modifier.width(32.dp).height(190.dp), verticalArrangement = Arrangement.SpaceBetween) {
+        Row(Modifier.fillMaxWidth().height(plotHeight + 40.dp)) {
+            Column(Modifier.width(32.dp).height(plotHeight), verticalArrangement = Arrangement.SpaceBetween) {
                 MetadataText("$maximum"); MetadataText("${maximum / 2}"); MetadataText("0")
             }
             BoxWithConstraints(Modifier.weight(1f)) {
                 val width = if (buckets.size <= 7) maxWidth / buckets.size else 38.dp
                 Row(Modifier.horizontalScroll(scroll), verticalAlignment = Alignment.Bottom) {
                     buckets.forEachIndexed { i, b ->
-                        Column(Modifier.width(width).clickable { selected = i }.testTag("viewpoint-bar-$i")
-                            .semantics { contentDescription = "${b.label}，${b.items.size}个作品，点击查看观点" },
+                        Column(Modifier.width(width).clickable(role = Role.Button) { state.select(i) }.testTag("viewpoint-bar-$i")
+                            .semantics { contentDescription = "${b.label}，${b.items.size}个作品，点击查看作品"; selected = i == state.index },
                             horizontalAlignment = Alignment.CenterHorizontally) {
-                            Canvas(Modifier.fillMaxWidth().height(190.dp).padding(horizontal = 6.dp)) {
+                            Canvas(Modifier.fillMaxWidth().height(plotHeight).padding(horizontal = 6.dp)) {
                                 listOf(0f, .5f, 1f).forEach { fraction ->
                                     drawLine(Color(0xFFE6E8EC), Offset(0f, size.height * fraction), Offset(size.width, size.height * fraction))
                                 }
-                                val height = if (b.items.isEmpty()) 3.dp.toPx() else size.height * b.items.size / maximum
-                                val colors = if (b.items.isEmpty()) listOf(Color.LightGray, Color.LightGray) else
-                                    listOf(Color(0xFFE85650), Color(0xFFFFCC45), Color(0xFF35BE78))
-                                drawRoundRect(Brush.verticalGradient(colors, startY = 0f, endY = size.height),
+                                val fraction = b.items.size.toFloat() / maximum
+                                val height = if (b.items.isEmpty()) 3.dp.toPx() else size.height * fraction
+                                // Solid colors follow relative bar height, not an inferred risk score.
+                                val color = when {
+                                    b.items.isEmpty() -> Color(0xFFD7DEDA)
+                                    fraction <= 1f / 3f -> Color(0xFF75AE91)
+                                    fraction <= 2f / 3f -> Color(0xFFD2B967)
+                                    else -> Color(0xFFCE817B)
+                                }
+                                drawRoundRect(color,
                                     topLeft = Offset(0f, size.height - height), size = Size(size.width, height), cornerRadius = CornerRadius(4.dp.toPx()))
                             }
-                            Text(b.label, Modifier.padding(top = 8.dp), color = if (i == index) Accent else Muted,
+                            Text(b.label, Modifier.padding(top = 8.dp), color = if (i == state.index) Ink else Muted,
                                 style = MaterialTheme.typography.labelMedium)
                         }
                     }
                 }
             }
         }
-        if (selected != null) Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            MetadataText("${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
-            if (bucket.items.isEmpty()) MetadataText("该时段暂无作品。")
-            ViewpointTimeline.groups(bucket.items).forEachIndexed { i, share ->
-                ViewpointGroup(share, bucket.start, bucket.end, appNames, "bucket-$index", i == 0 && share.items.size <= 3)
-            }
-        }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        DailyViewpointDistribution(dayGroups, "$date", appNames, date.atStartOfDay(zone).toInstant().toEpochMilli(), dayEnd)
     }
 }
 
 @Composable
-private fun ViewpointGroup(share: ViewpointShare, start: Long, end: Long, names: Map<String, String>, key: String,
-    initiallyExpanded: Boolean = false) {
-    var expanded by rememberSaveable(key, share.key) { mutableStateOf(initiallyExpanded) }
-    val amount = "${share.items.size} 个作品"
-    val header = Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(8.dp))
-        .clickable(role = Role.Button) { expanded = !expanded }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(header,
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(share.label, Modifier.weight(1f), color = Ink,
-                style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-            Text("$amount ${if (expanded) "−" else "+"}", modifier = Modifier.widthIn(max = 120.dp),
-                color = Accent, style = MaterialTheme.typography.labelMedium)
+private fun ViewpointTimelineContent(state: ViewpointTimelineUiState, appNames: Map<String, String>, onWorkScrolling: (Boolean) -> Unit) {
+    val bucket = state.buckets[state.index]
+    val format = remember(state.zone) { DateTimeFormatter.ofPattern("M/d HH:mm").withZone(state.zone) }
+    WhiteCard {
+        if (state.hasSelection) Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetadataText("${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
+            if (bucket.items.isEmpty()) MetadataText("该时段暂无作品。")
+            key(state.period, bucket.start) {
+                BrowseWorkCards(bucket.items, bucket.start, bucket.end, appNames, state.zone, onScrolling = onWorkScrolling)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
-        if (expanded) ViewpointSources(share, start, end, names, key)
+        DailyViewpointDistribution(state.groups, "${format.format(Instant.ofEpochMilli(state.window.start))} — ${format.format(Instant.ofEpochMilli(state.window.end))}", appNames, state.window.start, state.window.end)
     }
 }
 
@@ -128,7 +138,7 @@ internal fun ViewpointSources(share: ViewpointShare, start: Long, end: Long, nam
             Column(Modifier.padding(start = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 SourceAppText(item.record.packageName.takeUnless { item.record.sourceType == "audio_import" },
                     names[item.record.packageName] ?: item.record.packageName)
-                MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
+                MetadataText(analysisSourceLabel(if (item.analysisSource == "structured_model") "云端分析" else "本地识别"))
                 val duration = item.durationMillis(ObservationWindow(start, end, ZoneId.systemDefault()))
                 MetadataText(duration?.let { "本时段停留时长 ${formatDuration(it)}" } ?: "时长未统计")
                 item.quote?.takeIf { it != share.label }?.let { QuoteBlock(it) }

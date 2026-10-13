@@ -3,9 +3,20 @@ package com.emerge.app.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class], version = 7, exportSchema = true)
+@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class, WorkThumbnail::class], version = 8, exportSchema = true)
 abstract class BrowseDatabase : RoomDatabase() {
     companion object {
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE observed_works ADD COLUMN identityEvidence TEXT NOT NULL DEFAULT 'legacy'")
+                db.execSQL("ALTER TABLE observed_works ADD COLUMN nativeId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("""CREATE TABLE work_thumbnails (workKey TEXT NOT NULL PRIMARY KEY, packageName TEXT NOT NULL,
+                    fileName TEXT NOT NULL, capturedAt INTEGER NOT NULL, kind TEXT NOT NULL, width INTEGER NOT NULL,
+                    height INTEGER NOT NULL, byteCount INTEGER NOT NULL,
+                    FOREIGN KEY(workKey) REFERENCES observed_works(workKey) ON UPDATE NO ACTION ON DELETE CASCADE)""")
+                db.execSQL("CREATE UNIQUE INDEX index_work_thumbnails_fileName ON work_thumbnails(fileName)")
+            }
+        }
         val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE browse_events ADD COLUMN parentEventId INTEGER REFERENCES browse_events(id) ON DELETE CASCADE DEFAULT NULL")
@@ -82,6 +93,7 @@ abstract class BrowseDatabase : RoomDatabase() {
         }
     }
     abstract fun browseEventDao(): BrowseEventDao
+    abstract fun workThumbnailDao(): WorkThumbnailDao
     abstract fun audioDao(): AudioDao
     abstract fun monitorTaskDao(): MonitorTaskDao
 }

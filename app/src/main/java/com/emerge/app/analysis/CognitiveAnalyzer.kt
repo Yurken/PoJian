@@ -120,6 +120,7 @@ class CognitiveAnalyzer {
             // Do not merge a first in-window snapshot into an unselected historical snapshot.
             if (structured == null && old != null && latestSemantics[old.id]?.validFor(old) != true &&
                 window.contains(old) == within && old.sampleCount == 0 && event.sampleCount == 0 &&
+                event.workKey != null && event.workKey == old.workKey &&
                 !old.sourceType.startsWith("audio_") && !event.sourceType.startsWith("audio_") &&
                 old.packageName == event.packageName && event.timestamp - old.timestamp in 0..30_000 &&
                 com.emerge.app.capture.ContentContinuity.same(old.visibleText, event.visibleText)) {
@@ -212,7 +213,7 @@ class CognitiveAnalyzer {
         val usableSet = usableEvents.toSet()
         val eventsById = ordered.associateBy { it.id }
         fun contactId(id: Long): Long? = eventsById[id]?.let {
-            if (it.sourceType == "screen_ocr") it.parentEventId else it.id
+            if (it.sourceType in setOf("screen_ocr", "visual_model", "audio_playback")) it.parentEventId else it.id
         }
         val current = observations.filter { it.first in usableSet }.map { it.second }
         val grouped = mutableListOf<MutableList<ClaimObservation>>()
@@ -234,14 +235,14 @@ class CognitiveAnalyzer {
             eventTopics.mapKeys { it.key.id }, checkCancellation)
         val findings = exposure.findings()
         val exposures = usableEvents.groupBy { eventTopics[it] ?: "未分类" }.map { (topic, entries) ->
-            TopicExposure(topic, entries.size, entries.sumOf { window.durationMillis(it) ?: 0 })
+            TopicExposure(topic, entries.size, window.unionDuration(entries.filter { it.sourceType == "accessibility" }))
         }.sortedWith(compareByDescending<TopicExposure> { it.durationMillis }.thenByDescending { it.recordCount }.thenBy { it.topic })
         val reviews = (0..23).map { hour ->
             checkCancellation()
             val entries = usableEvents.filter { event -> slicesByEvent[event].orEmpty().any { it.hour == hour } }
             val entryIds = entries.map { it.id }.toSet()
             HourlyReview(hour, entries.size,
-                entries.sumOf { event -> slicesByEvent[event].orEmpty().filter { it.hour == hour }.sumOf { it.durationMillis } },
+                window.unionSlices(entries.filter { it.sourceType == "accessibility" }.flatMap { event -> slicesByEvent[event].orEmpty().filter { it.hour == hour } }),
                 entries.count { !window.durationKnown(it) }, current.filter { it.eventId in entryIds }.map { it.eventId }.distinct(),
                 entries.groupingBy { eventTopics[it] ?: "未分类" }.eachCount().map { TopicCount(it.key, it.value) }.sortedByDescending { it.count })
         }
@@ -254,7 +255,7 @@ class CognitiveAnalyzer {
             method = if (structuredAnalyzed > 0)
                 "云端分析与本地历史对照（原文校验；无有效结果时用本地识别，历史比较未经模型训练或校准）"
                 else "本地识别与历史片段对照（未经模型训练，结果需核实）",
-            observedDurationMillis = usableEvents.sumOf { window.durationMillis(it) ?: 0 },
+            observedDurationMillis = window.unionDuration(selected.filter { it.sourceType == "accessibility" }),
             unknownDurationRecords = usableEvents.count { !window.durationKnown(it) }, topicExposure = exposures,
             contentSignals = signals, comparisonStart = prior.firstOrNull()?.timestamp, comparisonRecords = prior.size,
             workStatistics = com.emerge.app.ui.calculateStatistics(events, period, now, zone),

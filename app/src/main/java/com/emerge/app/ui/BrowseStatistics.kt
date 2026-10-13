@@ -34,6 +34,7 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
     }
     val bucketKeys = List(count) { mutableSetOf<String>() }
     val bucketDurations = LongArray(count)
+    val bucketSlices = List(count) { mutableListOf<com.emerge.app.analysis.SessionSlice>() }
     val bucketUnknown = IntArray(count)
     keys.forEach { (event, workKey) ->
         val slices = window.slices(event)
@@ -48,7 +49,7 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
             val bucket = index(slice.start, slice.hour)
             if (bucket in 0 until count) {
                 touched += bucket
-                bucketDurations[bucket] += slice.durationMillis
+                bucketSlices[bucket] += slice
             }
         }
         touched.forEach { bucket ->
@@ -57,6 +58,7 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
         }
     }
     val trend = bucketKeys.mapIndexed { index, works ->
+        bucketDurations[index] = window.unionSlices(bucketSlices[index])
         val label = when (period) {
             StatisticsPeriod.DAY -> "${index.toString().padStart(2, '0')}:00"
             StatisticsPeriod.WEEK -> if (index == 6) "今天" else today.minusDays(6 - index.toLong()).format(DateTimeFormatter.ofPattern("M/d"))
@@ -66,7 +68,7 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
     }
     val apps = keys.groupBy { it.first.packageName }.map { (name, entries) ->
         val records = entries.map { it.first }
-        AppShare(name, entries.map { it.second }.distinct().size, records.sumOf { window.durationMillis(it) ?: 0 },
+        AppShare(name, entries.map { it.second }.distinct().size, window.unionDuration(records),
             records.count { !window.durationKnown(it) }, records.size,
             entries.filter { it.first.identityMethod in setOf("unknown", "session_estimate") }.map { it.second }.distinct().size)
     }.sortedWith(compareByDescending<AppShare> { it.count }.thenBy { it.packageName })

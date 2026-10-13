@@ -4,7 +4,6 @@ import androidx.room.withTransaction
 import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.analysis.SemanticsCodec
 import com.emerge.app.capture.WorkIdentityExtractor
-import com.emerge.app.capture.VisibilityIntervals
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.atomic.AtomicLong
@@ -18,6 +17,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
     private val deletionGeneration = AtomicLong()
     val recentEvents = dao.observeRecent()
     val allEvents = dao.observeAll().onStart { repairAdjacentVisits() }
+    val works = dao.observeWorks()
     val semantics = dao.observeSemantics().map { rows -> rows.mapNotNull(SemanticsCodec::decode) }
     val count = dao.observeCount()
     private var repaired = false
@@ -27,41 +27,21 @@ class BrowseRepository(private val database: BrowseDatabase) {
     private suspend fun repairLocked() {
         if (repaired) return
         database.withTransaction {
-            var previous: BrowseEvent? = null
             for (original in dao.chronologicalEvents()) {
-                if (original.sourceType != "accessibility") { previous = null; continue }
+                if (original.sourceType != "accessibility") continue
                 if (WorkIdentityExtractor.isRecommendationList(original.packageName, original.visibleText)) {
-                    // Retain the raw observation, but do not claim a feed screen is one watched work.
                     dao.update(original.copy(sourceType = "recommendation_list"))
-                    previous = null
                     continue
                 }
+                // Identity repair must never erase a distinct viewing event or its samples.
                 val hint = WorkIdentityExtractor.extract(original.packageName, original.visibleText)
                 val key = hint.key(original.packageName)
-                val event = if (key != null && original.identityMethod in setOf("unknown", "session_estimate")) {
-                    dao.insertWork(ObservedWork(key, original.packageName, hint.title, hint.author, hint.method, original.timestamp))
-                    original.copy(workKey = key, identityMethod = hint.method).also { dao.update(it) }
-                } else original
-                val old = previous
-                val gap = if (old == null) Long.MAX_VALUE else event.timestamp - maxOf(old.timestamp, old.endTimestamp)
-                val identical = old != null && WorkIdentityExtractor.body(old.visibleText) == WorkIdentityExtractor.body(event.visibleText)
-                val mergedIntervals = if (old?.visibilityIntervals != null && event.visibilityIntervals != null)
-                    VisibilityIntervals.merge(old.visibilityIntervals, event.visibilityIntervals) else null
-                val canMergeIntervals = old != null &&
-                    ((old.visibilityIntervals == null && event.visibilityIntervals == null) || mergedIntervals != null)
-                if (old != null && key != null && old.workKey == event.workKey && old.packageName == event.packageName &&
-                    gap in 0..6000 && identical && canMergeIntervals) {
-                    val merged = old.copy(endTimestamp = maxOf(old.endTimestamp, event.endTimestamp, event.timestamp),
-                        durationMillis = old.durationMillis + event.durationMillis,
-                        sampleCount = old.sampleCount + event.sampleCount, visibilityIntervals = mergedIntervals)
-                    dao.update(merged)
-                    dao.moveSamples(event.id, old.id)
-                    dao.moveMaterials(event.id, old.id)
-                    dao.deleteEvent(event.id)
-                    dao.trimSamples(old.id)
-                    audio.invalidateForEvent(event.id)
-                    previous = merged
-                } else previous = event
+                if (key != null && original.identityMethod in setOf("unknown", "session_estimate")) {
+                    dao.insertWork(ObservedWork(key, original.packageName, hint.title, hint.author, hint.method,
+                        original.timestamp, hint.evidence, hint.nativeId))
+                    dao.update(original.copy(workKey = key, identityMethod = hint.method))
+                    dao.updateMaterialIdentity(original.id, key, hint.method)
+                }
             }
             dao.trimWorks()
         }
@@ -83,6 +63,14 @@ class BrowseRepository(private val database: BrowseDatabase) {
     /** A sample taken before deletion must never become a new row after deletion. */
     internal val captureGeneration: Long get() = deletionGeneration.get()
 
+    internal suspend fun resolveHint(pkg: String, hint: com.emerge.app.capture.WorkHint): com.emerge.app.capture.WorkHint {
+        if (hint.nativeId.isNotBlank() || hint.title.length < (if (hint.truncated) 16 else 8) || hint.author.isBlank()) return hint
+        val matches = dao.captionCandidates(pkg, hint.author).filter {
+            if (hint.truncated) it.title.startsWith(hint.title) else it.title == hint.title
+        }
+        return matches.singleOrNull()?.let { hint.copy(canonicalKey = it.workKey, nativeId = it.nativeId) } ?: hint
+    }
+
     suspend fun findEvent(id: Long): BrowseEvent? = dao.event(id)
     suspend fun getEvent(id: Long): BrowseEvent? = findEvent(id)
     suspend fun clearSemantics() = captureMutex.withLock {
@@ -102,7 +90,8 @@ class BrowseRepository(private val database: BrowseDatabase) {
         val saved = database.withTransaction {
             if (!current() || !transactionGuard()) return@withTransaction false
             val event = dao.event(snapshot.id) ?: return@withTransaction false
-            if (!semantics.validFor(event)) return@withTransaction false
+            if (!semantics.validFor(event) || event.workKey != snapshot.workKey ||
+                event.parentEventId != snapshot.parentEventId) return@withTransaction false
             val previous = dao.semanticsForEvent(snapshot.id)
             if (previous != null && previous.analyzedAt > semantics.analyzedAt) return@withTransaction false
             if (!current() || !transactionGuard()) return@withTransaction false
@@ -149,6 +138,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
             }
             if (savedId != null) {
                 work?.let { dao.insertWork(it) }
+                if (continuing) dao.updateMaterialIdentity(savedId, event.workKey, event.identityMethod)
                 if (sampleText != null && dao.lastSampleText(savedId) != sampleText) {
                     dao.insertSample(BrowseSample(visitId = savedId,
                         capturedAt = event.endTimestamp, eventType = event.eventType, visibleText = sampleText))

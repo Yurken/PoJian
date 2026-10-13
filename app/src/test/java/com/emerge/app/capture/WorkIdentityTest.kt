@@ -95,11 +95,12 @@ class WorkIdentityTest {
         assertFalse(WorkIdentityExtractor.isRecommendationList("com.xingin.xhs", "作者\n关注\n这是一篇完整的笔记正文"))
     }
 
-    @Test fun pauseCannotMergeAnotherPostOrHideALongAbsence() {
+    @Test fun pauseCannotMergeAnotherPostOrCountUnobservedTime() {
         val hint = WorkHint("一个有稳定标题的作品", "作者甲")
         tracker.saved(sample("正文", hint), 12)
         tracker.pause()
         assertFalse(sample("正文", WorkHint("另一个完全不同的作品", "作者甲"), 3000).continuing)
-        assertFalse(sample("正文", hint, 20000).continuing)
+        assertTrue(sample("正文", hint, 20000).continuing)
+        assertEquals(0L, sample("正文", hint, 20000).event.durationMillis)
     }
 }

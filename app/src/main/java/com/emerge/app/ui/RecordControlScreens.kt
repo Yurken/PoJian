@@ -295,6 +295,7 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 }
             }
         }
+        item(key = "local-thumbnails") { LocalThumbnailControl() }
         audioContent?.let { content -> item(key = "audio-settings") { content() } }
         item {
             WhiteCard {
@@ -326,6 +327,7 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 }
             }
         }
+        item(key = "synthetic-demo") { SyntheticDemoEntry() }
         updateContent?.let { content -> item(key = "update-settings") { content() } }
         item {
             WhiteCard {

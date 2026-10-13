@@ -29,7 +29,7 @@ class DouyinPageTest {
         assertEquals(4000L, returned.event.durationMillis)
     }
 
-    @Test fun captionExpansionDoesNotUseRecommendedAuthorsOrChangeWorkKey() {
+    @Test fun captionExpansionPromotesIdentityWithinTheSameVisit() {
         val tracker = CaptureSessionTracker()
         val first = tracker.sample(pkg, "折叠文案", 1000, 1000, 4096, video())
         tracker.saved(first, 12)
@@ -40,7 +40,9 @@ class DouyinPageTest {
         assertEquals(WorkPage.CAPTION, expanded.page)
         val next = tracker.sample(pkg, "完整文案和推荐内容", 3000, 3000, 4096, expanded)
         assertTrue(next.continuing)
-        assertEquals(first.event.workKey, next.event.workKey)
+        assertEquals("session_estimate", first.event.identityMethod)
+        assertEquals(expanded.key(pkg), next.event.workKey)
+        assertEquals(12L, next.event.id)
         tracker.saved(next, 12)
         assertTrue(tracker.sample(pkg, "折叠文案", 5000, 5000, 4096, video()).continuing)
     }
