@@ -4,6 +4,10 @@
 
 package com.emerge.app.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,9 +16,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.KeyboardArrowUp
@@ -24,7 +31,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.testTag
@@ -34,6 +41,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.*
 import java.util.Locale
@@ -51,10 +59,15 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
     var sourceKey by rememberSaveable(stateKey) { mutableStateOf<String?>(null) }
     // A refreshed analysis can replace topics while the selected date remains the same.
     val activeTopic = topicKey?.takeIf { selected -> topics.any { it.key == selected } }
-    val visible = remember(topics, activeTopic, filter, query) {
+    val scoped = remember(topics, activeTopic, filter, query) {
         ViewpointDistribution.filter(topics, activeTopic, filter, query)
     }
-    var pageIndex by rememberSaveable(stateKey, activeTopic, filter, query) { mutableIntStateOf(0) }
+    val spectrum = remember(scoped) { viewpointSpectrum(scoped) }
+    var stance by rememberSaveable(stateKey, activeTopic, filter, query) { mutableStateOf<ViewpointStance?>(null) }
+    val activeStance = spectrum.firstOrNull { it.stance == stance }
+    LaunchedEffect(activeStance) { if (activeStance == null) stance = null }
+    val visible = remember(scoped, activeStance) { filterViewpointStance(scoped, activeStance) }
+    var pageIndex by rememberSaveable(stateKey, activeTopic, filter, query, activeStance?.stance) { mutableIntStateOf(0) }
     val entries = remember(visible) { ViewpointDistribution.entries(visible) }
     val page = remember(entries, pageIndex) { ViewpointDistribution.page(entries, pageIndex) }
     LaunchedEffect(page.index) { pageIndex = page.index }
@@ -65,7 +78,7 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
         sourceKey = null
         scope.launch { pageStart.bringIntoView() }
     }
-    fun expanded(topic: ViewpointTopic) = overrides[topic.key] ?: topic.structured
+    fun expanded(topic: ViewpointTopic) = overrides[topic.key] ?: false
     val allExpanded = visible.isNotEmpty() && visible.all(::expanded)
     val visibleGroups = visible.flatMap { it.groups }
     val source = visibleGroups.firstOrNull { it.key == sourceKey }
@@ -77,6 +90,10 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
             MetadataText("$date · $total 个作品")
         }
         if (total > 0) {
+            ViewpointSpectrum(spectrum, activeStance?.stance) { selected ->
+                stance = if (stance == selected) null else selected
+                sourceKey = null
+            }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TopicChip("全部观点 ($total)", activeTopic == null, green, { topicKey = null }, "viewpoint-topic-all")
                 topics.forEach { topic ->
@@ -153,6 +170,50 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
 }
 
 @Composable
+private fun ViewpointSpectrum(shares: List<ViewpointStanceShare>, selected: ViewpointStance?, onSelect: (ViewpointStance) -> Unit) {
+    if (shares.isEmpty()) return
+    Column(Modifier.fillMaxWidth().testTag("viewpoint-spectrum")) {
+        Row(Modifier.fillMaxWidth().height(48.dp)) {
+            shares.forEachIndexed { index, share ->
+                key(share.stance) {
+                    val weight by animateFloatAsState(share.count.toFloat(), tween(300), label = "viewpoint-spectrum-weight")
+                    val color = stanceColor(share.stance)
+                    Box(Modifier.weight(weight.coerceAtLeast(.001f)).fillMaxHeight()
+                        .selectable(selected = selected == share.stance, role = Role.Button, onClick = { onSelect(share.stance) })
+                        .semantics { contentDescription = "${share.stance.label}，${share.count}个作品，${percentage(share.percent)}%" }
+                        .testTag("viewpoint-spectrum-${share.stance.name}"), contentAlignment = Alignment.Center) {
+                        Box(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(
+                            topStart = if (index == 0) 6.dp else 0.dp, bottomStart = if (index == 0) 6.dp else 0.dp,
+                            topEnd = if (index == shares.lastIndex) 6.dp else 0.dp, bottomEnd = if (index == shares.lastIndex) 6.dp else 0.dp))
+                            .background(color.copy(alpha = if (selected == null || selected == share.stance) 1f else .35f)))
+                    }
+                }
+            }
+        }
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            shares.forEach { share ->
+                FilterChip(selected = selected == share.stance, onClick = { onSelect(share.stance) },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("viewpoint-stance-${share.stance.name}"),
+                    leadingIcon = { Box(Modifier.size(8.dp).background(stanceColor(share.stance), CircleShape)) },
+                    label = { Text("${share.stance.label} ${percentage(share.percent)}%") })
+            }
+        }
+    }
+}
+
+@Composable
+private fun stanceColor(stance: ViewpointStance): Color {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < .5f
+    return when (stance) {
+        ViewpointStance.SUPPORT -> distributionGreen()
+        ViewpointStance.NEUTRAL -> if (dark) Color(0xFFCBD5E1) else Color(0xFF475569)
+        ViewpointStance.QUESTION -> if (dark) Color(0xFFFDA4AF) else Color(0xFFBE123C)
+        ViewpointStance.MIXED -> if (dark) Color(0xFFC4B5FD) else Color(0xFF6D28D9)
+        ViewpointStance.UNKNOWN -> MaterialTheme.colorScheme.outline
+    }
+}
+
+@Composable
 private fun ViewpointPageControls(index: Int, count: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically) {
@@ -184,15 +245,15 @@ private fun ViewpointTopicCard(topic: ViewpointTopic, pageGroups: List<Viewpoint
         else -> scheme.onSurfaceVariant
     }
     Surface(shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, accent.copy(alpha = .2f)),
-        color = scheme.surface, modifier = Modifier.fillMaxWidth().testTag("viewpoint-topic-${topic.key}")) {
+        color = scheme.surface, modifier = Modifier.fillMaxWidth().testTag("viewpoint-topic-${topic.key}").animateContentSize(tween(220))) {
         Column {
-            Column(Modifier.fillMaxWidth().background(Brush.horizontalGradient(listOf(accent.copy(alpha = .10f),
-                accent.copy(alpha = .02f)))).clickable(role = Role.Button, onClick = onToggle)
+            Column(Modifier.fillMaxWidth().background(accent.copy(alpha = .055f))
+                .clickable(role = Role.Button, onClick = onToggle)
                 .semantics { stateDescription = if (expanded) "已展开" else "已收起" }
-                .padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                .padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(topic.title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold, color = scheme.onSurface)
+                        fontWeight = FontWeight.Bold, color = scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Icon(if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                         contentDescription = null, tint = accent, modifier = Modifier.size(20.dp))
                 }
@@ -201,11 +262,15 @@ private fun ViewpointTopicCard(topic: ViewpointTopic, pageGroups: List<Viewpoint
                     Text("${percentage(topic.percent)}% (${topic.workCount}/${topic.total})",
                         style = MaterialTheme.typography.labelMedium, color = accent, fontWeight = FontWeight.SemiBold)
                 }
-                LinearProgressIndicator(progress = { (topic.percent / 100).toFloat().coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(3.dp), color = accent,
-                    trackColor = accent.copy(alpha = .10f), gapSize = 0.dp, drawStopIndicator = {})
+                if (!expanded) {
+                    val representative = pageGroups.maxByOrNull { it.items.size }?.items?.firstOrNull()
+                    val preview = representative?.claims?.firstOrNull()?.let(WorkTopicPresentation::phrase)
+                        ?: representative?.quote
+                    if (!preview.isNullOrBlank()) Text(preview, style = MaterialTheme.typography.bodySmall,
+                        color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-            if (expanded) {
+            AnimatedVisibility(visible = expanded) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (topic.structured) pageGroups.forEach { share ->
                         key(share.key) { StructuredViewpointCard(share, start, end) { onSource(share) } }
@@ -231,21 +296,26 @@ private fun StructuredViewpointCard(share: ViewpointShare, start: Long, end: Lon
     val title = claim?.let(WorkTopicPresentation::phrase) ?: share.label
     Surface(shape = RoundedCornerShape(12.dp), color = accent.copy(alpha = .035f),
         border = BorderStroke(1.dp, accent.copy(alpha = .17f)), modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                DistributionBadge("影响提示${level.label}", accent)
-                if (uncertain) DistributionBadge("待确认", scheme.tertiary)
+        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .testTag("viewpoint-entry-${share.key}")
+            .clickable(role = Role.Button, onClickLabel = "查看原文", onClick = onSource)
+            .padding(10.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.width(3.dp).height(36.dp).background(accent, RoundedCornerShape(2.dp)))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
+                    color = scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    DistributionBadge("影响提示${level.label}", accent)
+                    if (uncertain) DistributionBadge("待确认", scheme.tertiary)
+                    Text("${share.items.size} 个 · ${percentage(share.percent)}%", Modifier.align(Alignment.CenterVertically),
+                        style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+                    Text(duration?.let(::formatDuration) ?: "时长未统计", Modifier.align(Alignment.CenterVertically),
+                        style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                }
             }
-            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = scheme.onSurface)
-            MetadataText(duration?.let(::formatDuration) ?: "时长未统计")
-            HorizontalDivider(color = accent.copy(alpha = .13f))
-            FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-                verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("${share.items.size} 个 · ${percentage(share.percent)}%", Modifier.align(Alignment.CenterVertically),
-                    style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
-                PojianTextButton(onClick = onSource, contentPadding = PaddingValues(horizontal = 4.dp),
-                    colors = ButtonDefaults.textButtonColors(contentColor = accent)) { Text("查看原文 ›") }
-            }
+            Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null,
+                tint = scheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
         }
     }
 }

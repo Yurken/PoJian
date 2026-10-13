@@ -2,6 +2,10 @@ package com.emerge.app.analysis
 
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.mutableStateOf
@@ -84,20 +88,18 @@ class RecentContentCloudTest {
         awaitWord("求职竞争，12 条记录")
         compose.onNodeWithTag("recent-content-cloud").performScrollTo()
         assertTrue(compose.onNodeWithTag("recent-content-cloud").getUnclippedBoundsInRoot().height <= 280.dp)
-        val bounds = counts.take(12).map { (word, count) ->
-            compose.onNodeWithContentDescription("$word，$count 条记录")
+        assertCollapsedTargetsFit()
+        compose.onNodeWithContentDescription("行业选择，1 条记录").assertIsNotDisplayed()
+        compose.onNodeWithTag("recent-content-expand").performScrollTo().performClick()
+        counts.forEach { (word, count) ->
+            compose.onNodeWithContentDescription("$word，$count 条记录").performScrollTo().assertIsDisplayed()
                 .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-                .assertIsDisplayed()
-                .fetchSemanticsNode().boundsInRoot
         }
-        bounds.forEachIndexed { index, rect ->
-            bounds.drop(index + 1).forEach { other -> assertFalse("Word touch targets must not overlap", rect.overlaps(other)) }
-        }
-        counts.drop(12).forEach { (word, count) ->
-            compose.onNodeWithContentDescription("$word，$count 条记录").assertDoesNotExist()
-        }
+        compose.onNodeWithTag("recent-content-expand").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("行业选择，1 条记录").assertIsNotDisplayed()
+        assertCollapsedTargetsFit()
         screenshot("pojian-word-cloud-reference-light.png")
-        compose.onNodeWithContentDescription("招聘需求，9 条记录").performClick()
+        compose.onNodeWithContentDescription("招聘需求，9 条记录").performScrollTo().performClick()
         compose.waitUntil(5000) { compose.onAllNodesWithText("今天 · 9 条相关记录").fetchSemanticsNodes().isNotEmpty() }
         val originals = SemanticsMatcher("retained originals") {
             it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("recent-content-original-") == true
@@ -116,14 +118,70 @@ class RecentContentCloudTest {
         render(events, mutableStateOf(StatisticsPeriod.DAY), dark = true, semantics = semantics)
         awaitWord("求职竞争，12 条记录")
         assertTrue(compose.onNodeWithTag("recent-content-cloud").getUnclippedBoundsInRoot().height <= 280.dp)
-        counts.take(6).forEach { (word, count) ->
-            compose.onNodeWithContentDescription("$word，$count 条记录").performScrollTo().assertIsDisplayed()
-        }
-        counts.drop(6).forEach { (word, count) ->
-            compose.onNodeWithContentDescription("$word，$count 条记录").assertDoesNotExist()
-        }
+        assertCollapsedTargetsFit()
+        compose.onNodeWithTag("recent-content-expand").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("行业选择，1 条记录").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("recent-content-expand").performScrollTo().performClick()
+        assertCollapsedTargetsFit()
         compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今日观察"))
         screenshot("pojian-word-cloud-reference-dark-large.png")
+    }
+
+    @Test fun categoryFilterUpdatesCountsAndSourceSheetTogether() {
+        val records = listOf(event(1, "科技领域讨论隐私"), event(2, "社会领域讨论隐私"))
+        render(records, mutableStateOf(StatisticsPeriod.DAY), semantics = listOf(
+            concepts(records[0], "科技", "隐私保护"), concepts(records[1], "社会", "隐私保护")))
+        awaitWord("隐私保护，2 条记录")
+        compose.onNodeWithTag("recent-content-category-科技").performClick()
+        awaitWord("隐私保护，1 条记录")
+        compose.onNodeWithContentDescription("社会，1 条记录").assertDoesNotExist()
+        compose.onNodeWithContentDescription("隐私保护，1 条记录").performClick()
+        compose.waitUntil(5000) { compose.onAllNodesWithText("今天 · 1 条相关记录").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("关闭").performClick()
+        compose.onNodeWithTag("recent-content-category-all").performClick()
+        awaitWord("隐私保护，2 条记录")
+    }
+
+    @Test fun narrowCloudKeepsLongWordsAccessibleAtDoubleFontScale() {
+        val labels = listOf("数据隐私与端侧人工智能模型的长期发展", "多模态模型在移动设备上的能耗优化", "模型部署中的数据安全和用户隐私保护")
+        val records = labels.mapIndexed { index, label -> event(index.toLong(), label) }
+        val semantics = records.mapIndexed { index, row -> concepts(row, "科技", labels[index]) }
+        compose.runOnUiThread { compose.activity.setContent {
+            EmergeTheme(darkTheme = true) {
+                val density = LocalDensity.current
+                CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+                    Column(Modifier.width(280.dp).verticalScroll(rememberScrollState())) {
+                        RecentContentCloud(records, StatisticsPeriod.DAY, now, semantics)
+                    }
+                }
+            }
+        } }
+        awaitWord("科技，3 条记录")
+        assertCollapsedTargetsFit()
+        compose.onNodeWithTag("recent-content-expand").performScrollTo().performClick()
+        labels.forEach { label ->
+            compose.onNodeWithContentDescription("$label，1 条记录").performScrollTo().assertIsDisplayed()
+        }
+        compose.onNodeWithTag("recent-content-expand").performScrollTo().performClick()
+        assertCollapsedTargetsFit()
+    }
+
+    private fun assertCollapsedTargetsFit() {
+        compose.onNodeWithTag("recent-content-cloud").performScrollTo()
+        val cloud = compose.onNodeWithTag("recent-content-cloud").fetchSemanticsNode().boundsInRoot
+        assertTrue(compose.onNodeWithTag("recent-content-cloud").getUnclippedBoundsInRoot().height <= 280.dp)
+        val nodes = compose.onAllNodes(hasAnyAncestor(hasTestTag("recent-content-cloud")) and
+            SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button)).fetchSemanticsNodes()
+            .filter { it.boundsInRoot.width > 0f && it.boundsInRoot.height > 0f }
+        assertTrue(nodes.isNotEmpty())
+        nodes.forEachIndexed { index, node ->
+            val rect = node.boundsInRoot
+            assertTrue("Whole chip stays inside the cloud", rect.left >= cloud.left && rect.right <= cloud.right &&
+                rect.top >= cloud.top && rect.bottom <= cloud.bottom)
+            nodes.drop(index + 1).forEach { other ->
+                assertFalse("Word touch targets must not overlap", rect.overlaps(other.boundsInRoot))
+            }
+        }
     }
 
     private fun concepts(event: BrowseEvent, topic: String, subject: String) = EventSemantics(

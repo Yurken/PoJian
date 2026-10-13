@@ -1,32 +1,34 @@
 package com.emerge.app.ui
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithCache
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.analysis.ContentWord
+import com.emerge.app.analysis.recentContentCategories
 import com.emerge.app.analysis.recentContentWords
 import com.emerge.app.analysis.RecentContentGroup
 import com.emerge.app.analysis.RecentContentPoint
@@ -38,118 +40,120 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+private data class RecentCloudContent(val categories: List<String>, val category: String?, val words: List<ContentWord>)
+
 @Composable
 internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
     semantics: List<EventSemantics>, appNames: Map<String, String> = emptyMap()) {
-    val words by produceState<List<ContentWord>?>(null, events, period, now, semantics) {
+    var category by rememberSaveable(period) { mutableStateOf<String?>(null) }
+    var expanded by rememberSaveable(period, category) { mutableStateOf(false) }
+    var selected by rememberSaveable(period, category) { mutableStateOf<String?>(null) }
+    val content by produceState<RecentCloudContent?>(null, events, period, now, semantics, category) {
         value = null
-        value = withContext(Dispatchers.Default) { recentContentWords(events, period, now, semantics) }
+        value = withContext(Dispatchers.Default) {
+            val categories = recentContentCategories(events, period, now, semantics)
+            val active = category?.takeIf { it in categories }
+            RecentCloudContent(categories, active, recentContentWords(events, period, now, semantics, category = active))
+        }
     }
-    var selected by rememberSaveable(period) { mutableStateOf<String?>(null) }
-    WhiteCard(Modifier.testTag("recent-content-card")) {
+    val current = content
+    val collapsedLines = if (LocalDensity.current.fontScale > 1.3f) 2 else 3
+    LaunchedEffect(current) {
+        if (current != null) {
+            category = current.category
+            if (current.words.none { it.text == selected }) selected = null
+        }
+    }
+    WhiteCard(Modifier.testTag("recent-content-card").animateContentSize(tween(220))) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("近期接触", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f).semantics { heading() })
+            if (current != null && current.words.size > collapsedLines) {
+                PojianTextButton(onClick = { expanded = !expanded }, modifier = Modifier.testTag("recent-content-expand")) {
+                    Text(if (expanded) "收起" else "展开（${current.words.size}）")
+                    Icon(if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                        contentDescription = null, modifier = Modifier.size(18.dp))
+                }
+            }
         }
-        val current = words
+        if (current != null && current.categories.size > 1) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = current.category == null, onClick = { category = null },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("recent-content-category-all"), label = { Text("全部") })
+                current.categories.forEach { title ->
+                    FilterChip(selected = current.category == title, onClick = { category = title },
+                        modifier = Modifier.heightIn(min = 48.dp).widthIn(max = 200.dp).testTag("recent-content-category-$title"),
+                        label = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) })
+                }
+            }
+        }
         when {
             current == null -> Text("正在整理近期内容…", color = Muted, modifier = Modifier.padding(vertical = 12.dp))
-            current.isEmpty() -> Column(Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            current.words.isEmpty() -> Column(Modifier.fillMaxWidth().padding(vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("暂无关键词", style = MaterialTheme.typography.bodyMedium, color = Ink)
             }
-            else -> ContentWordCloud(current) { selected = it.text }
+            else -> ContentWordCloud(current.words, expanded) { selected = it.text }
         }
     }
     selected?.let { word ->
-        ContentWordDetails(word, events, period, now, semantics, appNames) { selected = null }
+        ContentWordDetails(word, events, period, now, semantics, appNames, category) { selected = null }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ContentWordCloud(words: List<ContentWord>, expanded: Boolean, onWord: (ContentWord) -> Unit) {
+    val fontScale = LocalDensity.current.fontScale
+    val maxCount = words.maxOfOrNull { it.recordCount }?.coerceAtLeast(1) ?: 1
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val chipWidth = minOf(maxWidth, 208.dp)
+        // FlowRow drops whole overflowing rows: no clipped labels or partial touch targets.
+        FlowRow(Modifier.fillMaxWidth().testTag("recent-content-cloud"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+            maxLines = if (expanded) Int.MAX_VALUE else if (fontScale > 1.3f) 2 else 3) {
+            words.forEach { word ->
+                key(word.text) { ContentWordChip(word, word.recordCount.toFloat() / maxCount,
+                    Modifier.widthIn(max = chipWidth)) { onWord(word) } }
+            }
+        }
     }
 }
 
 @Composable
-private fun ContentWordCloud(words: List<ContentWord>, onWord: (ContentWord) -> Unit) {
+private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    val dark = scheme.background.luminance() < 0.5f
-    val colors = if (dark) listOf(Color(0xFF93C5FD), Color(0xFF5EEAD4), Color(0xFFFCD34D),
-        Color(0xFFC4B5FD), Color(0xFF7DD3FC)) else listOf(Color(0xFF1E40AF), Color(0xFF0F766E),
-        Color(0xFFB45309), Color(0xFF4338CA), Color(0xFF0369A1))
-    val glow = scheme.primaryContainer.copy(alpha = if (dark) .65f else .8f)
-    val edge = scheme.surfaceContainerLow.copy(alpha = .2f)
-    val fontScale = LocalDensity.current.fontScale
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val limit = when {
-            fontScale > 1.8f || maxWidth < 240.dp -> 4
-            fontScale > 1.2f -> 6
-            maxWidth < 280.dp -> 8
-            else -> 12
-        }
-        val columns = if (limit == 12) 3 else 2
-        // Counts are descending upstream; ties retain the existing recency order.
-        val visible = words.take(limit)
-        val rows = visible.chunked(columns)
-        // Bounded rows replace the old expanding spiral. Full labels remain available
-        // to accessibility and in the collection title when visual text is ellipsized.
-        val height = (rows.size * (64f * fontScale).coerceIn(64f, 120f) + 16f).coerceIn(112f, 280f).dp
-        Column(Modifier.fillMaxWidth().height(height).testTag("recent-content-cloud")
-            .clip(RoundedCornerShape(14.dp)).drawWithCache {
-                val brush = Brush.radialGradient(listOf(glow, edge),
-                    center = Offset(size.width * .5f, size.height * .46f),
-                    radius = maxOf(size.width, size.height) * .65f)
-                onDrawBehind { drawRect(brush) }
-            }.padding(8.dp)) {
-            rows.forEachIndexed { rowIndex, row ->
-                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEachIndexed { columnIndex, word ->
-                        val index = rowIndex * columns + columnIndex
-                        val wordColor = readableCloudColor(colors[index % colors.size], .9f,
-                            glow.compositeOver(scheme.surface))
-                        Box(Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(8.dp))
-                            .clickable(role = Role.Button, onClickLabel = "查看相关内容") { onWord(word) }
-                            .padding(horizontal = 6.dp, vertical = 4.dp).clearAndSetSemantics {
-                                contentDescription = "${word.text}，${word.recordCount} 条记录"
-                                role = Role.Button
-                                onClick(label = "查看相关内容") { onWord(word); true }
-                            }, contentAlignment = Alignment.Center) {
-                            // Measure the count first, then give the label the remaining width.
-                            // Both share the same vertical band; the badge cannot create a separate row.
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                verticalAlignment = Alignment.Top) {
-                                Text(word.text, modifier = Modifier.weight(1f), color = wordColor, fontSize = 14.sp, lineHeight = 18.sp,
-                                    textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                    fontWeight = FontWeight.Medium)
-                                Text(word.recordCount.toString(), color = wordColor, fontSize = 11.sp, lineHeight = 14.sp,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-                    }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
+    val tier = when { ratio > .65f -> 2; ratio > .35f -> 1; else -> 0 }
+    val background = when (tier) { 2 -> scheme.primaryContainer; 1 -> scheme.secondaryContainer; else -> scheme.surfaceContainerLow }
+    val foreground = when (tier) { 2 -> scheme.onPrimaryContainer; 1 -> scheme.onSecondaryContainer; else -> scheme.onSurfaceVariant }
+    Surface(color = background, shape = RoundedCornerShape(14.dp),
+        border = if (tier == 2) BorderStroke(1.dp, scheme.primary.copy(alpha = .35f)) else null,
+        modifier = modifier.clip(RoundedCornerShape(14.dp))
+            .clickable(role = Role.Button, onClickLabel = "查看相关内容", onClick = onClick)
+            .clearAndSetSemantics {
+                contentDescription = "${word.text}，${word.recordCount} 条记录"
+                role = Role.Button
+                onClick(label = "查看相关内容") { onClick(); true }
+            }) {
+        Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(word.text, Modifier.weight(1f, fill = false), color = foreground,
+                fontSize = when (tier) { 2 -> 16.sp; 1 -> 14.sp; else -> 12.sp },
+                fontWeight = if (tier == 2) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(word.recordCount.toString(), color = foreground, fontSize = 11.sp, maxLines = 1)
         }
     }
-}
-
-/** Preserve foreground/background depth without washing out small labels in either theme. */
-private fun readableCloudColor(base: Color, preferredAlpha: Float, background: Color): Color {
-    val backgroundLuminance = background.luminance()
-    var alpha = preferredAlpha.coerceIn(0f, 1f)
-    while (alpha < 1f) {
-        val foregroundLuminance = base.copy(alpha = alpha).compositeOver(background).luminance()
-        val contrast = (maxOf(foregroundLuminance, backgroundLuminance) + .05f) /
-            (minOf(foregroundLuminance, backgroundLuminance) + .05f)
-        if (contrast >= 4.5f) break
-        alpha = (alpha + .05f).coerceAtMost(1f)
-    }
-    return base.copy(alpha = alpha)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ContentWordDetails(word: String, events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    semantics: List<EventSemantics>, appNames: Map<String, String>, onDismiss: () -> Unit) {
-    val groups by produceState<List<RecentContentGroup>?>(null, word, events, period, now, semantics) {
+    semantics: List<EventSemantics>, appNames: Map<String, String>, category: String?, onDismiss: () -> Unit) {
+    val groups by produceState<List<RecentContentGroup>?>(null, word, events, period, now, semantics, category) {
         value = null
-        value = withContext(Dispatchers.Default) { recentContentGroups(word, events, period, now, semantics) }
+        value = withContext(Dispatchers.Default) { recentContentGroups(word, events, period, now, semantics, category = category) }
     }
     ModalBottomSheet(onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {

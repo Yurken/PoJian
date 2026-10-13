@@ -15,13 +15,14 @@ data class RecentContentGroup(val key: String, val title: String, val points: Li
 
 /** Related claims are grouped by their concrete subject; original snapshots remain drill-down data. */
 fun recentContentGroups(word: String, events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    semantics: List<EventSemantics>, zone: ZoneId = ZoneId.systemDefault()): List<RecentContentGroup> {
+    semantics: List<EventSemantics>, zone: ZoneId = ZoneId.systemDefault(), category: String? = null): List<RecentContentGroup> {
     val key = conceptKey(word)
     val latest = latestSemantics(semantics)
     data class Entry(val title: String, val claim: ViewpointClaim, val record: BrowseEvent)
-    val entries = recentContentWordRecords(word, events, period, now, semantics, zone).flatMap { event ->
+    val entries = recentContentWordRecords(word, events, period, now, semantics, zone, category).flatMap { event ->
         latest[event.id]?.takeIf { it.validFor(event) }?.claims.orEmpty().filter { claim ->
-            listOf(claim.topic, claim.subject).mapNotNull(::cleanConcept).any { conceptKey(it) == key }
+            (category == null || cleanConcept(claim.topic)?.let(::conceptKey) == conceptKey(category)) &&
+                listOf(claim.topic, claim.subject).mapNotNull(::cleanConcept).any { conceptKey(it) == key }
         }.map { claim ->
             val title = listOf(claim.subject, claim.topic, claim.dimension).mapNotNull(::cleanConcept)
                 .firstOrNull { conceptKey(it) != key } ?: word
@@ -39,11 +40,11 @@ fun recentContentGroups(word: String, events: List<BrowseEvent>, period: Statist
         .thenByDescending { it.records.maxOf { record -> record.timestamp } }.thenBy { it.title })
 }
 
-/** A compact selection of model concepts, backed by distinct retained source snapshots. */
+/** Model concepts backed by distinct retained snapshots; the UI controls collapsed capacity. */
 fun recentContentWords(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    semantics: List<EventSemantics>, zone: ZoneId = ZoneId.systemDefault()): List<ContentWord> {
+    semantics: List<EventSemantics>, zone: ZoneId = ZoneId.systemDefault(), category: String? = null): List<ContentWord> {
     val selected = mutableListOf<ConceptSources>()
-    for (candidate in recentConceptSources(events, period, now, semantics, zone)) {
+    for (candidate in recentConceptSources(events, period, now, semantics, zone, category)) {
         // A broad topic adds no coverage when its more specific label points to exactly
         // the same sources. Do not guess synonyms or combine unrelated source sets.
         if (selected.any { existing ->
@@ -52,15 +53,25 @@ fun recentContentWords(events: List<BrowseEvent>, period: StatisticsPeriod, now:
                 (containsConcept(existing.key, candidate.key) || containsConcept(candidate.key, existing.key))
         }) continue
         selected += candidate
-        if (selected.size == 12) break
     }
     return selected.map { ContentWord(it.text, it.records.size) }
 }
 
+/** Only retained, valid model topics can become category filters. */
+fun recentContentCategories(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
+    semantics: List<EventSemantics>, zone: ZoneId = ZoneId.systemDefault()): List<String> {
+    val window = ObservationWindow.forPeriod(period, now, zone)
+    val latest = latestSemantics(semantics)
+    return events.asSequence().filter(window::contains).distinctBy { it.id }
+        .sortedByDescending { it.timestamp }.flatMap { event ->
+            latest[event.id]?.takeIf { it.validFor(event) }?.claims.orEmpty().asSequence()
+        }.mapNotNull { cleanConcept(it.topic) }.distinctBy(::conceptKey).toList()
+}
+
 /** Trace model concepts using the same input snapshot and time window as the cloud counts. */
 fun recentContentWordRecords(word: String, events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    semantics: List<EventSemantics>, zone: ZoneId = ZoneId.systemDefault()): List<BrowseEvent> =
-    recentConceptSources(events, period, now, semantics, zone)
+    semantics: List<EventSemantics>, zone: ZoneId = ZoneId.systemDefault(), category: String? = null): List<BrowseEvent> =
+    recentConceptSources(events, period, now, semantics, zone, category)
         .firstOrNull { it.key == conceptKey(word) }?.records?.values.orEmpty()
         .sortedWith(compareByDescending<BrowseEvent> { it.timestamp }.thenByDescending { it.id })
 
@@ -68,9 +79,9 @@ private data class ConceptSources(val key: String, val text: String,
     val records: MutableMap<List<String>, BrowseEvent> = linkedMapOf())
 
 private fun recentConceptSources(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    semantics: List<EventSemantics>, zone: ZoneId): List<ConceptSources> {
+    semantics: List<EventSemantics>, zone: ZoneId, category: String?): List<ConceptSources> {
     val groups = linkedMapOf<String, ConceptSources>()
-    recentConceptRecords(events, period, now, semantics, zone).forEach { (event, concepts) ->
+    recentConceptRecords(events, period, now, semantics, zone, category).forEach { (event, concepts) ->
         // Only identical full snapshots from the same source are duplicates. Different
         // claims, applications and growing snapshots retain their own source records.
         val source = listOf(event.packageName, event.sourceType, BrowseWorkKey.normalize(event.visibleText))
@@ -85,13 +96,15 @@ private fun recentConceptSources(events: List<BrowseEvent>, period: StatisticsPe
 }
 
 private fun recentConceptRecords(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    semantics: List<EventSemantics>, zone: ZoneId): List<Pair<BrowseEvent, List<String>>> {
+    semantics: List<EventSemantics>, zone: ZoneId, category: String?): List<Pair<BrowseEvent, List<String>>> {
     val window = ObservationWindow.forPeriod(period, now, zone)
     val latest = latestSemantics(semantics)
     return events.asSequence().filter(window::contains).distinctBy { it.id }
         .sortedWith(compareByDescending<BrowseEvent> { it.timestamp }.thenByDescending { it.id }).mapNotNull { event ->
             val result = latest[event.id]?.takeIf { it.validFor(event) } ?: return@mapNotNull null
-            val concepts = result.claims.asSequence().flatMap { sequenceOf(it.topic, it.subject) }
+            val concepts = result.claims.asSequence()
+                .filter { category == null || cleanConcept(it.topic)?.let(::conceptKey) == conceptKey(category) }
+                .flatMap { sequenceOf(it.topic, it.subject) }
                 .mapNotNull(::cleanConcept).distinctBy(::conceptKey).toList()
             event to concepts
         }.toList()

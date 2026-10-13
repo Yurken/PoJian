@@ -72,4 +72,29 @@ class RecentContentWordsTest {
         assertTrue(sources(records = listOf(current.copy(visibleText = "已修订"))).isEmpty())
         assertTrue(sources(model = results + result(current, at = now + 1).copy(inputText = "过期输入")).isEmpty())
     }
+
+    @Test fun expansionCanReachConceptsBeyondTheOldTwelveWordLimit() {
+        val events = (1L..18L).map { event(it) }
+        val results = events.map { result(it, "主题${it.id}", "对象${it.id}") }
+        assertEquals(36, words(events, results).size)
+        assertEquals(listOf(18L), recentContentWordRecords("对象18", events, StatisticsPeriod.DAY, now, results, zone).map { it.id })
+    }
+
+    @Test fun categoryUsesValidTopicsAndKeepsCountsAndDrillDownInTheSameScope() {
+        val a = event(1)
+        val b = event(2)
+        val old = event(3, now - 86_400_000)
+        val stale = event(4)
+        val results = listOf(result(a, " 科技 ", "隐私保护"), result(b, "社会", "隐私保护"),
+            result(old, "历史", "旧话题"), result(stale, "失效主题").copy(inputText = "过期"))
+        val events = listOf(a, b, old, stale)
+        assertEquals(setOf("科技", "社会"), recentContentCategories(events, StatisticsPeriod.DAY, now, results, zone).toSet())
+        assertEquals(2, words(events, results).single { it.text == "隐私保护" }.recordCount)
+        assertEquals(1, recentContentWords(events, StatisticsPeriod.DAY, now, results, zone, "科技")
+            .single { it.text == "隐私保护" }.recordCount)
+        assertEquals(listOf(1L), recentContentWordRecords("隐私保护", events, StatisticsPeriod.DAY, now, results, zone, "科技").map { it.id })
+        val groups = recentContentGroups("隐私保护", events, StatisticsPeriod.DAY, now, results, zone, "科技")
+        assertEquals(listOf(1L), groups.flatMap { it.records }.map { it.id })
+        assertTrue(recentContentWords(events, StatisticsPeriod.DAY, now, results, zone, "已删除").isEmpty())
+    }
 }
