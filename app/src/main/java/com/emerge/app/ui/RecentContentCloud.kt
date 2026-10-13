@@ -219,7 +219,7 @@ private fun RelatedContentPoint(point: RecentContentPoint, word: String, groupKe
                         .format(DateTimeFormatter.ofPattern("M/d HH:mm"))
                     SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
                         "${appNames[event.packageName] ?: event.packageName} · $time")
-                    QuoteBlock(event.visibleText)
+                    QuoteBlock(rememberOriginalText(event))
                 }
             }
             if (sourceLimit < point.records.size) PojianTextButton(onClick = { sourceLimit += 3 }) { Text("更多原文") }

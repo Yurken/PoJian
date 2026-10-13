@@ -33,6 +33,8 @@ import com.emerge.app.analysis.*
 import com.emerge.app.data.ObservedWork
 import com.emerge.app.data.sourceLabel
 import com.emerge.app.data.WorkThumbnail
+import com.emerge.app.data.contentText
+import com.emerge.app.capture.PlatformTextCleaner
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -136,7 +138,7 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
                             else -> "转写"
                         }
                         MetadataText("$source · ${format.format(Instant.ofEpochMilli(row.timestamp))}")
-                        QuoteBlock(row.visibleText)
+                        QuoteBlock(rememberOriginalText(row))
                     }
                 }
             }
@@ -144,8 +146,8 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
     }
 }
 
-private fun workTitle(work: ObservedWork?, item: ViewpointItem): String = work?.title?.takeIf { it.isNotBlank() }
-    ?: item.record.visibleText.lineSequence().map(String::trim).firstOrNull { it.length >= 8 } ?: "作品"
+private fun workTitle(work: ObservedWork?, item: ViewpointItem): String = work?.title?.let(PlatformTextCleaner::clean)?.takeIf { it.isNotBlank() }
+    ?: item.record.contentText.lineSequence().firstOrNull { it.length >= 8 } ?: "作品"
 
 @Composable
 private fun WorkImage(row: WorkThumbnail?, app: EmergeApplication?, imageSize: Dp = 88.dp) {

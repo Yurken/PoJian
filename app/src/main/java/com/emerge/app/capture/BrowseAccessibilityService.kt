@@ -152,20 +152,23 @@ open class BrowseAccessibilityService : AccessibilityService() {
             // Check the active package before traversing any visible text or descriptions.
             val identityNodes = mutableListOf<IdentityNode>()
             val text = extractText(root, identityNodes)
+            // Page structure and identity still need gallery/follow controls, even when prose excludes them.
+            val structureText = identityNodes.flatMap { listOf(it.text, it.description) }
+                .filter(String::isNotBlank).distinct().joinToString("\n")
             app.captureDiagnostics.update { it.copy(lastCheck = now, lastPackage = activePackage) }
             if (text.isBlank()) {
                 sessions.pause()
                 app.captureDiagnostics.update { it.copy(result = "可以访问窗口，但读不到可见文字（受画面或节点限制）") }
                 return
             }
-            if (WorkIdentityExtractor.isRecommendationList(activePackage, text, identityNodes)) {
+            if (WorkIdentityExtractor.isRecommendationList(activePackage, structureText, identityNodes)) {
                 sessions.reset()
                 app.captureDiagnostics.update { it.copy(result = "当前是推荐列表，摘要不计为已浏览作品；打开单篇后开始计数") }
                 return
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) { sessions.reset(); return }
             val elapsed = android.os.SystemClock.elapsedRealtime()
-            val hint = app.repository.resolveHint(activePackage, WorkIdentityExtractor.extract(activePackage, text, identityNodes))
+            val hint = app.repository.resolveHint(activePackage, WorkIdentityExtractor.extract(activePackage, structureText, identityNodes))
             if (hint.page == WorkPage.NON_CONTENT ||
                 (hint.page == WorkPage.COMMENTS && !sessions.canAttachComments(activePackage))) {
                 sessions.pause()
@@ -220,9 +223,10 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 identityNodes += IdentityNode(node.viewIdResourceName.orEmpty(),
                     node.text?.toString()?.trim()?.take(2000).orEmpty(),
                     node.contentDescription?.toString()?.trim()?.take(2000).orEmpty())
-                listOf(node.text, node.contentDescription).forEach { raw ->
-                    val line = raw?.toString()?.trim()?.take(2000)
-                    if (!line.isNullOrBlank() && lines.add(line)) length += line.length
+                val captured = identityNodes.last()
+                length += captured.text.length + captured.description.length
+                PlatformTextCleaner.nodeText(captured.text, captured.description, captured.resourceId).lines().forEach { line ->
+                    if (line.isNotBlank()) lines.add(line)
                 }
             }
             for (index in 0 until node.childCount) {

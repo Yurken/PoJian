@@ -502,7 +502,7 @@ private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<Strin
         event.visualSourceLabel?.let { MetadataText(it) }
         if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")
         SelectionContainer {
-            Text(event.visibleText, color = Ink, fontSize = 14.sp, lineHeight = 24.sp,
+            Text(rememberOriginalText(event), color = Ink, fontSize = 14.sp, lineHeight = 24.sp,
                 maxLines = if (expanded) Int.MAX_VALUE else 3)
         }
         PojianTextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(horizontal = 0.dp)) {

@@ -48,9 +48,9 @@ object WorkIdentityExtractor {
                 it.resourceId.substringAfterLast('/') in setOf("aweme_id", "video_id", "item_id", "note_id", "noteId")
             }.map { it.text }.filter { it.isNotBlank() }.distinct().size > 1)
 
-    private val chrome = Regex("^(?:关注|已关注|返回|更多内容|评论框|说点什么.*|共.*条评论|点赞.*|收藏.*|评论\\s*\\d*|\\d+|图片[，,].*|\\d+分钟前|昨天.*|今天.*)$")
-    fun body(text: String): List<String> = text.lines().map { it.trim().replace(Regex("\\s+"), " ") }
-        .filter { it.isNotBlank() && !chrome.matches(it) }
+    private val metadata = Regex("^(?:\\d+|\\d+分钟前|(?:昨天|今天)\\s+\\d{1,2}:\\d{2})$")
+    fun body(text: String): List<String> = PlatformTextCleaner.clean(text).lines()
+        .map { it.replace(Regex("\\s+"), " ") }.filter { it.isNotBlank() && !metadata.matches(it) }
 
     fun extract(packageName: String, text: String, nodes: List<IdentityNode> = emptyList()): WorkHint {
         if (isRecommendationList(packageName, text, nodes)) return WorkHint(page = WorkPage.NON_CONTENT)

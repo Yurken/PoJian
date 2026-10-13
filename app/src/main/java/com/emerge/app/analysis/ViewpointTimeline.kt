@@ -1,6 +1,7 @@
 package com.emerge.app.analysis
 
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.data.contentText
 import com.emerge.app.ui.StatisticsPeriod
 import java.time.Instant
 import java.time.ZoneId
@@ -130,7 +131,7 @@ object ViewpointTimeline {
                 it.analysisSource == "local_rules" && event.visibleText.contains(it.quote)
             }.map { ViewpointClaim(it.quote, it.topic,
                 it.subject, it.dimension, it.stance, it.conditions, it.uncertainAttribution, it.analysisSource, event, zone.id) }
-            val fallback = event.visibleText.lines().map {
+            val fallback = event.contentText.lines().map {
                 it.trim().replace(Regex("(?:\\.\\.\\.|…)?\\s*展开[>〉]?\\s*$"), "").trim()
             }
                 .firstOrNull { it.length in 10..300 && predicate.containsMatchIn(it) &&

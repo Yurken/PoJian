@@ -22,7 +22,8 @@ class TopicWorkCardsTest {
     @Test fun cardsShowTopicsShortViewpointsAndTimeThenOpenActualTextAndAnalysis() {
         val quote = "在岗位要求相近时，应届生需要结合岗位要求准备项目"
         val raw = "$quote。这里是保存的完整正文与说明，只能在作品详情里展示。"
-        val row = BrowseEvent(1, "reader", 1_000, 0, raw, endTimestamp = 121_000, durationMillis = 120_000,
+        val stored = "分享\n点赞 1.2万\n$raw\n关注\n评论(36)\n按钮\n直播\n推荐"
+        val row = BrowseEvent(1, "reader", 1_000, 0, stored, endTimestamp = 121_000, durationMillis = 120_000,
             sampleCount = 2, workKey = "work-a")
         val signal = ImpactSignal(ImpactLevel.HIGH, "持续只看同类材料可能强化担忧，需要结合适用条件判断。", quote)
         val presentation = ClaimPresentation("求职", "岗位要求相近时准备项目", signal, signal, signal,
@@ -45,5 +46,9 @@ class TopicWorkCardsTest {
         compose.onNodeWithText(presentation.suggestions.single()).assertIsDisplayed()
         compose.onNodeWithTag("work-detail-content").performScrollToIndex(3)
         compose.onAllNodesWithText(raw).onLast().assertIsDisplayed()
+        compose.onAllNodesWithText(stored).assertCountEquals(0)
+        listOf("分享", "点赞 1.2万", "关注", "评论(36)", "按钮", "直播", "推荐").forEach {
+            compose.onAllNodesWithText(it).assertCountEquals(0)
+        }
     }
 }

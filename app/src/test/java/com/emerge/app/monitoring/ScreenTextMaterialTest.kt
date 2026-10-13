@@ -13,6 +13,19 @@ class ScreenTextMaterialTest {
     private val parent = BrowseEvent(id = 10, packageName = "reader", timestamp = 1000, eventType = 32,
         visibleText = "已经读取的页面文字", endTimestamp = 2000, durationMillis = 1000, sampleCount = 2, workKey = "work")
 
+    @Test fun controlsNeverBecomeExtraOcrMaterialOrModelInput() {
+        val controls = "分享\n点赞 123\n关注\n评论 (36)\n直播\n推荐\n按钮"
+        assertEquals("", ScreenTextMaterial.additionalText(controls, parent.visibleText))
+        val body = "推荐比较岗位条件，不要仅凭点赞数量做判断。"
+        val extra = ScreenTextMaterial.additionalText("$controls\n$body", parent.visibleText)
+        assertEquals(body, extra)
+        val material = ScreenTextMaterial.event("reader", "$extra\n分享", 2500, parent)
+        assertEquals(body, material.visibleText)
+        assertEquals("$body\n${parent.visibleText}", ScreenTextMaterial.inputText("${parent.visibleText}\n$controls", material))
+        assertEquals(parent.id, material.parentEventId)
+        assertEquals(0L, material.durationMillis)
+    }
+
     @Test fun filtersExactAccessibleLinesWithoutDroppingNegationOrNumbers() {
         assertEquals("支持这项政策\n同比减少20%", ScreenTextMaterial.additionalText(
             "页面 标题\n支持这项政策\n同比减少20%", "页面标题\n不支持这项政策\n同比减少2%"))

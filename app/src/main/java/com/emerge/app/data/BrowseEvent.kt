@@ -29,6 +29,10 @@ data class BrowseEvent(
     @ColumnInfo(defaultValue = "NULL") val parentEventId: Long? = null
 )
 
+/** Non-destructive historical display: keep the stored snapshot valid for existing analysis. */
+val BrowseEvent.contentText: String
+    get() = com.emerge.app.capture.PlatformTextCleaner.forSource(visibleText, sourceType)
+
 /** Necessary source metadata for machine-read text, never a claim of a second viewing. */
 val BrowseEvent.visualSourceLabel: String?
     get() = when (sourceType) {

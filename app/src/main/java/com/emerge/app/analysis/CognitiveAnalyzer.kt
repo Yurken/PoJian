@@ -1,6 +1,7 @@
 package com.emerge.app.analysis
 
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.data.contentText
 import com.emerge.app.ui.StatisticsPeriod
 import java.time.Instant
 import java.time.ZoneId
@@ -267,10 +268,10 @@ class CognitiveAnalyzer {
 
     private fun clean(event: BrowseEvent): List<String> {
         if (event.packageName.contains("launcher") || event.packageName == "com.android.systemui") return emptyList()
-        return event.visibleText.split(Regex("[\\n。！？]+"))
+        return event.contentText.split(Regex("[\\n。！？]+"))
             .map { it.trim().replace(Regex("\\s+"), " ") }.filter { line ->
                 line.length >= 8 && line !in uiLabels && !Regex("^[0-9.,万千\\s:+/-]+$").matches(line) &&
-                    !line.startsWith("http") && !line.matches(Regex(".*(?:点赞|评论|收藏|粉丝)\\s*[0-9.万千]+.*"))
+                    !line.startsWith("http")
             }.distinct().take(100)
     }
     private fun detectTopic(text: String): String? = topics.entries.map { entry ->
