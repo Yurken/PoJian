@@ -1,6 +1,7 @@
 package com.emerge.app.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,6 +9,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -237,7 +240,10 @@ private fun ApplicationFilterRow(label: String, detail: String, selected: Boolea
 fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture: (Boolean) -> Unit,
     onOpenSettings: () -> Unit, onClear: () -> Unit, message: String?, modifier: Modifier = Modifier,
     diagnostics: CaptureStatus = CaptureStatus(), selectedApps: List<CaptureApp> = emptyList(), onChooseApps: () -> Unit = {},
-    audioContent: (@Composable () -> Unit)? = null, updateContent: (@Composable () -> Unit)? = null) {
+    audioContent: (@Composable () -> Unit)? = null, updateContent: (@Composable () -> Unit)? = null,
+    transcriptContent: (@Composable () -> Unit)? = null,
+    storageUsage: com.emerge.app.data.LocalStorageUsage = com.emerge.app.data.LocalStorageUsage(),
+    onSaveStorageLimit: suspend (Long) -> Unit = {}) {
     val captureState = when {
         selectedApps.isEmpty() -> "尚未选择要记录的应用"
         !enabled -> "采集已暂停"
@@ -298,10 +304,22 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 }
             }
         }
-        item(key = "local-thumbnails") { LocalThumbnailControl() }
-        audioContent?.let { content -> item(key = "audio-settings") { content() } }
-        item {
-            WhiteCard {
+        item(key = "system-authorization") {
+            if (permission && diagnostics.connected) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable(role = Role.Button, onClickLabel = "查看系统辅助功能授权", onClick = onOpenSettings)
+                    .testTag("system-authorization-summary")
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("系统授权", Modifier.weight(1f), color = Muted,
+                        style = MaterialTheme.typography.bodyMedium)
+                    Text("已启用", color = Muted, style = MaterialTheme.typography.bodySmall)
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null,
+                        tint = Muted, modifier = Modifier.size(18.dp))
+                }
+            } else WhiteCard {
                 SectionTitle("系统授权", help = "在系统设置中开启「破茧浏览采集」，然后打开采集开关。\n\n" +
                     "本次运行已接收事件 ${diagnostics.eventsReceived} 次\n" +
                     "最近应用：${diagnostics.lastPackage}\n" +
@@ -318,17 +336,11 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                 }
             }
         }
-        item {
-            WhiteCard {
-                SectionTitle("本地存储", help = "最多保留 5000 条，超出后删除最早记录。删除后分析同步更新，导出文件需自行删除。\n\n浏览目的会保留；浏览回顾重启后需重新生成。音频回顾随转写保存，修订后需重新分析。")
-                ControlStatusLine("已保存记录", "$count 条")
-                ControlStatusLine("保留上限", "5000 条")
-                PojianTextButton(onClick = onClear, enabled = count > 0,
-                    modifier = Modifier.heightIn(min = 48.dp).align(Alignment.Start)) {
-                    Text("清空全部记录",
-                        color = if (count > 0) MaterialTheme.colorScheme.error else Muted)
-                }
-            }
+        transcriptContent?.let { content -> item(key = "audio-transcript-records") { content() } }
+        item(key = "local-thumbnails") { LocalThumbnailControl() }
+        audioContent?.let { content -> item(key = "audio-settings") { content() } }
+        item(key = "local-storage") {
+            LocalStorageSettingsCard(storageUsage, canClear = count > 0, onClear, onSaveStorageLimit)
         }
         item(key = "synthetic-demo") { SyntheticDemoEntry() }
         updateContent?.let { content -> item(key = "update-settings") { content() } }

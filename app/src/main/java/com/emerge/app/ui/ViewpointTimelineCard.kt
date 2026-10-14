@@ -2,11 +2,13 @@ package com.emerge.app.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -22,6 +24,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.*
@@ -66,44 +69,51 @@ private fun ViewpointTimelineChart(state: ViewpointTimelineUiState, plotHeight: 
     val bucket = buckets[state.index]
     val maximum = buckets.maxOfOrNull { it.items.size }?.coerceAtLeast(1) ?: 1
     val scroll = rememberScrollState()
-    val step = with(LocalDensity.current) { 38.dp.roundToPx() }
-    LaunchedEffect(state.period, scroll.maxValue) {
-        if (!state.hasSelection && buckets.size > 7) scroll.scrollTo((state.index * step - step * 3).coerceIn(0, scroll.maxValue))
+    val colors = MaterialTheme.colorScheme
+    val labelStyle = MaterialTheme.typography.labelMedium
+    val density = LocalDensity.current
+    val textMeasurer = rememberTextMeasurer()
+    val labelWidth = remember(buckets, labelStyle, textMeasurer) {
+        buckets.maxOf { textMeasurer.measure(it.label, labelStyle, softWrap = false).size.width }
     }
+    val minimumWidth = maxOf(48.dp, with(density) { labelWidth.toDp() } + 12.dp)
     val total = state.groups.firstOrNull()?.total ?: 0
     val works = state.groups.flatMap { it.items }.distinctBy { it.workIdentity }
     WhiteCard {
         SectionTitle("浏览趋势", help = analysisSourceLabel("各时段独立去重，同一作品可能跨时段出现，数量不能直接相加。\n\n${bucket.items.count { it.analysisSource == "structured_model" }}/${bucket.items.size} 个作品有云端采样结果，其余使用本地识别。采样仅覆盖部分内容，可查看原文核对。\n\n观点分布统计范围为当前范围 $total 个去重作品，含未识别部分；一部作品可含多个观点，各组比例之和可能超过 100%。${works.count { it.analysisSource == "structured_model" }}/$total 个作品有有效云端采样结果，其余使用本地识别。云端分析按主题、对象、维度、条件和立场归组；信息不明确时标为待确认，未提取观点时标为未识别。采样不代表整部作品已分析，音频和视觉文字不单独增加作品数或停留时长。"))
         Text("${bucket.label} · ${bucket.items.size} 个作品", style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.fillMaxWidth().height(plotHeight + 40.dp)) {
+        Row(Modifier.fillMaxWidth().heightIn(min = plotHeight + 40.dp)) {
             Column(Modifier.width(32.dp).height(plotHeight), verticalArrangement = Arrangement.SpaceBetween) {
                 MetadataText("$maximum"); MetadataText("${maximum / 2}"); MetadataText("0")
             }
             BoxWithConstraints(Modifier.weight(1f)) {
-                val width = if (buckets.size <= 7) maxWidth / buckets.size else 38.dp
+                val width = if (buckets.size <= 7) maxOf(minimumWidth, maxWidth / buckets.size) else minimumWidth
+                val step = with(density) { width.roundToPx() }
+                LaunchedEffect(state.period, scroll.maxValue, step) {
+                    if (!state.hasSelection && scroll.maxValue > 0) {
+                        scroll.scrollTo((state.index * step - step * 3).coerceIn(0, scroll.maxValue))
+                    }
+                }
                 Row(Modifier.horizontalScroll(scroll), verticalAlignment = Alignment.Bottom) {
                     buckets.forEachIndexed { i, b ->
-                        Column(Modifier.width(width).clickable(role = Role.Button) { state.select(i) }.testTag("viewpoint-bar-$i")
+                        val isSelected = i == state.index
+                        Column(Modifier.width(width)
+                            .border(2.dp, if (isSelected) colors.primary else Color.Transparent, RoundedCornerShape(8.dp))
+                            .clickable(role = Role.Button) { state.select(i) }.testTag("viewpoint-bar-$i")
                             .semantics { contentDescription = "${b.label}，${b.items.size}个作品，点击查看主题观点"; selected = i == state.index },
                             horizontalAlignment = Alignment.CenterHorizontally) {
                             Canvas(Modifier.fillMaxWidth().height(plotHeight).padding(horizontal = 6.dp)) {
                                 listOf(0f, .5f, 1f).forEach { fraction ->
-                                    drawLine(Color(0xFFE6E8EC), Offset(0f, size.height * fraction), Offset(size.width, size.height * fraction))
+                                    drawLine(colors.outlineVariant, Offset(0f, size.height * fraction), Offset(size.width, size.height * fraction))
                                 }
                                 val fraction = b.items.size.toFloat() / maximum
                                 val height = if (b.items.isEmpty()) 3.dp.toPx() else size.height * fraction
-                                // Solid colors follow relative bar height, not an inferred risk score.
-                                val color = when {
-                                    b.items.isEmpty() -> Color(0xFFD7DEDA)
-                                    fraction <= 1f / 3f -> Color(0xFF75AE91)
-                                    fraction <= 2f / 3f -> Color(0xFFD2B967)
-                                    else -> Color(0xFFCE817B)
-                                }
+                                val color = if (b.items.isEmpty()) colors.outline else colors.primary
                                 drawRoundRect(color,
                                     topLeft = Offset(0f, size.height - height), size = Size(size.width, height), cornerRadius = CornerRadius(4.dp.toPx()))
                             }
-                            Text(b.label, Modifier.padding(top = 8.dp), color = if (i == state.index) Ink else Muted,
-                                style = MaterialTheme.typography.labelMedium)
+                            Text(b.label, Modifier.padding(top = 8.dp, bottom = 4.dp), color = if (isSelected) Ink else Muted,
+                                style = labelStyle, maxLines = 1, softWrap = false)
                         }
                     }
                 }
@@ -119,7 +129,7 @@ private fun ViewpointTimelineContent(state: ViewpointTimelineUiState, appNames: 
     WhiteCard {
         if (state.hasSelection) Column(Modifier.testTag("viewpoint-details"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                MetadataText("${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}")
+                MetadataText("${format.format(Instant.ofEpochMilli(bucket.start))} — ${format.format(Instant.ofEpochMilli(bucket.end))}", Modifier.weight(1f).padding(end = 8.dp))
                 PojianTextButton(onClick = state.clearSelection) { Text("全部观点") }
             }
             if (bucket.items.isEmpty()) MetadataText("该时段暂无作品。")

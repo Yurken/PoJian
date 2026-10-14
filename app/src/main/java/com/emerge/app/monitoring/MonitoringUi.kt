@@ -11,12 +11,20 @@ import com.emerge.app.ui.ServiceConnectionTest
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.emerge.app.ui.SectionTitle
@@ -27,6 +35,7 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
     requestCount: Int, frameCount: Int, onCloud: () -> Unit, onCaptureTools: () -> Unit,
     cloudEnabled: Boolean = false, onCloudEnabledChange: (Boolean) -> Unit = {},
     cloudConfig: TextServiceConfig? = null) {
+    var showMore by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("监测与提醒", help = "悬浮球：在所选应用内点击核查。\n观点重复观察：比较议题、观点与依据。\n实时事实核查：自动核查新增文字与口播。\n关键画面分析：采样当前画面，需 Android 11 及以上。\n专题研究模式：保留统计，暂缓重复提醒。\n夜间免打扰：${config.quietStart}:00—${config.quietEnd}:00 不主动提醒，提醒始终静音。")
         MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
@@ -38,9 +47,20 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         MonitorSwitch("观点重复观察", "", config.cocoon) { onChange(config.copy(cocoon = it)) }
         MonitorSwitch("专题研究模式", "", config.researchMode) { onChange(config.copy(researchMode = it)) }
         MonitorSwitch("夜间免打扰", "${config.quietStart}:00—${config.quietEnd}:00", config.quiet) { onChange(config.copy(quiet = it)) }
-        MonitorSlider("提醒间隔", config.cooldownMinutes, 5..180, "分钟") { onChange(config.copy(cooldownMinutes = it)) }
-        MonitorSlider("每日提醒上限", config.dailyAlerts, 0..30, "次") { onChange(config.copy(dailyAlerts = it)) }
-        MonitorSlider("自动提示停留", config.displaySeconds, 2..8, "秒") { onChange(config.copy(displaySeconds = it)) }
+        PojianTextButton(onClick = { showMore = !showMore },
+            modifier = Modifier.fillMaxWidth().testTag("monitor-more")
+                .semantics { stateDescription = if (showMore) "已展开" else "已收起" }) {
+            Text("更多", Modifier.weight(1f))
+            Icon(if (showMore) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                contentDescription = null, modifier = Modifier.size(18.dp))
+        }
+        if (showMore) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                MonitorSlider("提醒间隔", config.cooldownMinutes, 5..180, "分钟") { onChange(config.copy(cooldownMinutes = it)) }
+                MonitorSlider("每日提醒上限", config.dailyAlerts, 0..30, "次") { onChange(config.copy(dailyAlerts = it)) }
+                MonitorSlider("自动提示停留", config.displaySeconds, 2..8, "秒") { onChange(config.copy(displaySeconds = it)) }
+            }
+        }
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Text("今日云端请求 $requestCount 次（含画面 $frameCount 次）", style = MaterialTheme.typography.bodySmall)
         cloudConfig?.let { ServiceConnectionTest(it) }
@@ -50,13 +70,15 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
 
 @Composable
 private fun MonitorSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Row(Modifier.fillMaxWidth().testTag("monitor-switch-$title")
+        .toggleable(checked, role = Role.Switch, onValueChange = onChange),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
             Text(title)
             if (title == "云端分析" || title == "允许云端分析" || title == "夜间免打扰")
                 Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        PojianSwitch(checked = checked, onCheckedChange = onChange, modifier = Modifier.testTag("monitor-switch-$title"))
+        PojianSwitch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -68,7 +90,11 @@ private fun MonitorSlider(title: String, value: Int, range: IntRange, unit: Stri
         Text("${draft.toInt()} $unit", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     PojianSlider(value = draft, onValueChange = { draft = it }, onValueChangeFinished = { onChange(draft.toInt()) },
-        valueRange = range.first.toFloat()..range.last.toFloat())
+        valueRange = range.first.toFloat()..range.last.toFloat(),
+        modifier = Modifier.semantics {
+            contentDescription = title
+            stateDescription = "${draft.toInt()} $unit"
+        })
 }
 
 @Composable

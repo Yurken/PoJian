@@ -3,6 +3,9 @@ package com.emerge.app.analysis
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -26,6 +29,8 @@ import com.emerge.app.ui.AudioSessionUi
 import com.emerge.app.ui.AudioTaskPhase
 import com.emerge.app.ui.AudioTaskUiState
 import com.emerge.app.ui.AudioUiState
+import com.emerge.app.ui.AudioTranscriptSettings
+import com.emerge.app.ui.SettingsScreen
 import com.emerge.app.ui.RecordsScreen
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -35,6 +40,41 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AudioUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun settingsOffersDirectAccessAndShowsSavedTextAsItArrives() {
+        val initial = fixtureSession().copy(segments = emptyList(), statusLabel = "正在录音")
+        var sessions by mutableStateOf(listOf(initial))
+        var opened: String? = null
+        var recordOpens = 0
+        render {
+            SettingsScreen(false, false, 0, {}, {}, {}, null, transcriptContent = {
+                AudioTranscriptSettings(sessions, { recordOpens++ }, { opened = it.id })
+            })
+        }
+        compose.onNodeWithTag("settings-audio-status").performScrollTo()
+        compose.onNodeWithText("正在录音 · 已保存 0 段文字").assertIsDisplayed()
+        compose.runOnIdle { sessions = listOf(fixtureSession().copy(statusLabel = "转写成功")) }
+        compose.onNodeWithTag("settings-audio-status").performScrollTo()
+        compose.onNodeWithText("转写成功 · 已保存 1 段文字").assertIsDisplayed()
+        compose.onNodeWithText("原始观点可能识别有误").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("settings-audio-latest").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("session-7", opened) }
+        compose.onNodeWithTag("settings-audio-records").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(1, recordOpens) }
+    }
+
+    @Test fun latestFailedRecordingRemainsVisibleAlongsidePreviouslySavedWords() {
+        val earlier = fixtureSession()
+        val failed = earlier.copy(id = "latest-failure", createdAt = earlier.createdAt + 1000,
+            statusLabel = "转写中断", errorMessage = "录音中断，请重新授权后重试")
+        var opened: String? = null
+        render { AudioTranscriptSettings(listOf(failed, earlier), {}, { opened = it.id }) }
+        compose.onNodeWithText("转写中断 · 已保存 1 段文字").assertIsDisplayed()
+        compose.onNodeWithText("录音中断，请重新授权后重试").assertIsDisplayed()
+        compose.onNodeWithText("原始观点可能识别有误").assertIsDisplayed()
+        compose.onNodeWithTag("settings-audio-latest").performClick()
+        compose.runOnIdle { assertEquals("latest-failure", opened) }
+    }
 
     @Test fun modelPreparationGatesAudioActionsAndStartsOnlyRequestedDownload() {
         var downloadCalls = 0

@@ -55,9 +55,10 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
     Column(modifier.fillMaxSize()) {
         PojianSegmentedTabs(listOf("重复观点", "事实核查"), filter, onSelect = { filter = it },
             counts = listOf(repetitions.size, facts.size),
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("monitor-discovery-list"),
-            contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.pending > 0) item { MetadataText("正在处理 ${state.pending} 项") }
             if (displayed.isEmpty()) item {
                 Text(if (filter == 0) "暂未发现重复观点" else "暂无核查结果",
@@ -103,20 +104,18 @@ private fun FactCheckCard(finding: MonitorFinding, onOpen: () -> Unit) {
     Surface(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth().testTag("discovery-${finding.id}"),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.medium,
         color = scheme.surface,
         contentColor = scheme.onSurface,
         border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.7f))
     ) {
         Column {
-            Column(Modifier.padding(start = 18.dp, end = 18.dp, top = 18.dp, bottom = 14.dp),
+            Column(Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 VerdictBadge(finding.verdict)
                 Text(
                     text = "“${finding.claim}”",
                     style = MaterialTheme.typography.titleMedium,
-                    fontSize = 17.sp,
-                    lineHeight = 26.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
@@ -131,13 +130,13 @@ private fun FactCheckCard(finding: MonitorFinding, onOpen: () -> Unit) {
                     )
                 }
             }
-            HorizontalDivider(Modifier.padding(horizontal = 18.dp),
+            HorizontalDivider(Modifier.padding(horizontal = 16.dp),
                 color = scheme.outlineVariant.copy(alpha = 0.6f))
             PojianTextButton(
                 onClick = onOpen,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
                 shape = RoundedCornerShape(0.dp),
-                contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
             ) {
                 Text("查看核查依据", modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.labelLarge)

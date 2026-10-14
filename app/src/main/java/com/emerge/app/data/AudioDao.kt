@@ -43,16 +43,20 @@ interface AudioDao {
     @Query("UPDATE audio_sessions SET contentVersion = contentVersion + 1, analysisJson = NULL")
     suspend fun invalidateAllAnalyses()
 
-    @Query("SELECT EXISTS(SELECT 1 FROM browse_events WHERE audioSessionId IS NOT NULL AND id NOT IN (SELECT id FROM browse_events ORDER BY timestamp DESC, id DESC LIMIT 5000))")
-    suspend fun trimsAudio(): Boolean
-
     @Query("UPDATE audio_sessions SET generation = generation + 1, status = 'cancelled', analysisJson = NULL WHERE id IN (SELECT audioSessionId FROM browse_events WHERE id = :eventId)")
     suspend fun invalidateForEvent(eventId: Long)
 
-    @Query("UPDATE audio_sessions SET generation = generation + 1, status = 'cancelled', analysisJson = NULL WHERE id IN (SELECT audioSessionId FROM browse_events WHERE id NOT IN (SELECT id FROM browse_events ORDER BY timestamp DESC, id DESC LIMIT 5000))")
-    suspend fun invalidateTrimmedSessions()
+    @Query("""SELECT s.id,s.startedAt FROM audio_sessions s
+        WHERE s.status IN ('completed','failed','cancelled')
+        AND NOT EXISTS (SELECT 1 FROM browse_events e WHERE e.audioSessionId=s.id
+            AND e.parentEventId=(SELECT id FROM browse_events WHERE sourceType='accessibility'
+                AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1))
+        ORDER BY s.startedAt,s.id LIMIT 1""")
+    suspend fun oldestStorageSession(): StorageAudioCandidate?
 
     @Query("DELETE FROM audio_sessions WHERE id = :id") suspend fun deleteSession(id: String)
     @Query("DELETE FROM audio_sessions WHERE packageName = :packageName") suspend fun deletePackage(packageName: String)
     @Query("DELETE FROM audio_sessions") suspend fun clear()
 }
+
+data class StorageAudioCandidate(val id: String, val startedAt: Long)

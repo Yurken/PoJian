@@ -30,8 +30,6 @@ interface BrowseEventDao {
     suspend fun lastSampleText(visitId: Long): String?
     @Query("DELETE FROM browse_samples WHERE visitId = :visitId AND id NOT IN (SELECT id FROM browse_samples WHERE visitId = :visitId ORDER BY id DESC LIMIT 120)")
     suspend fun trimSamples(visitId: Long)
-    @Query("DELETE FROM browse_samples WHERE id NOT IN (SELECT id FROM browse_samples ORDER BY capturedAt DESC, id DESC LIMIT 5000)")
-    suspend fun trimAllSamples()
     @Query("DELETE FROM observed_works WHERE workKey NOT IN (SELECT workKey FROM browse_events WHERE workKey IS NOT NULL)")
     suspend fun trimWorks()
     @Query("SELECT * FROM browse_events WHERE sourceType != 'recommendation_list' ORDER BY timestamp DESC, id DESC")
@@ -53,6 +51,14 @@ interface BrowseEventDao {
     @Query("DELETE FROM browse_events WHERE id = :id") suspend fun deleteEvent(id: Long)
     @Query("DELETE FROM browse_events WHERE packageName = :packageName") suspend fun deletePackage(packageName: String)
     @Query("DELETE FROM browse_events") suspend fun clear()
-    @Query("DELETE FROM browse_events WHERE id NOT IN (SELECT id FROM browse_events ORDER BY timestamp DESC, id DESC LIMIT 5000)")
-    suspend fun trim()
+    // Audio is evicted as a whole session first. Never cascade a partial transcript session.
+    @Query("""SELECT e.id, e.timestamp FROM browse_events e
+        WHERE e.parentEventId IS NULL AND e.audioSessionId IS NULL
+        AND e.id != COALESCE((SELECT id FROM browse_events
+            WHERE sourceType='accessibility' AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1), -1)
+        AND NOT EXISTS (SELECT 1 FROM browse_events child WHERE child.parentEventId=e.id AND child.audioSessionId IS NOT NULL)
+        ORDER BY e.timestamp,e.id LIMIT 1""")
+    suspend fun oldestStorageVisit(): StorageVisitCandidate?
 }
+
+data class StorageVisitCandidate(val id: Long, val timestamp: Long)

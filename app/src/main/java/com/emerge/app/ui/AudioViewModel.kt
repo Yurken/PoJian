@@ -23,20 +23,21 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val localMessage = MutableStateFlow<String?>(null)
     val alert = combine(localMessage, coordinator.message) { local, shared -> local ?: shared }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val sessions = combine(app.audioRepository.sessions, app.audioRepository.allTranscripts, coordinator.analyzing) { sessions, transcripts, analyzing ->
+    val sessions = combine(app.audioRepository.sessions, app.audioRepository.allTranscripts, coordinator.analyzing,
+        runtime.state.map { it.sessionId to (it.isCapturing && it.isPaused) }.distinctUntilChanged()) { sessions, transcripts, analyzing, paused ->
         val grouped = transcripts.groupBy { it.sessionId }
         val transcriptById = transcripts.associateBy { it.id }
         val sessionById = sessions.associateBy { it.id }
         sessions.map { session ->
             val report = session.analysisJson?.let(AudioInsightCodec::decode)
+            val segments = grouped[session.id].orEmpty().sortedWith(compareBy({ it.offsetStartMillis }, { it.id }))
+            val savedSegments = segments.count { it.displayText.isNotBlank() }
             AudioSessionUi(session.id, session.title,
                 if (session.source == AudioSource.IMPORT) "导入音频" else "应用录音",
                 session.startedAt, session.durationMillis,
-                grouped[session.id].orEmpty().map { AudioSegmentUi(it.id, it.offsetStartMillis, it.offsetEndMillis, it.originalText, it.correctedText) },
-                when (session.status) {
-                    "created" -> "正在准备"; "recording" -> "正在录音"; "transcribing" -> "正在转写"
-                    "completed" -> "已完成"; "failed" -> "处理失败"; else -> "已停止"
-                }, session.errorMessage, report?.method, report?.summary,
+                segments.map { AudioSegmentUi(it.id, it.offsetStartMillis, it.offsetEndMillis, it.originalText, it.correctedText) },
+                if (paused.first == session.id && paused.second && session.status == "recording") "录音已暂停"
+                else audioTranscriptStatus(session.status, savedSegments), session.errorMessage, report?.method, report?.summary,
                 report?.claims.orEmpty().map { claim ->
                     val source = transcriptById[claim.segmentId]
                     val previous = (claim.historySegmentId ?: claim.comparedSegmentId)?.let(transcriptById::get)

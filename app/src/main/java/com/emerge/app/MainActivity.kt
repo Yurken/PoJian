@@ -65,6 +65,8 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val all by model.allEvents.collectAsStateWithLifecycle()
     val semantics by model.semantics.collectAsStateWithLifecycle()
     val count by model.count.collectAsStateWithLifecycle()
+    val storageUsage by app.localStorage.usage.collectAsStateWithLifecycle()
+    val storageLimit by app.localStorageSettings.limitBytes.collectAsStateWithLifecycle()
     val enabled by model.captureEnabled.collectAsStateWithLifecycle()
     val allowed by model.allowedPackages.collectAsStateWithLifecycle()
     val availableApps by model.availableApps.collectAsStateWithLifecycle()
@@ -81,6 +83,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         if (uri != null) model.exportReport(uri, false) else model.cancelExport()
     }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    LaunchedEffect(tab) { if (tab == 2) app.localStorage.refresh() }
     var viewpointScrolling by remember { mutableStateOf(false) }
     var period by rememberSaveable { mutableStateOf(StatisticsPeriod.DAY) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -102,6 +105,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     DisposableEffect(owner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                app.localStorage.refresh()
                 model.refreshPermission(); now = System.currentTimeMillis(); model.refreshReportWindow(now)
             }
         }
@@ -182,7 +186,13 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                             cloudEnabled = audioConfig.enabled, onCloudEnabledChange = { value ->
                                 audioModel.saveConfig(audioConfig.copy(enabled = value), {}, { error -> app.monitor.notice(error) })
                             }, cloudConfig = audioConfig)
-                    }, updateContent = { com.emerge.app.update.UpdateSettingsSection() })
+                    }, updateContent = { com.emerge.app.update.UpdateSettingsSection() },
+                    storageUsage = storageUsage.copy(limitBytes = storageLimit),
+                    onSaveStorageLimit = { bytes -> withContext(Dispatchers.IO) { app.localStorageSettings.setLimitBytes(bytes) } },
+                    transcriptContent = {
+                        AudioTranscriptSettings(audioSessions, onOpenRecords = { showAudioRecords = true },
+                            onSession = { audioDetailId = it.id })
+                    })
             }
         }
     }

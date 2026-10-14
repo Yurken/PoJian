@@ -61,9 +61,6 @@ class BrowseRepository(private val database: BrowseDatabase) {
 
     suspend fun record(event: BrowseEvent) = database.withTransaction {
         val id = dao.insert(event)
-        if (audio.trimsAudio()) audio.invalidateAllAnalyses()
-        audio.invalidateTrimmedSessions()
-        dao.trim()
         dao.trimWorks()
         id
     }
@@ -156,9 +153,6 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 event.id.takeIf { dao.update(event) > 0 }
             } else {
                 val inserted = dao.insert(event)
-                if (audio.trimsAudio()) audio.invalidateAllAnalyses()
-                audio.invalidateTrimmedSessions()
-                dao.trim()
                 if (current()) inserted else {
                     dao.deleteEvent(inserted)
                     null
@@ -181,7 +175,6 @@ class BrowseRepository(private val database: BrowseDatabase) {
                     dao.insertSample(BrowseSample(visitId = savedId,
                         capturedAt = event.endTimestamp, eventType = event.eventType, visibleText = sampleText))
                     dao.trimSamples(savedId)
-                    dao.trimAllSamples()
                 }
             }
             dao.trimWorks()
@@ -202,6 +195,25 @@ class BrowseRepository(private val database: BrowseDatabase) {
             dao.deleteEvent(id)
             dao.trimWorks()
         } }
+    }
+
+    /** One complete, unprotected unit per transaction; selection cannot race an audio append. */
+    internal suspend fun evictOldestStorageUnit(): Boolean = captureMutex.withLock {
+        database.withTransaction {
+            val visit = dao.oldestStorageVisit()
+            val session = audio.oldestStorageSession()
+            if (visit == null && session == null) return@withTransaction false
+            // Do not revoke a new visit sampled concurrently with unrelated retention cleanup.
+            // Existing capture/semantic writes check the row/parent and never upsert a deleted visit.
+            if (session != null && (visit == null || session.startedAt <= visit.timestamp)) {
+                audio.invalidateAllAnalyses()
+                audio.deleteSession(session.id)
+            } else {
+                dao.deleteEvent(requireNotNull(visit).id)
+            }
+            dao.trimWorks()
+            true
+        }
     }
 
     suspend fun deletePackage(packageName: String) {

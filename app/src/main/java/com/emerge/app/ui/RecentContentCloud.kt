@@ -40,7 +40,10 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
-private data class RecentCloudContent(val categories: List<String>, val category: String?, val words: List<ContentWord>)
+private data class RecentCloudRequest(val events: List<BrowseEvent>, val period: StatisticsPeriod, val now: Long,
+    val semantics: List<EventSemantics>, val category: String?)
+private data class RecentCloudContent(val request: RecentCloudRequest, val categories: List<String>,
+    val category: String?, val words: List<ContentWord>)
 
 @Composable
 internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
@@ -48,25 +51,32 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
     var category by rememberSaveable(period) { mutableStateOf<String?>(null) }
     var expanded by rememberSaveable(period, category) { mutableStateOf(false) }
     var selected by rememberSaveable(period, category) { mutableStateOf<String?>(null) }
-    val content by produceState<RecentCloudContent?>(null, events, period, now, semantics, category) {
-        value = null
+    val request = remember(events, period, now, semantics, category) {
+        RecentCloudRequest(events, period, now, semantics, category)
+    }
+    val content by produceState<RecentCloudContent?>(null, request) {
         value = withContext(Dispatchers.Default) {
-            val categories = recentContentCategories(events, period, now, semantics)
-            val active = category?.takeIf { it in categories }
-            RecentCloudContent(categories, active, recentContentWords(events, period, now, semantics, category = active))
+            val categories = recentContentCategories(request.events, request.period, request.now, request.semantics)
+            val active = request.category?.takeIf { it in categories }
+            RecentCloudContent(request, categories, active,
+                recentContentWords(request.events, request.period, request.now, request.semantics, category = active))
         }
     }
-    val current = content
+    // Keep the previous layout only within its requested or resolved filter scope.
+    // The resolved scope also covers a removed category falling back to all content.
+    val current = content?.takeIf { it.request.period == period &&
+        (it.request.category == category || it.category == category) }
+    val isCurrent = content?.request == request
     val collapsedLines = if (LocalDensity.current.fontScale > 1.3f) 2 else 3
-    LaunchedEffect(current) {
-        if (current != null) {
+    LaunchedEffect(content, request) {
+        if (isCurrent && current != null) {
             category = current.category
             if (current.words.none { it.text == selected }) selected = null
         }
     }
     WhiteCard(Modifier.testTag("recent-content-card").animateContentSize(tween(220))) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("近期接触", color = Ink, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+            Text("近期接触", color = Ink, style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f).semantics { heading() })
             if (current != null && current.words.size > collapsedLines) {
                 PojianTextButton(onClick = { expanded = !expanded }, modifier = Modifier.testTag("recent-content-expand")) {
@@ -79,10 +89,10 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
         if (current != null && current.categories.size > 1) {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = current.category == null, onClick = { category = null },
+                PojianFilterChip(selected = current.category == null, onClick = { category = null },
                     modifier = Modifier.heightIn(min = 48.dp).testTag("recent-content-category-all"), label = { Text("全部") })
                 current.categories.forEach { title ->
-                    FilterChip(selected = current.category == title, onClick = { category = title },
+                    PojianFilterChip(selected = current.category == title, onClick = { category = title },
                         modifier = Modifier.heightIn(min = 48.dp).widthIn(max = 200.dp).testTag("recent-content-category-$title"),
                         label = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) })
                 }
@@ -94,17 +104,18 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("暂无关键词", style = MaterialTheme.typography.bodyMedium, color = Ink)
             }
-            else -> ContentWordCloud(current.words, expanded) { selected = it.text }
+            else -> ContentWordCloud(current.words, expanded, enabled = isCurrent) { selected = it.text }
         }
     }
     selected?.let { word ->
-        ContentWordDetails(word, events, period, now, semantics, appNames, category) { selected = null }
+        val detailCategory = if (current != null) current.category else category
+        ContentWordDetails(word, events, period, now, semantics, appNames, detailCategory) { selected = null }
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ContentWordCloud(words: List<ContentWord>, expanded: Boolean, onWord: (ContentWord) -> Unit) {
+private fun ContentWordCloud(words: List<ContentWord>, expanded: Boolean, enabled: Boolean, onWord: (ContentWord) -> Unit) {
     val fontScale = LocalDensity.current.fontScale
     val maxCount = words.maxOfOrNull { it.recordCount }?.coerceAtLeast(1) ?: 1
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -115,14 +126,14 @@ private fun ContentWordCloud(words: List<ContentWord>, expanded: Boolean, onWord
             maxLines = if (expanded) Int.MAX_VALUE else if (fontScale > 1.3f) 2 else 3) {
             words.forEach { word ->
                 key(word.text) { ContentWordChip(word, word.recordCount.toFloat() / maxCount,
-                    Modifier.widthIn(max = chipWidth)) { onWord(word) } }
+                    Modifier.widthIn(max = chipWidth), enabled) { onWord(word) } }
             }
         }
     }
 }
 
 @Composable
-private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier, onClick: () -> Unit) {
+private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val tier = when { ratio > .65f -> 2; ratio > .35f -> 1; else -> 0 }
     val background = when (tier) { 2 -> scheme.primaryContainer; 1 -> scheme.secondaryContainer; else -> scheme.surfaceContainerLow }
@@ -130,11 +141,11 @@ private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier,
     Surface(color = background, shape = RoundedCornerShape(14.dp),
         border = if (tier == 2) BorderStroke(1.dp, scheme.primary.copy(alpha = .35f)) else null,
         modifier = modifier.clip(RoundedCornerShape(14.dp))
-            .clickable(role = Role.Button, onClickLabel = "查看相关内容", onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClickLabel = "查看相关内容", onClick = onClick)
             .clearAndSetSemantics {
                 contentDescription = "${word.text}，${word.recordCount} 条记录"
                 role = Role.Button
-                onClick(label = "查看相关内容") { onClick(); true }
+                if (enabled) onClick(label = "查看相关内容") { onClick(); true } else disabled()
             }) {
         Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -151,9 +162,10 @@ private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier,
 @Composable
 private fun ContentWordDetails(word: String, events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
     semantics: List<EventSemantics>, appNames: Map<String, String>, category: String?, onDismiss: () -> Unit) {
-    val groups by produceState<List<RecentContentGroup>?>(null, word, events, period, now, semantics, category) {
-        value = null
-        value = withContext(Dispatchers.Default) { recentContentGroups(word, events, period, now, semantics, category = category) }
+    val groups by key(word, events, period, now, semantics, category) {
+        produceState<List<RecentContentGroup>?>(null) {
+            value = withContext(Dispatchers.Default) { recentContentGroups(word, events, period, now, semantics, category = category) }
+        }
     }
     ModalBottomSheet(onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {

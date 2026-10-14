@@ -328,7 +328,7 @@ fun AudioRecordsEntry(count: Int, onOpen: () -> Unit, modifier: Modifier = Modif
         .heightIn(min = 64.dp).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("音频记录", color = Ink, style = MaterialTheme.typography.titleMedium)
-            MetadataText(if (count > 0) "$count 段转写" else "导入音频或开始录音",
+            MetadataText(if (count > 0) "$count 条记录" else "导入音频或开始录音",
                 Modifier.padding(top = 4.dp))
         }
         Text("查看 ›", color = Accent, style = MaterialTheme.typography.labelLarge)
@@ -350,10 +350,10 @@ fun AudioRecordsScreen(
         item {
             PojianTextButton(onClick = onBack, contentPadding = PaddingValues(horizontal = 0.dp),
                 modifier = Modifier.heightIn(min = 48.dp)) { Text("‹ 返回") }
-            Text("音频记录", style = MaterialTheme.typography.headlineSmall,
+            Text("转写记录", style = MaterialTheme.typography.headlineSmall,
                 fontFamily = FontFamily.SansSerif, color = Ink)
             Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                MetadataText("${sessions.size} 段转写", Modifier.weight(1f))
+                MetadataText("${sessions.size} 条记录 · 已保存 ${sessions.sumOf { it.savedSegmentCount }} 段文字", Modifier.weight(1f))
                 PojianTextButton(onClick = onImport, enabled = canImport, modifier = Modifier.heightIn(min = 48.dp)) { Text("导入音频") }
             }
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -376,10 +376,14 @@ fun AudioRecordsScreen(
                     AudioStatusLabel(session.statusLabel)
                 }
                 MetadataText("${audioDate(session.createdAt)} · ${session.sourceLabel} · 音频 ${audioTimestamp(session.durationMillis)}")
-                val excerpt = session.segments.joinToString(" ") { it.correctedText ?: it.originalText }
+                MetadataText("已保存 ${session.savedSegmentCount} 段文字")
+                val excerpt = audioTranscriptPreview(session)
                 AudioSourceContent(fromAudio = excerpt.isNotBlank()) {
                     Text(excerpt.ifBlank { session.errorMessage ?: "尚未识别到文字" }, color = if (excerpt.isBlank()) Muted else Ink,
                         style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                if (excerpt.isNotBlank()) session.errorMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                 }
                 session.analysisLabel?.let { MetadataText(it) }
                 Text("查看转写 ›", color = Accent, style = MaterialTheme.typography.labelLarge)
@@ -412,50 +416,14 @@ fun AudioSessionDetailSheet(
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         SourceAppText(session.sourcePackage, session.title, style = MaterialTheme.typography.headlineSmall, color = Ink)
                         MetadataText("${session.sourceLabel} · ${audioDate(session.createdAt)}")
-                        MetadataText("音频时长 ${audioTimestamp(session.durationMillis)} · ${session.segments.size} 段转写 · ${session.statusLabel}")
+                        MetadataText("音频时长 ${audioTimestamp(session.durationMillis)} · 已保存 ${session.savedSegmentCount} 段文字 · ${session.statusLabel}")
                         session.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodyMedium) }
                         session.analysisLabel?.let { MetadataText(it) }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
-                item(key = "analysis") {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SectionTitle("音频回顾")
-                        PojianButton(onClick = onAnalyze, enabled = session.segments.isNotEmpty() && !session.analyzing,
-                            shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)
-                                .testTag("audio-analyze-session")) {
-                            Text(if (session.analyzing) "正在分析" else if (session.analysisSummary != null || session.claims.isNotEmpty())
-                                "更新音频回顾" else "生成音频回顾")
-                        }
-                        if (session.analyzing) LinearProgressIndicator(Modifier.fillMaxWidth()
-                            .semantics { contentDescription = "音频回顾分析进度" })
-                        message?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, color = Muted, style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.fillMaxWidth().testTag("audio-detail-message")
-                                    .semantics { liveRegion = LiveRegionMode.Polite })
-                        }
-                        session.analysisSummary?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, color = Ink, style = MaterialTheme.typography.bodyMedium)
-                        }
-                        session.claims.forEach { claim ->
-                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(claim.claim, color = Ink, style = MaterialTheme.typography.titleSmall)
-                                if (!claim.evidence.isNullOrBlank()) {
-                                    MetadataText(if (claim.startMillis != null && claim.endMillis != null)
-                                        "依据出处 · 音频 ${audioTimestamp(claim.startMillis)} — ${audioTimestamp(claim.endMillis)}"
-                                        else "来自转写的依据")
-                                    QuoteBlock(claim.evidence, fromAudio = true)
-                                } else MetadataText("未识别到依据")
-                                val comparison = listOf(claim.relation, claim.novelty).filter { it.isNotBlank() }.joinToString(" · ")
-                                if (comparison.isNotBlank()) MetadataText(comparison)
-                                claim.historyLabel?.takeIf { it.isNotBlank() }?.let { MetadataText(it) }
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                            }
-                        }
-                    }
-                }
-                if (session.segments.isEmpty()) item { MetadataText("该音频未识别到文字。") }
+                if (session.savedSegmentCount == 0) item { MetadataText("尚无已保存文字") }
                 else item(key = "segments-heading") {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -503,6 +471,42 @@ fun AudioSessionDetailSheet(
                             }
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
+                item(key = "analysis") {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SectionTitle("音频回顾")
+                        PojianButton(onClick = onAnalyze, enabled = session.segments.isNotEmpty() && !session.analyzing,
+                            shape = RoundedCornerShape(12.dp), modifier = Modifier.heightIn(min = 48.dp)
+                                .testTag("audio-analyze-session")) {
+                            Text(if (session.analyzing) "正在分析" else if (session.analysisSummary != null || session.claims.isNotEmpty())
+                                "更新音频回顾" else "生成音频回顾")
+                        }
+                        if (session.analyzing) LinearProgressIndicator(Modifier.fillMaxWidth()
+                            .semantics { contentDescription = "音频回顾分析进度" })
+                        message?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = Muted, style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.fillMaxWidth().testTag("audio-detail-message")
+                                    .semantics { liveRegion = LiveRegionMode.Polite })
+                        }
+                        session.analysisSummary?.takeIf { it.isNotBlank() }?.let {
+                            Text(it, color = Ink, style = MaterialTheme.typography.bodyMedium)
+                        }
+                        session.claims.forEach { claim ->
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text(claim.claim, color = Ink, style = MaterialTheme.typography.titleSmall)
+                                if (!claim.evidence.isNullOrBlank()) {
+                                    MetadataText(if (claim.startMillis != null && claim.endMillis != null)
+                                        "依据出处 · 音频 ${audioTimestamp(claim.startMillis)} — ${audioTimestamp(claim.endMillis)}"
+                                        else "来自转写的依据")
+                                    QuoteBlock(claim.evidence, fromAudio = true)
+                                } else MetadataText("未识别到依据")
+                                val comparison = listOf(claim.relation, claim.novelty).filter { it.isNotBlank() }.joinToString(" · ")
+                                if (comparison.isNotBlank()) MetadataText(comparison)
+                                claim.historyLabel?.takeIf { it.isNotBlank() }?.let { MetadataText(it) }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                            }
+                        }
                     }
                 }
                 item(key = "delete") {
@@ -553,5 +557,5 @@ internal fun audioTimestamp(millis: Long): String {
     else String.format(Locale.ROOT, "%02d:%02d", seconds / 60, seconds % 60)
 }
 
-private fun audioDate(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
+internal fun audioDate(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
     .format(DateTimeFormatter.ofPattern("M月d日 HH:mm", Locale.CHINA))

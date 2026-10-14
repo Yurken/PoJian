@@ -61,9 +61,6 @@ class AudioRepository(private val database: BrowseDatabase) {
         val id = audio.insertTranscript(transcript)
         audio.updateSession(session.copy(contentVersion = session.contentVersion + 1, analysisJson = null))
         audio.invalidateLaterAnalyses(session.startedAt, session.id)
-        if (audio.trimsAudio()) audio.invalidateAllAnalyses()
-        audio.invalidateTrimmedSessions()
-        events.trim()
         events.trimWorks()
         audio.transcript(id)
     }

@@ -28,7 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit,
     active: Boolean, statusLabel: String, appNames: Map<String, String>, onRecords: () -> Unit, onSettings: () -> Unit,
@@ -73,17 +73,22 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item(key = "overview-header") {
             Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(when(period) { StatisticsPeriod.DAY -> "今日观察"; StatisticsPeriod.HOURS24 -> "24 小时观察"; StatisticsPeriod.WEEK -> "七日观察" },
-                        style = MaterialTheme.typography.titleLarge, color = Ink, modifier = Modifier.weight(1f))
+                        style = MaterialTheme.typography.titleLarge, color = Ink)
                     MetadataText(date)
                     HelpButton("浏览统计", "作品按采集记录估算，重复打开只增加观看次数。当前有 ${stats.unidentifiedWorks} 个作品未识别。\n\n停留时长按可见区间估算，${stats.unknownDurationRecords} 条时长未统计；音频与画面文字不单独计入作品数和停留。")
                 }
                 PeriodSelector(period, onPeriod)
             }
         }
-        item(key = "cocoon") { CocoonCard(analysis, period, visible = cocoonVisible) }
-        item(key = "recent-content") { RecentContentCloud(rawEvents, period, now, semantics, appNames) }
+        if (rawEvents.isEmpty()) item(key = "start-guide") {
+            WhiteCard {
+                SectionTitle("暂无记录", help = "选择应用，在系统辅助功能中启用「破茧浏览采集」，再打开采集开关。也可从采集工具导入音频。")
+                PojianButton(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("设置采集范围") }
+            }
+        }
         item(key = "overview-statistics") {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(onClick = onSettings),
@@ -105,14 +110,11 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
                 }
             }
         }
+        item(key = "cocoon") { CocoonCard(analysis, period, visible = cocoonVisible) }
+        item(key = "recent-content") { RecentContentCloud(rawEvents, period, now, semantics, appNames) }
         audioContent?.let { content -> item(key = "audio-entry") { content() } }
         timeline?.let { viewpointTimeline(it, appNames, plotHeight, onWorkScrolling = { workScrolling = it }) }
-        if (rawEvents.isEmpty()) item(key = "start-guide") {
-            WhiteCard {
-                SectionTitle("暂无记录", help = "选择应用，在系统辅助功能中启用「破茧浏览采集」，再打开采集开关。也可从采集工具导入音频。")
-                PojianButton(onClick = onSettings, shape = MaterialTheme.shapes.small) { Text("设置采集范围") }
-            }
-        } else item(key = "analysis") {
+        if (rawEvents.isNotEmpty()) item(key = "analysis") {
             AnalysisCards(analysis, period, rawEvents, onAnalyze, onExport, onPurposeChange, appNames,
                 onPreviewReport = onPreviewReport)
         }

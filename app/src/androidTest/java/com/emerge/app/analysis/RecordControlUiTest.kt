@@ -109,10 +109,39 @@ class RecordControlUiTest {
         compose.onNodeWithTag("capture-toggle").assertIsNotEnabled().assertIsOff()
             .performTouchInput { click() }
         compose.runOnIdle { assertEquals(0, captureChanges) }
-        compose.onNodeWithText("辅助功能授权").performScrollTo()
-        compose.onNodeWithText("已启用").assertIsDisplayed()
-        compose.onNodeWithText("辅助服务连接").performScrollTo()
-        compose.onNodeWithText("已连接").assertIsDisplayed()
+        compose.onNodeWithTag("system-authorization-summary").performScrollTo()
+            .assertIsDisplayed().assert(hasText("系统授权")).assert(hasText("已启用"))
+            .assertHasClickAction()
+    }
+
+    @Test fun authorizationCompactsOnlyWhenGrantedAndConnectedAndKeepsSettingsReachable() {
+        var permission by mutableStateOf(false)
+        var connected by mutableStateOf(true)
+        var openedSettings = 0
+        render {
+            MaterialTheme {
+                SettingsScreen(permission, enabled = true, count = 0, onCapture = {},
+                    onOpenSettings = { openedSettings++ }, onClear = {}, message = null,
+                    diagnostics = CaptureStatus(connected = connected), selectedApps = listOf(fixtureApps().first()))
+            }
+        }
+
+        // A stale connection signal must not hide missing permission.
+        compose.onNodeWithText("前往系统授权").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("system-authorization-summary").assertDoesNotExist()
+        compose.runOnIdle { permission = true }
+        compose.onNodeWithTag("system-authorization-summary").performScrollTo()
+            .assertIsDisplayed().assert(hasText("已启用")).performClick()
+        compose.runOnIdle { assertEquals(1, openedSettings) }
+        compose.onNodeWithText("辅助服务连接").assertDoesNotExist()
+
+        compose.runOnIdle { connected = false }
+        compose.onNodeWithTag("system-authorization-summary").assertDoesNotExist()
+        compose.onNodeWithText("辅助服务连接").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("未连接").assertIsDisplayed()
+        compose.onNodeWithText("查看系统辅助功能授权").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals(2, openedSettings); permission = false }
+        compose.onNodeWithText("前往系统授权").performScrollTo().assertIsDisplayed()
     }
 
     @Test fun captureStatusRequiresPermissionAndConnectionAndRespectsPause() {

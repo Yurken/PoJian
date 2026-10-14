@@ -81,7 +81,7 @@ internal fun WhiteCard(
     elevation: Dp = 0.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = MaterialTheme.shapes.medium
     val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     val cardContent: @Composable () -> Unit = {
         Column(

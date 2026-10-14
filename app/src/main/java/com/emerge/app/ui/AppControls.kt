@@ -96,16 +96,18 @@ internal fun PojianIconButton(onClick: () -> Unit, modifier: Modifier = Modifier
     }
 }
 
-/** The whole 48 dp target toggles; the compact track is decorative and has no duplicate semantics. */
+/** A null callback leaves interaction and semantics to the containing setting row. */
 @Composable
-internal fun PojianSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit,
+internal fun PojianSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?,
     modifier: Modifier = Modifier, enabled: Boolean = true) {
     val scheme = MaterialTheme.colorScheme
     val progress by animateFloatAsState(if (checked) 1f else 0f)
     val track by animateColorAsState(if (checked) scheme.primary else scheme.outline.copy(alpha = 0.38f))
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    val interaction = if (onCheckedChange == null) Modifier else Modifier.toggleable(checked,
+        enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange)
     Box(modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).clip(RoundedCornerShape(12.dp))
-        .toggleable(checked, enabled = enabled, role = Role.Switch, onValueChange = onCheckedChange),
+        .then(interaction),
         contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(44.dp, 26.dp)) {
             val opacity = if (enabled) 1f else 0.38f

@@ -101,12 +101,12 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
                         { topicKey = topic.key }, "viewpoint-filter-${topic.key}")
                 }
             }
-            OutlinedTextField(value = query, onValueChange = { query = it }, singleLine = true,
+            PojianTextField(value = query, onValueChange = { query = it }, singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag("viewpoint-search"), shape = RoundedCornerShape(12.dp),
-                textStyle = MaterialTheme.typography.bodyMedium, label = { Text("搜索观点") },
+                label = { Text("搜索观点") },
                 leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(20.dp)) },
                 trailingIcon = if (query.isNotEmpty()) { {
-                    IconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, contentDescription = "清除搜索") }
+                    PojianIconButton(onClick = { query = "" }) { Icon(Icons.Outlined.Close, contentDescription = "清除搜索") }
                 } } else null)
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                 verticalArrangement = Arrangement.spacedBy(4.dp)) {

@@ -16,6 +16,8 @@ class EmergeApplication : Application() {
     val audioCoordinator by lazy { com.emerge.app.audioanalysis.AudioCoordinator(this) }
     val captureSettings by lazy { CaptureSettings(this) }
     val workThumbnails by lazy { com.emerge.app.data.WorkThumbnailStore(this, database, captureSettings) }
+    val localStorageSettings by lazy { com.emerge.app.data.LocalStorageSettings(this) }
+    val localStorage by lazy { com.emerge.app.data.LocalStorageManager(this, database, repository, workThumbnails, localStorageSettings) }
     val captureDiagnostics = CaptureDiagnostics()
     val monitorTasks by lazy { com.emerge.app.monitoring.MonitorTaskStore(database) }
     val monitor by lazy { com.emerge.app.monitoring.MonitorRuntime(this) }
@@ -25,5 +27,6 @@ class EmergeApplication : Application() {
         // The accessibility service and audio ingestion continue to publish while the Activity is backgrounded.
         monitor
         workThumbnails
+        localStorage
     }
 }
