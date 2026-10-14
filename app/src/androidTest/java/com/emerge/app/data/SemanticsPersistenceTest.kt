@@ -28,7 +28,7 @@ class SemanticsPersistenceTest {
         if (name == null) Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java).build()
         else Room.databaseBuilder(context, BrowseDatabase::class.java, name).addMigrations(
             BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3,
-            BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8).build()
+            BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8, BrowseDatabase.MIGRATION_8_9).build()
 
     private suspend fun encounter(repository: BrowseRepository, text: String = "岗位正在减少，因为招聘数量下降"):
         BrowseEvent {
@@ -248,7 +248,7 @@ class SemanticsPersistenceTest {
                 }).build())
             try { helper.writableDatabase } finally { helper.close() }
             val migrated = Room.databaseBuilder(context, BrowseDatabase::class.java, name)
-                .addMigrations(BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8).build()
+                .addMigrations(BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8, BrowseDatabase.MIGRATION_8_9).build()
             try {
                 val repository = BrowseRepository(migrated)
                 val event = requireNotNull(repository.findEvent(7))

@@ -3,9 +3,16 @@ package com.emerge.app.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class, WorkThumbnail::class], version = 8, exportSchema = true)
+@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class, WorkThumbnail::class, WorkOriginal::class], version = 9, exportSchema = true)
 abstract class BrowseDatabase : RoomDatabase() {
     companion object {
+        val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                db.execSQL("""CREATE TABLE work_originals (workKey TEXT NOT NULL PRIMARY KEY,
+                    url TEXT NOT NULL, source TEXT NOT NULL, savedAt INTEGER NOT NULL,
+                    FOREIGN KEY(workKey) REFERENCES observed_works(workKey) ON UPDATE NO ACTION ON DELETE CASCADE)""")
+            }
+        }
         val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE observed_works ADD COLUMN identityEvidence TEXT NOT NULL DEFAULT 'legacy'")
@@ -94,6 +101,7 @@ abstract class BrowseDatabase : RoomDatabase() {
     }
     abstract fun browseEventDao(): BrowseEventDao
     abstract fun workThumbnailDao(): WorkThumbnailDao
+    abstract fun workOriginalDao(): WorkOriginalDao
     abstract fun audioDao(): AudioDao
     abstract fun monitorTaskDao(): MonitorTaskDao
 }

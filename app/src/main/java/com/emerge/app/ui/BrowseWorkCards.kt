@@ -122,6 +122,7 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
                         PojianTextButton(onClick = { detail = null }) { Text("关闭") }
                     }
                 }
+                item { WorkOriginalContent(item.record) }
                 item {
                     val image = thumbnails[item.record.workKey]?.takeIf { consent && it.packageName in packages }
                     if (image != null) WorkImage(image, app)

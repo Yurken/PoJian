@@ -39,8 +39,19 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 if (key != null && original.identityMethod in setOf("unknown", "session_estimate")) {
                     dao.insertWork(ObservedWork(key, original.packageName, hint.title, hint.author, hint.method,
                         original.timestamp, hint.evidence, hint.nativeId))
+                    original.workKey?.takeIf { it != key }?.let { oldKey ->
+                        database.workOriginalDao().get(oldKey)?.let { old ->
+                            database.workOriginalDao().insert(old.copy(workKey = key))
+                        }
+                    }
                     dao.update(original.copy(workKey = key, identityMethod = hint.method))
                     dao.updateMaterialIdentity(original.id, key, hint.method)
+                }
+            }
+            // Backfill only IDs actually captured from the platform; titles cannot locate original media.
+            database.workOriginalDao().works().forEach { work ->
+                OriginalLinks.forWork(work)?.let { url ->
+                    database.workOriginalDao().insert(WorkOriginal(work.workKey, url, "platform_id", work.firstSeenAt))
                 }
             }
             dao.trimWorks()
@@ -73,6 +84,22 @@ class BrowseRepository(private val database: BrowseDatabase) {
 
     suspend fun findEvent(id: Long): BrowseEvent? = dao.event(id)
     suspend fun getEvent(id: Long): BrowseEvent? = findEvent(id)
+    suspend fun saveOriginal(eventId: Long, input: String): Boolean = captureMutex.withLock {
+        database.withTransaction {
+            val event = dao.event(eventId) ?: return@withTransaction false
+            val root = event.parentEventId?.let { dao.event(it) } ?: event
+            if (root.sourceType != "accessibility") return@withTransaction false
+            val url = OriginalLinks.fromInput(input, root.packageName) ?: return@withTransaction false
+            val key = root.workKey ?: "record:${root.id}"
+            dao.insertWork(ObservedWork(key, root.packageName, "", "", root.identityMethod, root.timestamp))
+            if (root.workKey == null) {
+                dao.update(root.copy(workKey = key))
+                dao.updateMaterialIdentity(root.id, key, root.identityMethod)
+            }
+            database.workOriginalDao().put(WorkOriginal(key, url, "user_link", System.currentTimeMillis()))
+            true
+        }
+    }
     suspend fun clearSemantics() = captureMutex.withLock {
         database.withTransaction { dao.clearSemantics() }
     }
@@ -123,6 +150,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 if (parent.sourceType != "accessibility" || parent.packageName != event.packageName ||
                     parent.timestamp > event.timestamp || parent.workKey != event.workKey) return@withTransaction null
             }
+            val previousKey = if (continuing) dao.event(event.id)?.workKey else null
             val savedId = if (continuing) {
                 // Updates are deliberately never upserts: a deleted session stays deleted.
                 event.id.takeIf { dao.update(event) > 0 }
@@ -137,7 +165,17 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 }
             }
             if (savedId != null) {
-                work?.let { dao.insertWork(it) }
+                work?.let {
+                    dao.insertWork(it)
+                    val originals = database.workOriginalDao()
+                    // Keep a manually attached link when a visit gains a stronger platform identity.
+                    if (previousKey != null && previousKey != it.workKey) {
+                        originals.get(previousKey)?.let { old -> originals.insert(old.copy(workKey = it.workKey)) }
+                    }
+                    OriginalLinks.forWork(it)?.let { url ->
+                        originals.insert(WorkOriginal(it.workKey, url, "platform_id", it.firstSeenAt))
+                    }
+                }
                 if (continuing) dao.updateMaterialIdentity(savedId, event.workKey, event.identityMethod)
                 if (sampleText != null && dao.lastSampleText(savedId) != sampleText) {
                     dao.insertSample(BrowseSample(visitId = savedId,
@@ -151,7 +189,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
         }
         // Settings/deletion may change while Room resumes the transaction result.
         if (id != null && !current()) {
-            if (!continuing) dao.deleteEvent(id)
+            if (!continuing) database.withTransaction { dao.deleteEvent(id); dao.trimWorks() }
             null
         } else id
     }

@@ -44,7 +44,7 @@ class TopicWorkCardsTest {
         compose.onNodeWithText("大模型分析").assertIsDisplayed()
         compose.onNodeWithTag("work-detail-content").performScrollToNode(hasText(presentation.suggestions.single()))
         compose.onNodeWithText(presentation.suggestions.single()).assertIsDisplayed()
-        compose.onNodeWithTag("work-detail-content").performScrollToIndex(3)
+        compose.onNodeWithTag("work-detail-content").performScrollToNode(hasText(raw))
         compose.onAllNodesWithText(raw).onLast().assertIsDisplayed()
         compose.onAllNodesWithText(stored).assertCountEquals(0)
         listOf("分享", "点赞 1.2万", "关注", "评论(36)", "按钮", "直播", "推荐").forEach {

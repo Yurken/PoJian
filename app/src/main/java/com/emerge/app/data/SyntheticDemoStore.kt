@@ -16,7 +16,7 @@ object SyntheticDemoStore {
     suspend fun load(context: Context): SyntheticDataset = withContext(Dispatchers.IO) {
         mutex.withLock {
             val data = context.assets.open(SyntheticDataset.ASSET).bufferedReader().use { SyntheticDataset.decode(it.readText()) }
-            val db = Room.databaseBuilder(context.applicationContext, BrowseDatabase::class.java, SyntheticDataset.DATABASE).build()
+            val db = Room.databaseBuilder(context.applicationContext, BrowseDatabase::class.java, SyntheticDataset.DATABASE).addMigrations(BrowseDatabase.MIGRATION_8_9).build()
             try {
                 val dao = db.browseEventDao()
                 db.withTransaction {
