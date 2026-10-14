@@ -108,8 +108,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 57
-        versionName = "0.5.35"
+        versionCode = 58
+        versionName = "0.5.36"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -189,7 +189,7 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     testImplementation("junit:junit:4.13.2")
-    // Run the production synthetic-data decoder on the JVM, without Android's JSON stubs.
+    // Run developer-only synthetic-data regressions on the JVM, without Android's JSON stubs.
     testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")

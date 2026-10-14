@@ -1,4 +1,4 @@
-"""Build the App's isolated, indexed, read-only research SQLite from the audited v2 corpus.
+"""Build an isolated, indexed research SQLite for developer evaluation of the audited v2 corpus.
 
 No personal Room database is read or modified. All source rows (including gold labels) are
 retained; App projections only consume observed versions and authored argument/emotion fields.
@@ -13,7 +13,7 @@ import sqlite3
 from research_presentations import make_presentation, PROVENANCE
 
 ROOT = Path(__file__).resolve().parents[1]
-ASSETS = ROOT / "app/src/main/assets/synthetic"
+SCHEMA = ROOT / "evaluation/schemas/research-schema.sql"
 PACKAGES = {"小红书图文": "com.xingin.xhs", "小红书短视频": "com.xingin.xhs",
             "抖音短视频": "com.ss.android.ugc.aweme", "快手短视频": "com.smile.gifmaker",
             "微博": "com.sina.weibo", "微信视频号": "com.tencent.mm", "微信公众号": "com.tencent.mm"}
@@ -49,7 +49,7 @@ def build(source, output):
     temporary.unlink(missing_ok=True)  # Fixed generator-owned file, never a user database.
     with closing(sqlite3.connect(temporary)) as db, db:
         db.execute("PRAGMA foreign_keys=ON")
-        db.executescript((ASSETS / "research-schema.sql").read_text(encoding="utf8"))
+        db.executescript(SCHEMA.read_text(encoding="utf8"))
         db.executemany("INSERT INTO metadata VALUES (?,?)", [
             ("kind", "controlled_synthetic_research"), ("dataset_id", manifest["dataset_id"]),
             ("source_manifest_sha256", digest(manifest_path)), ("source_manifest", dump(manifest)),
@@ -110,14 +110,12 @@ def build(source, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset", type=Path, default=ROOT / "app/build/research-synthetic-v2")
-    parser.add_argument("--output", type=Path, default=ROOT / "app/build/project-research-database")
-    parser.add_argument("--install-assets", action="store_true")
+    parser.add_argument("--output", type=Path, default=ROOT / "app/build/project-research-database", help="Generated output directory inside app/build")
     args = parser.parse_args()
+    args.output = args.output.resolve()
+    if not args.output.is_relative_to((ROOT / "app/build").resolve()):
+        parser.error("--output must be inside app/build")
     path, manifest = build(args.dataset, args.output)
-    if args.install_assets:
-        import shutil
-        for name in ("research-v2.sqlite.gz", "research-v2.json"):
-            shutil.copyfile(args.output / name, ASSETS / name)
     print(dump(dict(database=str(path), bytes=manifest["database_bytes"], sha256=manifest["database_sha256"], counts=manifest["counts"])))
 
 

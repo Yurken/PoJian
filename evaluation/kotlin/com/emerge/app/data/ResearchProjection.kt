@@ -7,7 +7,7 @@ import com.emerge.app.capture.VisibilityRegion
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Pure adapter shared by the App and JVM regression. It never consumes increment gold or feedback. */
+/** Pure adapter for developer evaluation and JVM regression. It never consumes increment gold or feedback. */
 object ResearchProjection {
     fun decode(profileId: String, now: Long, contacts: List<JSONObject>, emotions: List<JSONObject>): SyntheticDataset {
         val works = linkedMapOf<String, ObservedWork>()

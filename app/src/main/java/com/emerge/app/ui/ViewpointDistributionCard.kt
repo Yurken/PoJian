@@ -113,12 +113,12 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
                 var menu by remember { mutableStateOf(false) }
                 Box {
                     PojianTextButton(onClick = { menu = true }, modifier = Modifier.testTag("viewpoint-state-filter")) {
-                        Text(analysisSourceLabel(filter.label))
+                        Text(filter.label)
                         Icon(Icons.Outlined.KeyboardArrowDown, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
                     DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                         ViewpointFilter.entries.forEach { option ->
-                            DropdownMenuItem(text = { Text(analysisSourceLabel(option.label)) }, onClick = { filter = option; menu = false },
+                            DropdownMenuItem(text = { Text(option.label) }, onClick = { filter = option; menu = false },
                                 modifier = Modifier.testTag("viewpoint-state-${option.name}"))
                         }
                     }

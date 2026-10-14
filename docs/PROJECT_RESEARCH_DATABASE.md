@@ -1,6 +1,8 @@
-# 项目实验数据库 v2
+# 开发用实验数据库 v2
 
-将已交付的 `research-controlled-v2` 合成数据建立为 **`pojian-research-v2.sqlite`**，并接入 App「设置 → 合成实验数据库」。入口替代旧的 588 作品演示入口；旧版数据和回归测试仍保留。基准提交 `a7ae7058c1594e9d8ee73288c2d654e28cf8a618`，开发分支 `codex/work-identity-thumbnails`。
+当前 App 已移除内置模拟数据库和「合成实验数据库」入口，不再打包或安装实验 SQLite。生成脚本、数据库结构和回归测试保留，开发者可在本地 `app/build/` 下重新生成 **`pojian-research-v2.sqlite`**。数据库结构位于 `evaluation/schemas/research-schema.sql`；投影、解码及安装器回归辅助代码位于仅供 JVM 测试使用的 `evaluation/kotlin/`。
+
+以下数据规模和验证结果记录此前的 `research-controlled-v2` 合成实验；其中 App 接入部分为历史实现，不代表当前可用功能。
 
 ## 内容与用途
 
@@ -22,7 +24,7 @@
 
 这批数据是 AI 编写生成器产生的受控合成材料；虚拟用户不是志愿者。OCR/ASR 为文本代理，数据库没有原平台媒体或真实缩略图。标注与信息茧房/焦虑实验分组均非实测用户心理结果。独立单位、训练划分及论文适用边界见 [研究数据说明](RESEARCH_SYNTHETIC_DATA.md)。
 
-## 项目中的使用
+## 历史 App 接入（已移除）
 
 - App 默认选中高集中、高焦虑表达预设组的一名虚拟用户，可切换全部 200 名用户。预设标签直接标为「预设」，实际图表继续调用项目的 `CognitiveAnalyzer`、`calculateStatistics` 和 `ViewpointTimeline`，不会用分组标签覆盖分析结果。
 - 每次只从索引读取所选用户的 156–168 次接触，三个语料观察版本不会变成三次观看。再次观看同一作品保留新的事件，窗口作品数按作品身份去重。
@@ -32,13 +34,13 @@
 - 点趋势柱后按大主题展示简短观点卡片，点击卡片再显示原文、三类影响依据和建议。新增字段由当前版本和对应情绪片段生成，来源为 `AI_authored_rules_unreviewed`，不是在线模型实测输出。分类、颜色公式及真实记录兼容见[主题观点说明](VIEWPOINT_TOPICS.md)。
 - 界面只增加必要入口、用户/页码控件、真实数量、来源与错误状态；原趋势和详情功能继续复用。
 
-## 隔离、安装与更新
+## 开发环境中的生成与隔离
 
 这是只读实验 SQLite，**不是生产 Room 库的替换文件**。不要把它改名为 `zhiheng.db`。生产 `BrowseDatabase`、个人历史、实时采集、上传、签名和 applicationId 均不因本次数据库接入改变。
 
-App 随包携带 `assets/synthetic/research-v2.sqlite.gz`（18,824,913 字节，约 18.8 MB），首次打开实验入口才在 IO 线程解压至私有 `noBackupFilesDir/research`，展开文件 185,962,496 字节（约 186 MB）。包内 SHA-256 校验、解压尺寸上限 256 MiB、空间预检、临时文件和原子替换防止残缺文件被读取；中断会清除临时文件，下次可重试。后续读取复用已验证文件。所有数据库查询、文本转换和图表计算均在后台执行。
+此前随包的压缩数据库为 18,824,913 字节，展开后为 185,962,496 字节；该二进制及其安装元数据现已从 App 资源中删除。生成脚本默认在开发输出目录产生 SQLite、压缩包和元数据，不再提供自动安装到 App assets 的选项。
 
-文件名带内容哈希；新语料成功安装后才淘汰旧实验副本。该实验 schema 从 `user_version=1` 升至 `2`，通过只读资产的校验安装更新，不需要也不会触发生产 Room 迁移。新库 SHA-256 为 `883e3366de895d4320cfbdb671b1b2da557aa501b0be17f4eba31f78006bb35c`。旧演示 `pojian-synthetic-demo-v1.db` 保留；新的入口不再创建或读取它。实验库不会放入系统备份，也不会被监控 Repository 的 5,000 条裁剪影响。
+实验 schema 保持 `user_version=2`，不触发生产 Room 迁移。本次移除不访问设备或清理已安装旧版的私有文件，也不删除个人浏览记录。旧演示 JSON 仅作为 `app/src/test/resources/synthetic/demo-v1.json` 回归夹具保留，不进入 APK。
 
 ## 复现
 
@@ -47,7 +49,7 @@ App 随包携带 `assets/synthetic/research-v2.sqlite.gz`（18,824,913 字节，
 ```powershell
 python scripts/build_research_dataset.py
 python scripts/audit_research_dataset.py app/build/research-synthetic-v2 --output app/build/reports/research-v2/data-audit.json
-python scripts/build_project_research_database.py --install-assets
+python scripts/build_project_research_database.py
 python scripts/audit_project_research_database.py
 python -m unittest discover -s scripts/tests -p test_project_research_database.py
 ```

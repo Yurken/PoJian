@@ -4,12 +4,11 @@ import com.emerge.app.data.SyntheticDataset
 import com.emerge.app.ui.*
 import org.junit.Assert.*
 import org.junit.Test
-import java.io.File
 import java.time.ZoneId
 
-/** Exercises the real production aggregators against the bundled fictional dataset. */
+/** Exercises the real production aggregators against a test-only fictional dataset. */
 class SyntheticDatasetTest {
-    private val data by lazy { SyntheticDataset.decode(File("src/main/assets/${SyntheticDataset.ASSET}").readText()) }
+    private val data by lazy { SyntheticDataset.decode(javaClass.getResource("/synthetic/demo-v1.json")!!.readText()) }
     private val zone = ZoneId.of("Asia/Shanghai")
     private fun report(now: Long = data.now) = CognitiveAnalyzer().analyze(data.events, StatisticsPeriod.WEEK,
         now, zone, semantics = data.semantics)

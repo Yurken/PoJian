@@ -50,9 +50,8 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
         snapshotFlow { listState.isScrollInProgress }.distinctUntilChanged().collect { scrollingCallback(it) }
     }
     DisposableEffect(Unit) { onDispose { scrollingCallback(false) } }
-    val synthetic = LocalSyntheticDataset.current
-    val app = (LocalContext.current.applicationContext as? EmergeApplication).takeIf { synthetic == null }
-    val works = (synthetic?.works ?: app?.repository?.works?.collectAsState(initial = emptyList())?.value.orEmpty()).associateBy { it.workKey }
+    val app = LocalContext.current.applicationContext as? EmergeApplication
+    val works = app?.repository?.works?.collectAsState(initial = emptyList())?.value.orEmpty().associateBy { it.workKey }
     val thumbnails = app?.workThumbnails?.thumbnails?.collectAsState()?.value.orEmpty()
     val consent = app?.captureSettings?.localThumbnails?.collectAsState()?.value == true
     val packages = app?.captureSettings?.allowedPackages?.collectAsState()?.value.orEmpty()
@@ -87,8 +86,7 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
                 if (thumbnail != null) WorkImage(thumbnail, app, 48.dp)
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        SourceAppText(item.record.packageName, synthetic?.mediaTypes?.get(item.record.workKey)
-                            ?: names[item.record.packageName] ?: item.record.packageName)
+                        SourceAppText(item.record.packageName, names[item.record.packageName] ?: item.record.packageName)
                         MetadataText(time.format(Instant.ofEpochMilli(WorkTopicPresentation.firstSeen(item, window))))
                     }
                     val claims = item.claims.distinctBy { it.key }.take(3)

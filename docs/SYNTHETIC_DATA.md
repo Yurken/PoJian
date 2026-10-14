@@ -1,10 +1,10 @@
-# AI 合成数据与独立演示
+# AI 合成数据与开发回归
 
-用户随后确认论文实验用途，并扩展为七种组合。本文件保留 App 演示 v1 的历史记录；论文应使用独立的 [受控合成数据集 v2](RESEARCH_SYNTHETIC_DATA.md)，不要把本演示集作为论文实验集。当前 App 入口已改为「设置 → 合成实验数据库」，实际读取 8,400 作品的 [项目实验数据库](PROJECT_RESEARCH_DATABASE.md)，下述旧入口及旧规模不再对应当前界面。
+当前 App 已移除内置模拟数据及演示、实验数据库入口。本文件保留演示 v1 的历史记录与开发回归方法；588 个作品的 JSON 已移到 `app/src/test/resources/synthetic/demo-v1.json`，只参与 JVM 测试，不进入 APK。生成器和测试继续保留。论文用途应参见独立的 [受控合成数据集 v2](RESEARCH_SYNTHETIC_DATA.md)及[开发用实验数据库](PROJECT_RESEARCH_DATABASE.md)，不要把本演示集作为论文实验集。
 
 本次数据是 AI 编写模板后由确定性脚本展开的虚构材料，供 App 展示、结构检查和统计回归使用。不是实际平台采集、真人参与者、人工金标或模型性能结果。模拟日期固定为北京时间 2026-09-29 至 2026-10-12，回顾时点为 23:00。
 
-## 旧版 App 演示实现（已被 v2 入口替代）
+## 旧版 App 演示实现（历史记录，入口已移除）
 
 旧版入口为 **设置 → AI 合成演示**。可切换前后两个七天，以及今天、过去 24 小时、最近 7 天；点击趋势柱查看作品及多次观看详情。顶部始终显示合成来源和模拟时点，结构化字段显示为“合成标注”。没有真实图片，因此缩略图保持占位。
 
@@ -63,7 +63,7 @@
 在仓库根目录运行 Python 3.10+：
 
 ```powershell
-python scripts/generate_synthetic_data.py --write-asset --research
+python scripts/generate_synthetic_data.py --research
 python -m unittest discover -s scripts/tests -p test_synthetic_data.py -v
 ```
 
@@ -77,7 +77,7 @@ python -m unittest discover -s scripts/tests -p test_synthetic_data.py -v
 | `observations.jsonl` | 18,000 个部分观察版本 |
 | `manifest.json` | 来源、数量、模拟时间、限制和 demo JSON 的 SHA-256 |
 
-脚本不读取设备数据；拒绝向 `zhiheng.db` 等非专用文件名写入，也拒绝覆盖无法识别的已有数据库。不要把交付 SQLite 覆盖到真实记录文件上；App 已提供隔离入口。
+脚本不读取设备数据；拒绝向 `zhiheng.db` 等非专用文件名写入，也拒绝覆盖无法识别的已有数据库。不要把交付 SQLite 覆盖到真实记录文件上。需要明确更新版本化的 JVM 测试夹具时使用 `--write-test-fixture`；该选项不会写入 App 资源目录。
 
 ## 验证记录（2026-10-12）
 

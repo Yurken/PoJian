@@ -342,7 +342,6 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
         item(key = "local-storage") {
             LocalStorageSettingsCard(storageUsage, canClear = count > 0, onClear, onSaveStorageLimit)
         }
-        item(key = "synthetic-demo") { SyntheticDemoEntry() }
         updateContent?.let { content -> item(key = "update-settings") { content() } }
         item {
             WhiteCard {

@@ -1,6 +1,6 @@
 """Reproducible fictional fixtures, never collected participant data. Python stdlib only.
 
-Writes an isolated Room database for inspection and a JSON asset used by the demo.
+Writes an isolated Room database and JSON for developer inspection and regression tests.
 No access to a device, production database, platform API, media or cloud service.
 """
 import argparse
@@ -258,19 +258,22 @@ def research_corpus(output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=ROOT / "app/build/synthetic-data")
-    parser.add_argument("--write-asset", action="store_true", help="Update the explicitly synthetic bundled demo asset")
+    parser.add_argument("--output", type=Path, default=ROOT / "app/build/synthetic-data", help="Generated output directory inside app/build")
+    parser.add_argument("--write-test-fixture", action="store_true", help="Update the synthetic JVM test fixture; never packaged in the App")
     parser.add_argument("--research", action="store_true", help="Also generate 6,000 fictional works / 18,000 observations")
     args = parser.parse_args()
+    args.output = args.output.resolve()
+    if not args.output.is_relative_to((ROOT / "app/build").resolve()):
+        parser.error("--output must be inside app/build")
     args.output.mkdir(parents=True, exist_ok=True)
     demo = build_demo()
     payload = dumps(demo) + "\n"
     (args.output / "demo.json").write_text(payload, encoding="utf-8", newline="\n")
     write_database(args.output / "pojian-synthetic-demo.db", demo)
-    if args.write_asset:
-        asset = ROOT / "app/src/main/assets/synthetic/demo-v1.json"
-        asset.parent.mkdir(parents=True, exist_ok=True)
-        asset.write_text(payload, encoding="utf-8", newline="\n")
+    if args.write_test_fixture:
+        fixture = ROOT / "app/src/test/resources/synthetic/demo-v1.json"
+        fixture.parent.mkdir(parents=True, exist_ok=True)
+        fixture.write_text(payload, encoding="utf-8", newline="\n")
     manifest = dict(synthetic=True, generatedBy="AI-authored deterministic templates v1", realParticipants=0,
                     timezone="Asia/Shanghai", simulatedNow=ANCHOR.isoformat(),
                     demo={k: len(demo[k]) for k in ["works", "events", "samples", "semantics", "emotions"]},

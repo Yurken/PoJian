@@ -123,9 +123,9 @@ CI 需要仓库 Secret `POJIAN_SERVICE_TOKEN` 及[四项签名 Secrets](docs/AND
 | [产品规划](docs/PRD-Multimodal.md) | 多模态产品需求 |
 | [设计与实现对照](docs/IMPLEMENTATION.md) | 设计落地情况 |
 | [实时监测架构](docs/REALTIME_MONITORING.md) | 监测链路与权限边界 |
-| [AI 合成演示数据](docs/SYNTHETIC_DATA.md) | 独立数据库、信息茧房与焦虑场景、复现与验证 |
+| [AI 合成回归数据](docs/SYNTHETIC_DATA.md) | 开发用生成脚本、测试夹具与验证；不随 App 打包 |
 | [论文受控合成数据](docs/RESEARCH_SYNTHETIC_DATA.md) | 七种组合、8,400 作品、划分协议与实际离线结果 |
-| [项目实验数据库](docs/PROJECT_RESEARCH_DATABASE.md) | 可查询 SQLite、200 名虚拟用户隔离、App 接入与验证 |
+| [开发用实验数据库](docs/PROJECT_RESEARCH_DATABASE.md) | 本地 SQLite 生成、200 名虚拟用户与回归验证 |
 | [主题观点与分析数据](docs/VIEWPOINT_TOPICS.md) | 主题卡片、短观点、内容影响与时长、原文分析及数据来源 |
 | [固定签名配置](docs/ANDROID_SIGNING.md) | 签名密钥恢复与 CI Secrets |
 | [应用自动更新](docs/app-updates.md) | 更新接口、校验与分发 |

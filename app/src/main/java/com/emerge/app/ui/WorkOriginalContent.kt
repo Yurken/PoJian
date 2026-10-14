@@ -32,7 +32,7 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun WorkOriginalContent(event: BrowseEvent) {
-    if (LocalSyntheticDataset.current != null || !OriginalLinks.supports(event.packageName)) return
+    if (!OriginalLinks.supports(event.packageName)) return
     val app = LocalContext.current.applicationContext as? EmergeApplication ?: return
     val dao = app.database.workOriginalDao()
     val key = event.workKey

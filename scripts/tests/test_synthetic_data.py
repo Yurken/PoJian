@@ -30,10 +30,10 @@ class SyntheticDataTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.temp.cleanup()
 
-    def test_bundled_asset_is_reproducible_and_synthetic(self):
-        self.assertEqual(self.demo, json.loads((ROOT / "app/src/main/assets/synthetic/demo-v1.json").read_text(encoding="utf8")))
+    def test_jvm_fixture_is_reproducible_and_synthetic(self):
+        self.assertEqual(self.demo, json.loads((ROOT / "app/src/test/resources/synthetic/demo-v1.json").read_text(encoding="utf8")))
         self.assertEqual((generator.dumps(self.demo) + "\n").encode("utf8"),
-                         (ROOT / "app/src/main/assets/synthetic/demo-v1.json").read_bytes())
+                         (ROOT / "app/src/test/resources/synthetic/demo-v1.json").read_bytes())
         self.assertTrue(self.demo["synthetic"])
         self.assertEqual(0, self.demo["participantCount"])
         self.assertEqual([], self.demo["media"])

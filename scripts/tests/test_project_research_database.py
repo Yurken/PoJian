@@ -14,7 +14,7 @@ class ProjectResearchDatabaseTest(unittest.TestCase):
         self.source.row_factory = sqlite3.Row
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys=ON")
-        self.db.executescript((ROOT / "app/src/main/assets/synthetic/research-schema.sql").read_text(encoding="utf8"))
+        self.db.executescript((ROOT / "evaluation/schemas/research-schema.sql").read_text(encoding="utf8"))
         self.contact = dict(self.source.execute("SELECT * FROM contacts ORDER BY row_id LIMIT 1").fetchone())
         self.copy("works", "id=?", (self.contact["work_id"],))
         self.copy("versions", "id=?", (self.contact["version_id"],))

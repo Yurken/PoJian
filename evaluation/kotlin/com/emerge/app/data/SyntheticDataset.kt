@@ -13,9 +13,6 @@ data class SyntheticDataset(val now: Long, val appNames: Map<String, String>, va
     val events: List<BrowseEvent>, val samples: List<BrowseSample>, val semantics: List<EventSemantics>,
     val emotions: List<SyntheticEmotion>, val mediaTypes: Map<String, String> = emptyMap()) {
     companion object {
-        const val ASSET = "synthetic/demo-v1.json"
-        const val DATABASE = "pojian-synthetic-demo-v1.db"
-
         fun decode(text: String): SyntheticDataset {
             val root = JSONObject(text)
             require(root.getBoolean("synthetic") && root.getInt("formatVersion") == 1)

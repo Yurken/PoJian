@@ -1,5 +1,7 @@
 # 主题观点卡片与分析数据
 
+当前 App 已移除内置合成数据库及入口。本文中的实验界面描述属于历史实现；生成、投影和回归能力仍保留在开发工具与 JVM 测试源码集中，见[开发用实验数据库](PROJECT_RESEARCH_DATABASE.md)。真实浏览数据链路保持不变。
+
 本轮基准为 `ff56d14a6cdbc55abf43508d3461509e0e14cbc9`，独立分支 `codex/work-identity-thumbnails`。主分支 `a066f09` 已在基准历史中。版本 `0.5.22` / `44`，未修改签名、applicationId、更新分发或采集权限。
 
 ## 数据现状与补充
@@ -74,9 +76,9 @@ python -m unittest discover -s server/tests -v
 | --- | --- |
 | 字段与等级计算 | `analysis/ClaimPresentation.kt`、`WorkTopicPresentation.kt`、`StructuredSemantics.kt`、`SemanticsCodec.kt` |
 | 作品归并与顺序 | `analysis/ViewpointTimeline.kt`、`ViewpointDistribution.kt` |
-| 观点界面与详情 | `ui/BrowseWorkCards.kt`、`ViewpointTimelineCard.kt`、`ViewpointDistributionCard.kt`、`SyntheticDemoScreen.kt` |
+| 观点界面与详情 | `ui/BrowseWorkCards.kt`、`ViewpointTimelineCard.kt`、`ViewpointDistributionCard.kt` |
 | 在线结果归属 | `monitoring/MonitorRuntime.kt`、`MonitorInputs.kt`、`server/monitor_server.py`、`server/claim_presentation.py` |
-| 实验数据 | `data/ResearchDatabaseStore.kt`、`ResearchProjection.kt`、`assets/synthetic/research-*`、`scripts/research_presentations.py`、`build_project_research_database.py`、`audit_project_research_database.py` |
+| 开发用实验数据 | `evaluation/kotlin/com/emerge/app/data/ResearchProjection.kt`、`evaluation/schemas/research-schema.sql`、`scripts/research_presentations.py`、`build_project_research_database.py`、`audit_project_research_database.py` |
 | 回归与评测 | `ClaimPresentationTest`、`ResearchProjectionTest`、`TopicWorkCardsTest`、`FunctionalMinimalUiTest`、`SemanticsPersistenceTest`、Python 对应测试及 `evaluation/.../ResearchDatabaseEvaluator.kt` |
 
-完整精确清单可从本轮提交的 `git show --stat` 获取；Android 文件路径均在 `app/src/` 下对应源码集。
+完整精确清单可从本轮提交的 `git show --stat` 获取；App 文件位于 `app/src/`，开发评测与测试辅助代码位于 `evaluation/`。
