@@ -9,7 +9,7 @@
 
 录音、转写与画面采样只是材料入口，不是产品主角。
 
-**当前版本 0.5.37** · Android 10+ · [更新日志](docs/CHANGELOG.md)
+**当前版本 0.5.38** · Android 10+ · [更新日志](docs/CHANGELOG.md)
 
 <p align="center">
   <a href="docs/brand/poster/pojian-intro-20261012-landscape-v1.png">
@@ -90,7 +90,7 @@ bash scripts/check-monitor-core.sh
 
 ## 发布与分发
 
-- **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出通用 Release APK；主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），不再发布 GitHub Release 更新包。
+- **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出通用 Release APK；主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），同时在本仓库 GitHub Release 备份同一份 APK 与版本元数据，GitHub Release 不参与 R2 的三版本清理。
 - **版本与 Tag 规则**：每次已授权的推送递增 `versionName` 补丁位与 `versionCode`，并创建同名附注 Tag 一并推送。
 - **下载渠道**：从 [R2 更新清单](https://pub-6ad0b56b335240c696618fb628a56ef5.r2.dev/updates/latest.json) 的 `apkUrl` 下载最新 APK；也可在 **Actions → 成功运行 → Artifacts** 下载（保留 14 天）。R2 上传并校验成功后只保留最近 3 个版本。旧版需手动安装首个 R2 版本一次。
 - **历史签名说明**：本地与 CI 自 0.5.4 起共用固定签名，可连续覆盖升级；更早版本使用已丢失的临时签名，无法保证直接覆盖，请在验证数据备份前保留旧应用。

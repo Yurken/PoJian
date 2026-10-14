@@ -1,6 +1,6 @@
 # Cloudflare R2 自动更新配置
 
-GitHub Actions 构建并验证固定签名 APK，仅上传 R2。App 从 `updates/latest.json` 检测版本，直接从公开 R2 域名下载。上传密钥只存于 GitHub Secrets，不进入 APK。未配置完整 R2 参数时，CI 直接失败，不回退到其他分发入口。
+GitHub Actions 构建并验证固定签名 APK，先备份到本仓库 GitHub Release，再上传 R2。App 从 `updates/latest.json` 检测版本，直接从公开 R2 域名下载。上传密钥只存于 GitHub Secrets，不进入 APK。未配置完整 R2 参数时，CI 直接失败，不回退到其他分发入口。
 
 ## 1. 创建存储桶和公开下载地址
 
@@ -39,11 +39,11 @@ Repository variables（Variables 页签）：
 
 ## 4. 首次发布和旧版迁移
 
-配置后，对带有正确 `v<versionName>` Tag 的 main 提交运行 Build APK。没有同名且指向本提交的 Tag 时，只有构建产物，不发布 R2。
+配置后，对带有正确 `v<versionName>` Tag 的 main 提交运行 Build APK。没有同名且指向本提交的 Tag 时，只有构建产物，不发布 GitHub Release 或 R2。
 
 首次上传产生完整 APK 和清单，不产生差分。访问 `https://<下载域名>/updates/latest.json`，确认 APK 地址可公开下载，并核对清单的 versionCode、sha256。
 
-新构建 App 使用 R2 清单地址。已安装的 GitHub 或网关版本需要手动覆盖安装首个 R2 版本一次，之后直接使用 R2 更新；不再维护旧下载入口。GitHub 仅保留 Actions 构建产物，不再发布 APK Release。保留固定签名及 applicationId，不需要卸载旧应用。
+新构建 App 使用 R2 清单地址。已安装的 GitHub 或网关版本需要手动覆盖安装首个 R2 版本一次，之后直接使用 R2 更新；不再维护旧下载入口。GitHub Release 备份同一份 APK 与版本元数据，并保留历史版本，不受 R2 三版本清理影响。保留固定签名及 applicationId，不需要卸载旧应用。
 
 ## 5. 增量更新
 

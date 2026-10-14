@@ -1,12 +1,12 @@
 # 应用更新
 
-应用通过 Cloudflare R2 分发 APK 和可选增量包，配置见 [R2 自动更新](R2_UPDATES.md)。GitHub Actions 负责构建与固定签名校验，不再发布 GitHub Release 更新包。
+应用通过 Cloudflare R2 分发 APK 和可选增量包，配置见 [R2 自动更新](R2_UPDATES.md)。GitHub Actions 负责构建与固定签名校验，同时在本仓库 GitHub Release 备份 APK 与版本元数据。
 
 正式 APK 默认从 `https://pub-6ad0b56b335240c696618fb628a56ef5.r2.dev/updates/latest.json` 检查更新。CI 使用 `R2_PUBLIC_BASE_URL` 注入 `pojian.r2PublicBaseUrl`，让构建地址与上传地址一致。Release 不接受 Debug 的 `pojian.updateManifestUrl` 覆盖；Debug 可通过该属性或本地配置覆盖或关闭检查。
 
 更新清单、APK 和补丁均支持匿名 HTTPS 下载，R2 上传密钥只存于 Actions Secrets，不进入 APK。下载后校验摘要、包名、版本和固定签名，再调用系统安装界面。
 
-已安装的旧版若使用 GitHub 或网关更新地址，需要手动安装首个 R2 版本一次，此后自动检查 R2。旧发布记录不删除，但不再续发；本次不维护旧入口兼容。
+已安装的旧版若使用 GitHub 或网关更新地址，需要手动安装首个 R2 版本一次，此后自动检查 R2。GitHub Release 保留历史安装包，但不作为新版 App 的更新入口。
 
 App 启动／返回前台时检查，成功后 6 小时内不重复检查，网络或数据错误后至少间隔 15 分钟重试。自动检查失败保持静默。「稍后」关闭本次提示；更高 `versionCode` 才会触发提示，版本名称只用于显示。无后台定时任务。
 

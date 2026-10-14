@@ -19,7 +19,7 @@ on:
       - '.github/workflows/build-apk.yml'
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 concurrency:
@@ -47,7 +47,7 @@ jobs:
           RELEASE_TAG="v${VERSION}"
           TAG_REFS="$(git ls-remote --tags origin "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}")"
           if [ -z "$TAG_REFS" ]; then
-            echo "No existing ${RELEASE_TAG}; building artifacts without R2 publication."
+            echo "No existing ${RELEASE_TAG}; building artifacts without Release or R2 publication."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -56,7 +56,7 @@ jobs:
             TAG_COMMIT="$(printf '%s\n' "$TAG_REFS" | awk 'NR == 1 { print $1 }')"
           fi
           if [ "$TAG_COMMIT" != "$RELEASE_SHA" ]; then
-            echo "::error::${RELEASE_TAG} does not point to this commit; refusing R2 publication."
+            echo "::error::${RELEASE_TAG} does not point to this commit; refusing Release or R2 publication."
             exit 1
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
@@ -148,6 +148,24 @@ jobs:
           APK_SHA256="$(sha256sum release-apk/PoJian.apk | awk '{print $1}')"
           printf '{"version":1,"version_code":%s,"version_name":"%s","sha256":"%s"}\n' \
             "$VERSION_CODE" "$VERSION" "$APK_SHA256" > release-apk/update.json
+
+      - name: Archive APK in GitHub Release
+        if: steps.release_plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_SHA: ${{ github.sha }}
+          VERSION: ${{ steps.release_plan.outputs.version }}
+          RELEASE_TAG: ${{ steps.release_plan.outputs.tag }}
+        run: |
+          printf '%s\n' '固定签名 APK 备份。应用内更新使用 R2；GitHub Release 保留历史版本。' > "$RUNNER_TEMP/release-notes.txt"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-apk/PoJian.apk release-apk/update.json --clobber
+          else
+            gh release create "$RELEASE_TAG" release-apk/PoJian.apk release-apk/update.json \
+              --verify-tag --target "$RELEASE_SHA" --title "破茧 v${VERSION}" \
+              --notes-file "$RUNNER_TEMP/release-notes.txt" --latest
+          fi
 
       - name: Publish and verify R2 updates (keep latest 3 versions)
         if: steps.release_plan.outputs.publish == 'true'
