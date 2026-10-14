@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -76,27 +77,32 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
             val duration = item.durationMillis(window)
             val impact = WorkTopicPresentation.impact(item.claims, duration)
             val accent = impactColor(impact)
-            Surface(shape = RoundedCornerShape(12.dp), color = accent.copy(alpha = .035f),
+            Surface(shape = DesignTokens.CardShape, color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 2.dp,
                 border = BorderStroke(1.dp, accent.copy(alpha = .25f)),
                 modifier = Modifier.fillMaxWidth().testTag("work-card-${item.workIdentity}")
                     .clickable(role = Role.Button) { detail = item.workIdentity }
                     .semantics { stateDescription = "影响提示${impact.label}" }) {
-            Row(Modifier.fillMaxWidth().padding(12.dp),
+            Row(Modifier.fillMaxWidth().padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (thumbnail != null) WorkImage(thumbnail, app, 48.dp)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         SourceAppText(item.record.packageName, names[item.record.packageName] ?: item.record.packageName)
                         MetadataText(time.format(Instant.ofEpochMilli(WorkTopicPresentation.firstSeen(item, window))))
                     }
                     val claims = item.claims.distinctBy { it.key }.take(3)
                     if (claims.isEmpty()) Text("观点未提取", style = MaterialTheme.typography.bodyMedium)
-                    claims.forEach { claim ->
-                        val claimAccent = impactColor(WorkTopicPresentation.impact(listOf(claim), duration))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(claimAccent))
-                            Text(WorkTopicPresentation.phrase(claim), maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyMedium, color = Ink)
+                    if (claims.isNotEmpty()) Column(Modifier.fillMaxWidth().clip(DesignTokens.InnerShape)
+                        .background(accent.copy(alpha = .08f)).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        claims.forEach { claim ->
+                            val claimAccent = impactColor(WorkTopicPresentation.impact(listOf(claim), duration))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(claimAccent))
+                                Text(WorkTopicPresentation.phrase(claim), maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                    style = MaterialTheme.typography.bodyMedium, color = Ink)
+                            }
                         }
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -166,11 +172,15 @@ private fun WorkImage(row: WorkThumbnail?, app: EmergeApplication?, imageSize: D
     }
 }
 
-internal fun impactColor(level: ImpactLevel): Color = when (level) {
-    ImpactLevel.HIGH -> Color(0xFFAF625C)
-    ImpactLevel.MEDIUM -> Color(0xFF907729)
-    ImpactLevel.LOW -> Color(0xFF4B8569)
-    ImpactLevel.UNKNOWN -> Color(0xFF737B82)
+@Composable
+internal fun impactColor(level: ImpactLevel): Color {
+    val dark = MaterialTheme.colorScheme.surface.luminance() < .5f
+    return when (level) {
+        ImpactLevel.HIGH -> if (dark) Color(0xFFFDA4AF) else Color(0xFFAF625C)
+        ImpactLevel.MEDIUM -> if (dark) Color(0xFFFCD34D) else Color(0xFFB45309)
+        ImpactLevel.LOW -> if (dark) Color(0xFF5EEAD4) else Color(0xFF0F766E)
+        ImpactLevel.UNKNOWN -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
 }
 
 @Composable

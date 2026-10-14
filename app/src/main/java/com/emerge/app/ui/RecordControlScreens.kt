@@ -278,8 +278,15 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                             )
                             Text("采集开关", color = Ink, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
-                        Text(captureState, color = Muted,
-                            style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+                        val active = selectedApps.isNotEmpty() && enabled && permission && diagnostics.connected
+                        Surface(shape = DesignTokens.PillShape,
+                            color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)) {
+                            Text(captureState,
+                                color = if (active) MaterialTheme.colorScheme.onPrimaryContainer else Muted,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp))
+                        }
                     }
                     PojianSwitch(checked = enabled, onCheckedChange = onCapture, enabled = selectedApps.isNotEmpty(),
                         modifier = Modifier.testTag("capture-toggle").semantics { contentDescription = "开启采集"; stateDescription = captureState })
@@ -328,8 +335,15 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
                     "最近结果：${diagnostics.result}\n\n" +
                     "已授权但未连接时，可关闭再开启系统辅助服务。部分应用不提供正文；" +
                     (if (audioContent != null) "录音请从录制页开始，画面采样需另行开启。" else "目前也无法识别视频画面和音频内容。"))
-                ControlStatusLine("辅助功能授权", if (permission) "已启用" else "未检测到")
-                ControlStatusLine("辅助服务连接", if (diagnostics.connected) "已连接" else "未连接")
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val stacked = maxWidth / LocalDensity.current.fontScale < 280.dp
+                    val tiles: @Composable (Modifier) -> Unit = { tileModifier ->
+                        ControlStatusLine("辅助功能授权", if (permission) "已启用" else "未检测到", tileModifier)
+                        ControlStatusLine("辅助服务连接", if (diagnostics.connected) "已连接" else "未连接", tileModifier)
+                    }
+                    if (stacked) Column(verticalArrangement = Arrangement.spacedBy(10.dp)) { tiles(Modifier.fillMaxWidth()) }
+                    else Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) { tiles(Modifier.weight(1f)) }
+                }
                 PojianSecondaryButton(onClick = onOpenSettings, shape = MaterialTheme.shapes.small,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
                     Text(if (permission) "查看系统辅助功能授权" else "前往系统授权")
@@ -359,9 +373,11 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
 }
 
 @Composable
-private fun ControlStatusLine(label: String, value: String) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(label, modifier = Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodyMedium)
+private fun ControlStatusLine(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier.clip(DesignTokens.InnerShape)
+        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .6f)).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, color = Muted, style = MaterialTheme.typography.bodySmall)
         Text(value, color = Ink, fontWeight = FontWeight.Medium, style = MaterialTheme.typography.bodyMedium)
     }
 }

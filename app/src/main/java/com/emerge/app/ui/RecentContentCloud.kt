@@ -135,12 +135,12 @@ private fun ContentWordCloud(words: List<ContentWord>, expanded: Boolean, enable
 @Composable
 private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    val tier = when { ratio > .65f -> 2; ratio > .35f -> 1; else -> 0 }
-    val background = when (tier) { 2 -> scheme.primaryContainer; 1 -> scheme.secondaryContainer; else -> scheme.surfaceContainerLow }
-    val foreground = when (tier) { 2 -> scheme.onPrimaryContainer; 1 -> scheme.onSecondaryContainer; else -> scheme.onSurfaceVariant }
-    Surface(color = background, shape = RoundedCornerShape(14.dp),
-        border = if (tier == 2) BorderStroke(1.dp, scheme.primary.copy(alpha = .35f)) else null,
-        modifier = modifier.clip(RoundedCornerShape(14.dp))
+    val tier = when { ratio >= .75f -> 2; ratio >= .45f -> 1; else -> 0 }
+    val background = when (tier) { 2 -> scheme.tertiaryContainer; 1 -> scheme.primaryContainer; else -> scheme.surfaceContainerLow }
+    val foreground = when (tier) { 2 -> scheme.onTertiaryContainer; 1 -> scheme.onPrimaryContainer; else -> scheme.onSurfaceVariant }
+    Surface(color = background, shape = RoundedCornerShape(10.dp),
+        border = if (tier == 2) BorderStroke(1.dp, scheme.tertiary.copy(alpha = .35f)) else null,
+        modifier = modifier.clip(RoundedCornerShape(10.dp))
             .clickable(enabled = enabled, role = Role.Button, onClickLabel = "查看相关内容", onClick = onClick)
             .clearAndSetSemantics {
                 contentDescription = "${word.text}，${word.recordCount} 条记录"
@@ -150,7 +150,7 @@ private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier,
         Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(word.text, Modifier.weight(1f, fill = false), color = foreground,
-                fontSize = when (tier) { 2 -> 16.sp; 1 -> 14.sp; else -> 12.sp },
+                fontSize = when (tier) { 2 -> 14.sp; 1 -> 13.sp; else -> 12.sp },
                 fontWeight = if (tier == 2) FontWeight.SemiBold else FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(word.recordCount.toString(), color = foreground, fontSize = 11.sp, maxLines = 1)

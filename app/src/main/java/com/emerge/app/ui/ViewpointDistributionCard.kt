@@ -173,7 +173,7 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
 private fun ViewpointSpectrum(shares: List<ViewpointStanceShare>, selected: ViewpointStance?, onSelect: (ViewpointStance) -> Unit) {
     if (shares.isEmpty()) return
     Column(Modifier.fillMaxWidth().testTag("viewpoint-spectrum")) {
-        Row(Modifier.fillMaxWidth().height(48.dp)) {
+        Row(Modifier.fillMaxWidth().height(48.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             shares.forEachIndexed { index, share ->
                 key(share.stance) {
                     val weight by animateFloatAsState(share.count.toFloat(), tween(300), label = "viewpoint-spectrum-weight")
@@ -182,7 +182,7 @@ private fun ViewpointSpectrum(shares: List<ViewpointStanceShare>, selected: View
                         .selectable(selected = selected == share.stance, role = Role.Button, onClick = { onSelect(share.stance) })
                         .semantics { contentDescription = "${share.stance.label}，${share.count}个作品，${percentage(share.percent)}%" }
                         .testTag("viewpoint-spectrum-${share.stance.name}"), contentAlignment = Alignment.Center) {
-                        Box(Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(
+                        Box(Modifier.fillMaxWidth().height(14.dp).clip(RoundedCornerShape(
                             topStart = if (index == 0) 6.dp else 0.dp, bottomStart = if (index == 0) 6.dp else 0.dp,
                             topEnd = if (index == shares.lastIndex) 6.dp else 0.dp, bottomEnd = if (index == shares.lastIndex) 6.dp else 0.dp))
                             .background(color.copy(alpha = if (selected == null || selected == share.stance) 1f else .35f)))
@@ -190,12 +190,25 @@ private fun ViewpointSpectrum(shares: List<ViewpointStanceShare>, selected: View
                 }
             }
         }
-        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
             shares.forEach { share ->
-                FilterChip(selected = selected == share.stance, onClick = { onSelect(share.stance) },
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("viewpoint-stance-${share.stance.name}"),
-                    leadingIcon = { Box(Modifier.size(8.dp).background(stanceColor(share.stance), CircleShape)) },
-                    label = { Text("${share.stance.label} ${percentage(share.percent)}%") })
+                val accent = stanceColor(share.stance)
+                val active = selected == share.stance
+                Surface(shape = DesignTokens.InnerShape,
+                    color = accent.copy(alpha = if (active) .20f else .08f),
+                    border = BorderStroke(1.dp, accent.copy(alpha = if (active) .65f else .15f)),
+                    modifier = Modifier.widthIn(min = 92.dp).heightIn(min = 48.dp)
+                        .selectable(selected = active, role = Role.Button, onClick = { onSelect(share.stance) })
+                        .testTag("viewpoint-stance-${share.stance.name}")) {
+                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(Modifier.size(7.dp).background(accent, CircleShape))
+                            Text(share.stance.label, style = MaterialTheme.typography.labelMedium)
+                        }
+                        Text("${percentage(share.percent)}% (${share.count})", style = MaterialTheme.typography.titleSmall)
+                    }
+                }
             }
         }
     }
@@ -206,8 +219,8 @@ private fun stanceColor(stance: ViewpointStance): Color {
     val dark = MaterialTheme.colorScheme.surface.luminance() < .5f
     return when (stance) {
         ViewpointStance.SUPPORT -> distributionGreen()
-        ViewpointStance.NEUTRAL -> if (dark) Color(0xFFCBD5E1) else Color(0xFF475569)
-        ViewpointStance.QUESTION -> if (dark) Color(0xFFFDA4AF) else Color(0xFFBE123C)
+        ViewpointStance.NEUTRAL -> if (dark) Color(0xFFA5B4FC) else DesignTokens.NeutralAccent
+        ViewpointStance.QUESTION -> if (dark) Color(0xFFFCD34D) else DesignTokens.ChallengeAccent
         ViewpointStance.MIXED -> if (dark) Color(0xFFC4B5FD) else Color(0xFF6D28D9)
         ViewpointStance.UNKNOWN -> MaterialTheme.colorScheme.outline
     }
@@ -330,6 +343,6 @@ private fun DistributionBadge(text: String, accent: Color) {
 
 @Composable
 private fun distributionGreen(): Color = if (MaterialTheme.colorScheme.surface.luminance() < .5f)
-    Color(0xFF5EEAD4) else Color(0xFF047857)
+    Color(0xFF5EEAD4) else DesignTokens.SupportAccent
 
 private fun percentage(value: Double) = String.format(Locale.CHINA, "%.1f", value)
