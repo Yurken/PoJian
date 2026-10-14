@@ -25,6 +25,7 @@ internal class HttpsUpdateTransport(
                     readTimeout = 15_000
                     instanceFollowRedirects = false
                     useCaches = false
+                    setRequestProperty("User-Agent", "PoJian-Updater/1.0")
                     setRequestProperty("Accept-Encoding", "identity")
                 }
                 val status = connection.responseCode

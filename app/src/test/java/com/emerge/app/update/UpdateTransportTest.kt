@@ -32,6 +32,7 @@ class UpdateTransportTest {
             assertEquals(3L, length)
         }
         assertEquals("abc", result)
+        assertEquals("PoJian-Updater/1.0", response.getRequestProperty("User-Agent"))
         assertTrue(response.closed)
         assertFalse(response.instanceFollowRedirects)
     }

@@ -9,7 +9,7 @@
 
 录音、转写与画面采样只是材料入口，不是产品主角。
 
-**当前版本 0.5.32** · Android 10+ · [更新日志](docs/CHANGELOG.md)
+**当前版本 0.5.35** · Android 10+ · [更新日志](docs/CHANGELOG.md)
 
 <p align="center">
   <a href="docs/brand/poster/pojian-intro-20261012-landscape-v1.png">
@@ -28,7 +28,7 @@
 | 多模态采集 | 可见文字本地观察；关键画面先经端侧中文 OCR，必要时送视觉模型；播放音频本机转写（sherpa-onnx，模型约 31 MB） |
 | AI 词云与统计 | 概览页提供今天／七日／小时统计与近期接触词云，基于已保存的 AI 分析结果聚合 |
 | 低打扰交互 | 悬浮球贴边显示、不抢焦点；仅持续重复或证据矛盾时主动提醒，支持冷却、每日上限与夜间免打扰 |
-| 应用自动更新 | 服务端代理私有 Release，校验 SHA-256、包名与固定签名后交系统安装 |
+| 应用自动更新 | 从 R2 下载完整包或增量包，校验 SHA-256、包名与固定签名后交系统安装 |
 | 本地优先存储 | 文字／音频任务以 AES-GCM 加密队列持久化，支持进程恢复与受限重试；原声不上传、不落盘；截图按画面分析授权发送，缩略图另行授权后仅本地保存 |
 
 ## 界面结构
@@ -92,7 +92,7 @@ bash scripts/check-monitor-core.sh
 
 - **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出通用 Release APK；主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），不再发布 GitHub Release 更新包。
 - **版本与 Tag 规则**：每次已授权的推送递增 `versionName` 补丁位与 `versionCode`，并创建同名附注 Tag 一并推送。
-- **下载渠道**：优先从 **Releases → 最新版本 → Assets** 下载 `PoJian.apk`；也可在 **Actions → 成功运行 → Artifacts** 下载（保留 14 天）。0.5.4 及之后的安装包支持应用内自动更新。
+- **下载渠道**：从 [R2 更新清单](https://pub-6ad0b56b335240c696618fb628a56ef5.r2.dev/updates/latest.json) 的 `apkUrl` 下载最新 APK；也可在 **Actions → 成功运行 → Artifacts** 下载（保留 14 天）。R2 上传并校验成功后只保留最近 3 个版本。旧版需手动安装首个 R2 版本一次。
 - **历史签名说明**：本地与 CI 自 0.5.4 起共用固定签名，可连续覆盖升级；更早版本使用已丢失的临时签名，无法保证直接覆盖，请在验证数据备份前保留旧应用。
 
 CI 需要仓库 Secret `POJIAN_SERVICE_TOKEN` 及[四项签名 Secrets](docs/ANDROID_SIGNING.md)，缺失即停止构建；模型与检索密钥仅保存在服务端。

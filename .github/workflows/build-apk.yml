@@ -149,7 +149,7 @@ jobs:
           printf '{"version":1,"version_code":%s,"version_name":"%s","sha256":"%s"}\n' \
             "$VERSION_CODE" "$VERSION" "$APK_SHA256" > release-apk/update.json
 
-      - name: Publish APK and incremental update to R2
+      - name: Publish and verify R2 updates (keep latest 3 versions)
         if: steps.release_plan.outputs.publish == 'true'
         env:
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
