@@ -1,10 +1,12 @@
-# 应用自动更新
+# 应用更新
 
-当前使用独立公开 GitHub 仓库分发 APK，配置见 [公开 APK 发布](PUBLIC_APK_RELEASES.md)。App 默认从公开 Release 的 `update.json` 检测版本，下载无需令牌；R2 为保留的旧方案，不再是当前发布流程。
+应用通过 Cloudflare R2 分发 APK 和可选增量包，配置见 [R2 自动更新](R2_UPDATES.md)。GitHub Actions 负责构建与固定签名校验，不再发布 GitHub Release 更新包。
 
-配置入口：`app/build.gradle.kts` 中的 `BuildConfig.UPDATE_MANIFEST_URL`，默认 `https://github.com/baijiamin/PoJian-Releases/releases/latest/download/update.json`。Release 构建固定使用公开仓库，CI 将 `APK_RELEASE_REPOSITORY` 通过 `pojian.apkReleaseRepository` 注入，发布与下载地址保持一致；旧的 `pojian.updateManifestUrl` 或本地配置不会将正式 APK 改回旧网关。清单内 APK 和补丁指向该仓库具体版本的 Release 资产，下载不经过业务网关，不使用 GitHub 或业务服务令牌。Debug 构建仍可用 `pojian.updateManifestUrl` Gradle 属性或 `local.properties` 覆盖；为空时不会检查更新、发送更新请求或显示更新弹窗。
+正式 APK 默认从 `https://pub-6ad0b56b335240c696618fb628a56ef5.r2.dev/updates/latest.json` 检查更新。CI 使用 `R2_PUBLIC_BASE_URL` 注入 `pojian.r2PublicBaseUrl`，让构建地址与上传地址一致。Release 不接受 Debug 的 `pojian.updateManifestUrl` 覆盖；Debug 可通过该属性或本地配置覆盖或关闭检查。
 
-旧 APK 若仍使用网关 `/app-update`，服务端配置 `EMERGE_APP_UPDATE_PUBLIC_REPO=baijiamin/PoJian-Releases` 后可转向公开仓库。R2 和私有 Release 代理只保留兼容，见 [R2 自动更新](R2_UPDATES.md) 与 [公开 APK 发布](PUBLIC_APK_RELEASES.md)。
+更新清单、APK 和补丁均支持匿名 HTTPS 下载，R2 上传密钥只存于 Actions Secrets，不进入 APK。下载后校验摘要、包名、版本和固定签名，再调用系统安装界面。
+
+已安装的旧版若使用 GitHub 或网关更新地址，需要手动安装首个 R2 版本一次，此后自动检查 R2。旧发布记录不删除，但不再续发；本次不维护旧入口兼容。
 
 App 启动／返回前台时检查，成功后 6 小时内不重复检查，网络或数据错误后至少间隔 15 分钟重试。自动检查失败保持静默。「稍后」关闭本次提示；更高 `versionCode` 才会触发提示，版本名称只用于显示。无后台定时任务。
 

@@ -90,7 +90,7 @@ bash scripts/check-monitor-core.sh
 
 ## 发布与分发
 
-- **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出通用 Release APK；主分支存在指向当前提交的 `v<versionName>` Tag 时发布 GitHub Release（含 `PoJian.apk` 与更新清单 `update.json`）。
+- **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出通用 Release APK；主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），不再发布 GitHub Release 更新包。
 - **版本与 Tag 规则**：每次已授权的推送递增 `versionName` 补丁位与 `versionCode`，并创建同名附注 Tag 一并推送。
 - **下载渠道**：优先从 **Releases → 最新版本 → Assets** 下载 `PoJian.apk`；也可在 **Actions → 成功运行 → Artifacts** 下载（保留 14 天）。0.5.4 及之后的安装包支持应用内自动更新。
 - **历史签名说明**：本地与 CI 自 0.5.4 起共用固定签名，可连续覆盖升级；更早版本使用已丢失的临时签名，无法保证直接覆盖，请在验证数据备份前保留旧应用。

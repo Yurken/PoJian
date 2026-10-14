@@ -1,10 +1,14 @@
 """Publish immutable signed APK first, optional delta second, latest manifest last."""
+import argparse
+import hashlib
 import json
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.request import urlopen
 
 from apk_delta import MAX_APK, apply_patch, create_patch, sha256
 
@@ -15,6 +19,32 @@ def public_base(value):
     if url.scheme != "https" or not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError("R2_PUBLIC_BASE_URL must be a public HTTPS bucket URL without query or credentials")
     return value
+
+
+def configuration(environ):
+    required = ("R2_ACCOUNT_ID", "R2_BUCKET", "R2_PUBLIC_BASE_URL", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+    for key in required:
+        if not environ.get(key, "").strip():
+            raise ValueError(f"{key} is missing")
+    if not re.fullmatch(r"[0-9a-fA-F]{32}", environ["R2_ACCOUNT_ID"]):
+        raise ValueError("Invalid R2_ACCOUNT_ID")
+    return environ["R2_BUCKET"], public_base(environ["R2_PUBLIC_BASE_URL"])
+
+
+def verify_public(base, manifest):
+    """Check anonymous downloads, including every byte of the published APK."""
+    with urlopen(base + "/updates/latest.json", timeout=60) as response:
+        if json.loads(response.read(65537)) != manifest:
+            raise ValueError("Public R2 manifest does not match the release")
+    digest, size = hashlib.sha256(), 0
+    with urlopen(manifest["apkUrl"], timeout=60) as response:
+        while block := response.read(1024 * 1024):
+            size += len(block)
+            if size > MAX_APK:
+                raise ValueError("Oversized public APK")
+            digest.update(block)
+    if size != manifest["size"] or digest.hexdigest() != manifest["sha256"]:
+        raise ValueError("Public R2 APK checksum or size mismatch")
 
 
 def publish(client, bucket, base, apk, code, name, certificate):
@@ -77,12 +107,31 @@ def publish(client, bucket, base, apk, code, name, certificate):
 
 if __name__ == "__main__":
     import boto3
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    arguments = parser.parse_args()
+    bucket, base = configuration(os.environ)
     account = os.environ["R2_ACCOUNT_ID"]
-    if not re.fullmatch(r"[0-9a-fA-F]{32}", account):
-        raise ValueError("Invalid R2_ACCOUNT_ID")
     client = boto3.client("s3", endpoint_url=f"https://{account}.r2.cloudflarestorage.com", region_name="auto",
                           aws_access_key_id=os.environ["R2_ACCESS_KEY_ID"],
                           aws_secret_access_key=os.environ["R2_SECRET_ACCESS_KEY"])
-    metadata = json.loads(Path("release-apk/update.json").read_text())
-    publish(client, os.environ["R2_BUCKET"], os.environ["R2_PUBLIC_BASE_URL"], Path("release-apk/PoJian.apk"),
-            metadata["version_code"], metadata["version_name"], Path("app/signing-certificate.sha256").read_text())
+    if arguments.check:
+        client.list_objects_v2(Bucket=bucket, Prefix="updates/", MaxKeys=1)
+        print("R2 configuration and bucket read access verified")
+    else:
+        metadata = json.loads(Path("release-apk/update.json").read_text())
+        manifest = publish(client, bucket, base, Path("release-apk/PoJian.apk"),
+                           metadata["version_code"], metadata["version_name"],
+                           Path("app/signing-certificate.sha256").read_text())
+        for attempt in range(3):
+            try:
+                verify_public(base, manifest)
+                break
+            except (OSError, ValueError):
+                if attempt == 2:
+                    raise
+                time.sleep(5)
+        print("Anonymous R2 manifest and APK download verified")
+        if os.environ.get("GITHUB_STEP_SUMMARY"):
+            with Path(os.environ["GITHUB_STEP_SUMMARY"]).open("a", encoding="utf-8") as summary:
+                summary.write(f"R2: [{manifest['versionName']}]({manifest['apkUrl']})\n")

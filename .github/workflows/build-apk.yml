@@ -16,12 +16,10 @@ on:
       - 'scripts/apk_delta.py'
       - 'scripts/publish_r2.py'
       - 'scripts/tests/test_r2_updates.py'
-      - 'scripts/publish_public_apk.py'
-      - 'scripts/tests/test_public_apk.py'
       - '.github/workflows/build-apk.yml'
 
 permissions:
-  contents: write
+  contents: read
   actions: write
 
 concurrency:
@@ -49,7 +47,7 @@ jobs:
           RELEASE_TAG="v${VERSION}"
           TAG_REFS="$(git ls-remote --tags origin "refs/tags/${RELEASE_TAG}" "refs/tags/${RELEASE_TAG}^{}")"
           if [ -z "$TAG_REFS" ]; then
-            echo "No existing ${RELEASE_TAG}; building artifacts without Release publication."
+            echo "No existing ${RELEASE_TAG}; building artifacts without R2 publication."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -58,7 +56,7 @@ jobs:
             TAG_COMMIT="$(printf '%s\n' "$TAG_REFS" | awk 'NR == 1 { print $1 }')"
           fi
           if [ "$TAG_COMMIT" != "$RELEASE_SHA" ]; then
-            echo "::error::${RELEASE_TAG} does not point to this commit; refusing Release publication."
+            echo "::error::${RELEASE_TAG} does not point to this commit; refusing R2 publication."
             exit 1
           fi
           echo "publish=true" >> "$GITHUB_OUTPUT"
@@ -69,14 +67,18 @@ jobs:
       - name: Test release publishers
         run: |
           python3 -m unittest discover -s scripts/tests -p test_r2_updates.py
-          python3 -m unittest discover -s scripts/tests -p test_public_apk.py
 
-      - name: Check public release credentials
-        if: steps.release_plan.outputs.publish == 'true'
+      - name: Install R2 publisher dependency
+        run: python3 -m pip install boto3==1.40.55
+
+      - name: Check R2 publishing configuration
         env:
-          GH_TOKEN: ${{ secrets.APK_RELEASE_TOKEN }}
-          APK_RELEASE_REPOSITORY: ${{ vars.APK_RELEASE_REPOSITORY || 'baijiamin/PoJian-Releases' }}
-        run: python3 scripts/publish_public_apk.py --check
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python3 scripts/publish_r2.py --check
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -110,12 +112,11 @@ jobs:
       - name: Build signed release APK
         env:
           ORG_GRADLE_PROJECT_pojian.serviceToken: ${{ secrets.POJIAN_SERVICE_TOKEN }}
-          APK_RELEASE_REPOSITORY: ${{ vars.APK_RELEASE_REPOSITORY || 'baijiamin/PoJian-Releases' }}
+          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
         run: |
           python3 -c 'import os, sys; sys.exit(0 if os.environ.get("ORG_GRADLE_PROJECT_pojian.serviceToken") else "POJIAN_SERVICE_TOKEN is missing")'
-          PYTHONPATH=scripts python3 -c 'import os; from publish_public_apk import validate_repo; validate_repo(os.environ["APK_RELEASE_REPOSITORY"])'
           bash ./gradlew :app:assembleRelease --no-daemon --console=plain \
-            "-Ppojian.apkReleaseRepository=${APK_RELEASE_REPOSITORY}"
+            "-Ppojian.r2PublicBaseUrl=${R2_PUBLIC_BASE_URL}"
 
       - name: Verify APK signature
         run: |
@@ -148,32 +149,15 @@ jobs:
           printf '{"version":1,"version_code":%s,"version_name":"%s","sha256":"%s"}\n' \
             "$VERSION_CODE" "$VERSION" "$APK_SHA256" > release-apk/update.json
 
-      - name: Publish APK and incremental update to public repository
+      - name: Publish APK and incremental update to R2
         if: steps.release_plan.outputs.publish == 'true'
         env:
-          GH_TOKEN: ${{ secrets.APK_RELEASE_TOKEN }}
-          APK_RELEASE_REPOSITORY: ${{ vars.APK_RELEASE_REPOSITORY || 'baijiamin/PoJian-Releases' }}
-        run: python3 scripts/publish_public_apk.py
-
-      - name: Publish APK to source repository Releases
-        if: steps.release_plan.outputs.publish == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          RELEASE_SHA: ${{ github.sha }}
-          VERSION: ${{ steps.release_plan.outputs.version }}
-          RELEASE_TAG: ${{ steps.release_plan.outputs.tag }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" release-apk/PoJian.apk release-apk/update.json --clobber
-          else
-            gh release create "$RELEASE_TAG" release-apk/PoJian.apk release-apk/update.json \
-              --verify-tag \
-              --target "$RELEASE_SHA" \
-              --title "破茧 v${VERSION}" \
-              --notes "使用项目固定签名的 Release APK，本地与 CI 共用同一签名。固定签名版本之间支持覆盖升级。此前临时 Debug 签名版本不兼容，请保留旧应用及数据，完成备份迁移前不要卸载。" \
-              --latest
-          fi
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: python3 scripts/publish_r2.py
 
   cleanup:
     needs: apk

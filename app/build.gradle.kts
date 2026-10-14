@@ -13,9 +13,15 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
-val publicApkRepository = providers.gradleProperty("pojian.apkReleaseRepository").getOrElse("baijiamin/PoJian-Releases")
-require(publicApkRepository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"))) { "Invalid APK release repository" }
-val publicUpdateManifestUrl = "https://github.com/$publicApkRepository/releases/latest/download/update.json"
+val r2PublicBaseUrl = providers.gradleProperty("pojian.r2PublicBaseUrl")
+    .getOrElse("https://pub-6ad0b56b335240c696618fb628a56ef5.r2.dev").trimEnd('/')
+val r2Uri = URI(r2PublicBaseUrl)
+require(r2Uri.scheme == "https" && !r2Uri.host.isNullOrBlank() &&
+    r2Uri.rawUserInfo == null && r2Uri.rawQuery == null && r2Uri.rawFragment == null &&
+    r2PublicBaseUrl.length <= 270 && r2PublicBaseUrl.all { it.code in 33..126 && it != '\"' && it != '\\' }) {
+    "Invalid public R2 URL"
+}
+val publicUpdateManifestUrl = "$r2PublicBaseUrl/updates/latest.json"
 
 // Both local builds and CI use the same private key; no temporary debug fallback.
 val signingProperties = Properties().apply {
@@ -102,8 +108,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 55
-        versionName = "0.5.33"
+        versionCode = 56
+        versionName = "0.5.34"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -121,7 +127,7 @@ android {
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
         // Public release metadata is readable without any download token.
-        // Debug builds may override or disable checks; release builds use the public repository.
+        // Debug builds may override or disable checks; release builds use R2.
         val updateManifestUrl = providers.gradleProperty("pojian.updateManifestUrl").orNull
             ?: localServiceProperties.getProperty("pojian.updateManifestUrl", publicUpdateManifestUrl)
         require(updateManifestUrl.length <= 300 && updateManifestUrl.all { it.code in 32..126 }) { "Invalid update manifest URL format" }

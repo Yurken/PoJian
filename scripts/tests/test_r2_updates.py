@@ -4,13 +4,14 @@ import struct
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from apk_delta import MAGIC, apply_patch, create_patch, sha256
-from publish_r2 import public_base, publish
+from publish_r2 import configuration, public_base, publish, verify_public
 
 
 class MemoryR2:
@@ -110,6 +111,32 @@ class R2UpdatesTest(unittest.TestCase):
         for url in ("http://cdn.example.com", "https://user:password@cdn.example.com", "https://cdn.example.com?q=1"):
             with self.assertRaises(ValueError):
                 public_base(url)
+
+    def test_missing_configuration_fails_before_network(self):
+        config = dict(R2_ACCOUNT_ID="a" * 32, R2_BUCKET="pojian",
+                      R2_PUBLIC_BASE_URL="https://pub-example.r2.dev/",
+                      R2_ACCESS_KEY_ID="access", R2_SECRET_ACCESS_KEY="secret")
+        self.assertEqual(("pojian", "https://pub-example.r2.dev"), configuration(config))
+        for key in config:
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                configuration({**config, key: ""})
+
+    def test_anonymous_download_verification_detects_corruption(self):
+        client = MemoryR2()
+        apk = self.apk("release.apk", b"release")
+        base = "https://pub-example.r2.dev"
+        manifest = publish(client, "bucket", base, apk, 56, "0.5.34", "cert")
+        for content in (apk.read_bytes(), b"corrupt"):
+            with patch("publish_r2.urlopen", side_effect=[
+                io.BytesIO(json.dumps(manifest).encode()), io.BytesIO(content)
+            ]) as request:
+                if content == b"corrupt":
+                    with self.assertRaises(ValueError):
+                        verify_public(base, manifest)
+                else:
+                    verify_public(base, manifest)
+                self.assertEqual(base + "/updates/latest.json", request.call_args_list[0].args[0])
+                self.assertEqual(manifest["apkUrl"], request.call_args_list[1].args[0])
 
 
 if __name__ == "__main__":
