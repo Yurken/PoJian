@@ -17,7 +17,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -108,19 +107,16 @@ private fun ViewpointTimelineChart(state: ViewpointTimelineUiState, plotHeight: 
                                 val fraction = b.items.size.toFloat() / maximum
                                 val height = if (b.items.isEmpty()) 3.dp.toPx() else size.height * fraction
                                 val color = if (b.items.isEmpty()) colors.outline else colors.primary
-                                drawRoundRect(color,
+                                drawRoundRect(if (isSelected) color.copy(alpha = .20f) else color,
                                     topLeft = Offset(0f, size.height - height), size = Size(size.width, height), cornerRadius = CornerRadius(4.dp.toPx()))
                                 if (isSelected) {
-                                    // Keep every highlight layer on the bar itself, not its full-height hit target.
-                                    val glow = lerp(colors.primary, Color.White, .65f)
-                                    listOf(6.dp to .12f, 4.dp to .20f, 2.dp to .42f).forEach { (width, alpha) ->
-                                        val stroke = minOf(width.toPx(), size.width, height)
-                                        drawRoundRect(glow.copy(alpha = alpha),
-                                            topLeft = Offset(stroke / 2, size.height - height + stroke / 2),
-                                            size = Size(size.width - stroke, height - stroke),
-                                            cornerRadius = CornerRadius((4.dp.toPx() - stroke / 2).coerceAtLeast(0f)),
-                                            style = Stroke(stroke))
-                                    }
+                                    // Match the selected viewpoint chip: tinted fill and a thin same-color edge.
+                                    val stroke = minOf(1.dp.toPx(), size.width, height)
+                                    drawRoundRect(color.copy(alpha = .65f),
+                                        topLeft = Offset(stroke / 2, size.height - height + stroke / 2),
+                                        size = Size(size.width - stroke, height - stroke),
+                                        cornerRadius = CornerRadius((4.dp.toPx() - stroke / 2).coerceAtLeast(0f)),
+                                        style = Stroke(stroke))
                                 }
                             }
                             Text(b.label, Modifier.padding(top = 8.dp, bottom = 4.dp), color = if (isSelected) Ink else Muted,
