@@ -40,7 +40,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                 .background(DesignTokens.CocoonHeroBrush).padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("信息茧房 · 近7天", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                    Text("信息茧房 · ${period.label}", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                     if (share != null && motionEnabled) PojianTextButton(onClick = { playing = !playing }, modifier = Modifier.testTag("cocoon-play")) {
                         Text(if (playing) "暂停" else "播放")
                     }

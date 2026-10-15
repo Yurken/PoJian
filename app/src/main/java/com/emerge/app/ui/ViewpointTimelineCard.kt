@@ -2,13 +2,11 @@ package com.emerge.app.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,6 +17,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
@@ -98,7 +98,6 @@ private fun ViewpointTimelineChart(state: ViewpointTimelineUiState, plotHeight: 
                     buckets.forEachIndexed { i, b ->
                         val isSelected = i == state.index
                         Column(Modifier.width(width)
-                            .border(2.dp, if (isSelected) colors.primary else Color.Transparent, RoundedCornerShape(8.dp))
                             .clickable(role = Role.Button) { state.select(i) }.testTag("viewpoint-bar-$i")
                             .semantics { contentDescription = "${b.label}，${b.items.size}个作品，点击查看主题观点"; selected = i == state.index },
                             horizontalAlignment = Alignment.CenterHorizontally) {
@@ -111,6 +110,18 @@ private fun ViewpointTimelineChart(state: ViewpointTimelineUiState, plotHeight: 
                                 val color = if (b.items.isEmpty()) colors.outline else colors.primary
                                 drawRoundRect(color,
                                     topLeft = Offset(0f, size.height - height), size = Size(size.width, height), cornerRadius = CornerRadius(4.dp.toPx()))
+                                if (isSelected) {
+                                    // Keep every highlight layer on the bar itself, not its full-height hit target.
+                                    val glow = lerp(colors.primary, Color.White, .65f)
+                                    listOf(6.dp to .12f, 4.dp to .20f, 2.dp to .42f).forEach { (width, alpha) ->
+                                        val stroke = minOf(width.toPx(), size.width, height)
+                                        drawRoundRect(glow.copy(alpha = alpha),
+                                            topLeft = Offset(stroke / 2, size.height - height + stroke / 2),
+                                            size = Size(size.width - stroke, height - stroke),
+                                            cornerRadius = CornerRadius((4.dp.toPx() - stroke / 2).coerceAtLeast(0f)),
+                                            style = Stroke(stroke))
+                                    }
+                                }
                             }
                             Text(b.label, Modifier.padding(top = 8.dp, bottom = 4.dp), color = if (isSelected) Ink else Muted,
                                 style = labelStyle, maxLines = 1, softWrap = false)
