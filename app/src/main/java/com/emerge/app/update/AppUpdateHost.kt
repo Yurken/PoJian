@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.material3.LinearProgressIndicator
@@ -16,9 +18,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
@@ -35,7 +39,7 @@ import com.emerge.app.ui.PojianDialog
 import com.emerge.app.ui.PojianSecondaryButton
 import com.emerge.app.ui.PojianTextButton
 import com.emerge.app.ui.SectionTitle
-import com.emerge.app.ui.WhiteCard
+import com.emerge.app.ui.SettingsContentFrame
 
 @Composable
 internal fun AppUpdateHost(model: UpdateViewModel = viewModel()) {
@@ -73,19 +77,34 @@ internal fun AppUpdateHost(model: UpdateViewModel = viewModel()) {
 }
 
 @Composable
-internal fun UpdateSettingsSection(model: UpdateViewModel = viewModel()) {
-    if (BuildConfig.UPDATE_MANIFEST_URL.isBlank()) return
+internal fun UpdateSettingsSection(model: UpdateViewModel = viewModel(), embedded: Boolean = false) {
+    val canCheck = BuildConfig.UPDATE_MANIFEST_URL.isNotBlank()
     val status by model.checkStatus.collectAsStateWithLifecycle()
     val checking = status == "正在检查…"
-    WhiteCard {
-        SectionTitle("应用更新")
-        MetadataText("当前版本 v${BuildConfig.VERSION_NAME}")
-        PojianSecondaryButton(onClick = model::checkNow, enabled = !checking,
-            shape = MaterialTheme.shapes.small,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("check-update")) {
-            Text(if (checking) "正在检查…" else "检查更新")
+    SettingsContentFrame(embedded) {
+        if (embedded) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("当前版本", style = MaterialTheme.typography.bodyMedium)
+                    Text("v${BuildConfig.VERSION_NAME}", color = Muted, fontFamily = FontFamily.Monospace,
+                        style = MaterialTheme.typography.bodySmall)
+                }
+                if (canCheck) PojianTextButton(onClick = model::checkNow, enabled = !checking,
+                    modifier = Modifier.testTag("check-update"), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
+                    Text(if (checking) "正在检查…" else "检查更新")
+                }
+            }
+        } else {
+            SectionTitle("应用更新")
+            MetadataText("当前版本 v${BuildConfig.VERSION_NAME}")
+            if (canCheck) PojianSecondaryButton(onClick = model::checkNow, enabled = !checking,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("check-update")) {
+                Text(if (checking) "正在检查…" else "检查更新")
+            }
         }
-        status?.takeIf { !checking }?.let {
+        status?.takeIf { canCheck && !checking }?.let {
             Text(it, color = if (it == "已是最新版本") Muted else MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall)
         }

@@ -224,18 +224,15 @@ internal fun PresentationAnalysis(presentation: ClaimPresentation) {
 }
 
 @Composable
-internal fun LocalThumbnailControl() {
+internal fun LocalThumbnailControl(embedded: Boolean = false) {
     val app = LocalContext.current.applicationContext as? EmergeApplication ?: return
     val enabled by app.captureSettings.localThumbnails.collectAsState()
     val status by app.workThumbnails.status.collectAsState()
     var confirm by rememberSaveable { mutableStateOf(false) }
-    WhiteCard {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("本地缩略图", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            PojianSwitch(checked = enabled, enabled = Build.VERSION.SDK_INT >= 30,
-                onCheckedChange = { if (it) confirm = true else app.captureSettings.setLocalThumbnails(false) },
-                modifier = Modifier.testTag("local-thumbnail-toggle"))
-        }
+    SettingsContentFrame(embedded) {
+        SettingsSwitchRow("本地缩略图", enabled,
+            { if (it) confirm = true else app.captureSettings.setLocalThumbnails(false) },
+            Modifier.testTag("local-thumbnail-toggle"), enabled = Build.VERSION.SDK_INT >= 30)
         if (Build.VERSION.SDK_INT < 30) MetadataText("当前系统仅显示文字")
         if (enabled && status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }

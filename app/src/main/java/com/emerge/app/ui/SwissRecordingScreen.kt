@@ -9,6 +9,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,6 +23,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -41,6 +43,7 @@ import kotlin.math.sin
 
 /** Controls observe the existing recorder and capture scope; no separate recording state is stored. */
 @Composable
+@Suppress("UNUSED_PARAMETER") // Download callbacks remain source-compatible; model management lives in settings.
 fun SwissRecordingScreen(
     permission: Boolean,
     enabled: Boolean,
@@ -64,83 +67,114 @@ fun SwissRecordingScreen(
     onCancelDownload: () -> Unit = onCancelTask,
     onPauseResume: (() -> Unit)? = null,
     isAudioPaused: Boolean = false,
-    message: String? = null
+    message: String? = null,
+    onSettings: () -> Unit = {}
 ) {
     val audioCapturing = audioState.task?.phase == AudioTaskPhase.CAPTURING
     val audioCanStart = audioState.modelState.status == AudioModelStatus.READY && audioState.task == null
     val captureLabel = when {
         selectedPackages.isEmpty() -> "未选择应用"
-        !enabled -> "已暂停"
         !permission -> "未授权"
         !diagnostics.connected -> "未连接"
+        !enabled -> "已暂停"
         else -> "记录中"
+    }
+    val audioLabel = when {
+        audioCapturing && isAudioPaused -> "已暂停"
+        audioCapturing -> "记录中"
+        audioState.task != null -> "处理中"
+        audioState.modelState.status == AudioModelStatus.READY -> "就绪"
+        audioState.modelState.status == AudioModelStatus.DOWNLOADING -> "下载中"
+        audioState.modelState.status == AudioModelStatus.ERROR -> "模型下载失败"
+        else -> "模型未就绪"
     }
     LazyColumn(modifier.fillMaxSize().testTag("swiss-recording-screen"),
         contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item("channels") {
-            BoxWithConstraints(Modifier.fillMaxWidth()) {
-                val content: @Composable (Modifier) -> Unit = { tile ->
-                    RecordingChannelCard("屏幕文字识别", captureLabel, enabled,
-                        selectedPackages.isNotEmpty(), onCapture, tile, "capture-toggle", "— ms/帧")
-                    RecordingChannelCard("离线语音转文字", when {
-                        audioCapturing && isAudioPaused -> "已暂停"
-                        audioCapturing -> "记录中"
-                        audioState.task != null -> "处理中"
-                        audioState.modelState.status == AudioModelStatus.READY -> "就绪"
-                        audioState.modelState.status == AudioModelStatus.DOWNLOADING -> "下载中"
-                        else -> "模型未就绪"
-                    }, audioCapturing, audioCanStart || audioCapturing,
-                        { value -> if (value) onAudioCapture() else onCancelTask() }, tile, "audio-record-toggle", "RTF —")
-                }
-                if (maxWidth / LocalDensity.current.fontScale < 290.dp) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { content(Modifier.fillMaxWidth()) }
-                } else Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) { content(Modifier.weight(1f)) }
-            }
-            if (!permission || !diagnostics.connected) PojianTextButton(onClick = onOpenSettings,
-                modifier = Modifier.testTag("recording-system-permission")) {
-                Text(if (permission) "检查系统授权" else "前往系统授权")
-            }
-            message?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-        }
-        item("applications") { RecordingApplications(apps, selectedPackages, onPackagesChange, onChooseApps) }
-        item("audio-controls") {
             WhiteCard(Modifier.testTag("audio-entry")) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("语音模型", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-                    Text(if (audioState.modelState.status == AudioModelStatus.READY) "就绪" else "未就绪",
-                        color = Muted, style = MaterialTheme.typography.labelSmall)
+                RecordingChannelRow(
+                    title = "屏幕文字识别",
+                    status = captureLabel,
+                    checked = enabled,
+                    enabled = selectedPackages.isNotEmpty() || enabled,
+                    onChange = onCapture,
+                    tag = "capture-toggle",
+                    primary = true
+                )
+                if (!permission || !diagnostics.connected) {
+                    PojianTextButton(onClick = onOpenSettings,
+                        modifier = Modifier.testTag("recording-system-permission")) {
+                        Text(if (permission) "检查系统授权" else "前往系统授权")
+                    }
                 }
-                if (audioState.modelState.status != AudioModelStatus.READY)
-                    ModelPreparation(audioState.modelState, onDownloadModel, onCancelDownload, compact = true)
+                message?.takeIf { it.isNotBlank() }?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                HorizontalDivider(color = DesignTokens.Border)
+                RecordingChannelRow(
+                    title = "离线语音转文字",
+                    status = audioLabel,
+                    checked = audioCapturing,
+                    enabled = audioCanStart || audioCapturing,
+                    onChange = { value -> if (value) onAudioCapture() else onCancelTask() },
+                    tag = "audio-record-toggle",
+                    onSettings = onSettings.takeIf { audioState.modelState.status != AudioModelStatus.READY }
+                )
+                if (audioState.modelState.status == AudioModelStatus.ERROR) {
+                    audioState.modelState.detail?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
                 audioState.task?.let {
                     AudioTaskProgress(it, onCancelTask, compact = true, onPauseResume, isAudioPaused, showTranscript = false)
                 }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    PojianSecondaryButton(onClick = onImport, enabled = audioCanStart,
-                        modifier = Modifier.weight(1f).testTag("audio-import")) { Text("导入音频") }
-                    PojianSecondaryButton(onClick = onOpenAudioRecords, modifier = Modifier.weight(1f)) { Text("转写记录") }
-                }
+                RecordingAudioActions(audioCanStart, onImport, onOpenAudioRecords)
                 audioState.message?.takeIf { it.isNotBlank() }?.let {
                     Text(it, color = Muted, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
+        item("applications") { RecordingApplications(apps, selectedPackages, onPackagesChange, onChooseApps) }
         item("materials") { RecordingMaterials(events, report) }
         item("transcript") { RecordingTranscriptStream(audioState, audioSessions, isAudioPaused) }
     }
 }
 
 @Composable
-private fun RecordingChannelCard(title: String, status: String, checked: Boolean, enabled: Boolean,
-    onChange: (Boolean) -> Unit, modifier: Modifier, tag: String, metric: String) {
-    WhiteCard(modifier) {
-        Text(title, style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(status, Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.labelMedium)
-            PojianSwitch(checked, onChange, enabled = enabled,
-                modifier = Modifier.testTag(tag).semantics { contentDescription = title })
+private fun RecordingChannelRow(title: String, status: String, checked: Boolean, enabled: Boolean,
+    onChange: (Boolean) -> Unit, tag: String, primary: Boolean = false, onSettings: (() -> Unit)? = null) {
+    Row(Modifier.fillMaxWidth().heightIn(min = if (primary) 88.dp else 64.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(title, color = if (primary) Muted else Ink,
+                style = if (primary) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall)
+            Text(status, color = if (primary) Ink else Muted,
+                style = if (primary) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.labelMedium,
+                fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Normal)
         }
-        Text(metric, color = Muted, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
+        if (onSettings != null) {
+            PojianIconButton(onClick = onSettings, modifier = Modifier.testTag("recording-model-settings")) {
+                Icon(Icons.Outlined.Settings, contentDescription = "设置", tint = Muted)
+            }
+        }
+        PojianSwitch(checked, onChange, enabled = enabled,
+            modifier = Modifier.testTag(tag).semantics { contentDescription = title })
+    }
+}
+
+@Composable
+private fun RecordingAudioActions(canImport: Boolean, onImport: () -> Unit, onOpenRecords: () -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val actions: @Composable (Modifier) -> Unit = { modifier ->
+            PojianSecondaryButton(onClick = onImport, enabled = canImport,
+                modifier = modifier.testTag("audio-import")) { Text("导入音频") }
+            PojianSecondaryButton(onClick = onOpenRecords, modifier = modifier) { Text("转写记录") }
+        }
+        if (maxWidth / LocalDensity.current.fontScale < 260.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { actions(Modifier.fillMaxWidth()) }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions(Modifier.weight(1f)) }
+        }
     }
 }
 

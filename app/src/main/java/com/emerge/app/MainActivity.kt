@@ -210,7 +210,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     { showApps = true }, audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
                     audioModel::stopTask, { showAudioRecords = true }, contentModifier,
                     onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio,
-                    isAudioPaused = audioRuntime.isPaused, message = message)
+                    isAudioPaused = audioRuntime.isPaused, message = message, onSettings = { tab = 4 })
                 tab == 3 -> SwissHistoryScreen(all, semantics, currentReport, appNames, keyword,
                     { keyword = null }, { deleteEvent = it }, contentModifier)
                 else -> SwissSettingsScreen(storageUsage.copy(limitBytes = storageLimit), count > 0,
@@ -220,9 +220,17 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     { showReports = true }, {
                         app.captureSettings.setLocalThumbnails(false)
                         withContext(Dispatchers.IO) { app.workThumbnails.maintain() }
-                    }, contentModifier, transcriptContent = {
-                        AudioTranscriptSettings(audioSessions, onOpenRecords = { showAudioRecords = true }, onSession = { audioDetailId = it.id })
-                    }, updateContent = { com.emerge.app.update.UpdateSettingsSection() })
+                    }, contentModifier, audioSettingsContent = {
+                        SwissSpeechModelSettings(audioState, audioModel::downloadModel, audioModel.runtime::cancelDownload)
+                    }, transcriptContent = {
+                        AudioTranscriptSettings(audioSessions, onOpenRecords = { showAudioRecords = true },
+                            onSession = { audioDetailId = it.id }, embedded = true)
+                    }, updateContent = { com.emerge.app.update.UpdateSettingsSection(embedded = true) },
+                    captureSettingsContent = {
+                        SwissCaptureSettings(permission, enabled, diagnostics, allowed.size, audioState, audioRuntime.isPaused,
+                            monitorConfig.bubble, onOpenSettings, ::setRecording, { showApps = true },
+                            { app.monitor.saveConfig(monitorConfig.copy(bubble = it)) }, audioActions.onCapture, audioModel::stopTask, message)
+                    })
             }
             }
         }

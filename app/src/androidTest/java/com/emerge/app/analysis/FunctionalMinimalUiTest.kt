@@ -62,10 +62,11 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("swiss-settings-screen").assertIsDisplayed()
         compose.onNodeWithTag("capture-toggle").assertDoesNotExist()
         compose.onNodeWithTag("swiss-settings-screen").performScrollToNode(hasText("提醒频率与隐私安全"))
+        compose.onNodeWithTag("settings-monitor-options").performClick()
         saveScreenshot("pojian-monitor-settings-analysis.png")
         compose.onNodeWithText("专题研究模式").performScrollTo()
         saveScreenshot("pojian-monitor-settings-alerts.png")
-        compose.onNodeWithText("实时记录").performScrollTo().performClick()
+        tab("记录").performClick()
         tab("记录").assertIsSelected()
         compose.onNodeWithTag("swiss-recording-screen").assertIsDisplayed()
         compose.onNodeWithTag("capture-toggle").assertExists()
@@ -157,17 +158,19 @@ class FunctionalMinimalUiTest {
         compose.onNode(hasText("收起原文") and distribution).assertDoesNotExist()
     }
 
-    @Test fun recordingStartsRemainGatedUntilTheUserDownloadsAModel() {
-        var downloadCalls = 0; var startCalls = 0; var pauseCalls = 0
+    @Test fun recordingStartsRemainGatedAndModelManagementMovesToSettings() {
+        var settingsCalls = 0; var startCalls = 0; var pauseCalls = 0
         render { RecordingHarness(AudioUiState(), onImport = { startCalls++ }, onCapture = { startCalls++ },
-            onDownloadModel = { downloadCalls++ }, onCancelTask = {}, onOpenRecords = {}, onPauseResume = { pauseCalls++ }) }
+            onDownloadModel = {}, onCancelTask = {}, onOpenRecords = {}, onPauseResume = { pauseCalls++ },
+            onSettings = { settingsCalls++ }) }
         compose.onNodeWithTag("audio-record-toggle").assertIsNotEnabled()
         compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("audio-import"))
         compose.onNodeWithTag("audio-import").assertIsNotEnabled()
         compose.onNodeWithTag("audio-pause-resume").assertDoesNotExist()
-        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("audio-download-model"))
-        compose.onNodeWithTag("audio-download-model").assertIsEnabled().performClick()
-        compose.runOnIdle { assertEquals(1, downloadCalls); assertEquals(0, startCalls); assertEquals(0, pauseCalls) }
+        compose.onNodeWithTag("audio-download-model").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("recording-model-settings"))
+        compose.onNodeWithTag("recording-model-settings").performClick()
+        compose.runOnIdle { assertEquals(1, settingsCalls); assertEquals(0, startCalls); assertEquals(0, pauseCalls) }
     }
 
     @Test fun identicalTextWithoutIdentityEvidenceKeepsFourWorkCards() {
@@ -273,14 +276,14 @@ class FunctionalMinimalUiTest {
     @Composable
     private fun RecordingHarness(state: AudioUiState, onImport: () -> Unit, onCapture: () -> Unit,
         onDownloadModel: () -> Unit, onCancelTask: () -> Unit, onOpenRecords: () -> Unit,
-        onPauseResume: (() -> Unit)? = null, isPaused: Boolean = false) {
+        onPauseResume: (() -> Unit)? = null, isPaused: Boolean = false, onSettings: () -> Unit = {}) {
         SwissRecordingScreen(permission = true, enabled = true, diagnostics = CaptureStatus(connected = true),
             apps = listOf(CaptureApp("com.ss.android.ugc.aweme", "抖音")),
             selectedPackages = setOf("com.ss.android.ugc.aweme"), events = emptyList(), report = null,
             audioState = state, audioSessions = emptyList(), onCapture = {}, onOpenSettings = {},
             onPackagesChange = {}, onChooseApps = {}, onImport = onImport, onAudioCapture = onCapture,
             onDownloadModel = onDownloadModel, onCancelTask = onCancelTask, onOpenAudioRecords = onOpenRecords,
-            onPauseResume = onPauseResume, isAudioPaused = isPaused)
+            onPauseResume = onPauseResume, isAudioPaused = isPaused, onSettings = onSettings)
     }
 
     private fun saveScreenshot(name: String, tag: String? = null) {

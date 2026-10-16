@@ -34,16 +34,17 @@ import com.emerge.app.audioanalysis.TextServiceConfig
 fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> Unit,
     requestCount: Int, frameCount: Int, onCloud: () -> Unit, onCaptureTools: () -> Unit,
     cloudEnabled: Boolean = false, onCloudEnabledChange: (Boolean) -> Unit = {},
-    cloudConfig: TextServiceConfig? = null) {
+    cloudConfig: TextServiceConfig? = null, embedded: Boolean = false,
+    includeCloudControls: Boolean = true, includeBubbleControl: Boolean = true) {
     var showMore by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionTitle("提醒频率与隐私安全")
-        MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
+        if (!embedded) SectionTitle("提醒频率与隐私安全")
+        if (includeCloudControls) MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
         MonitorSwitch("实时事实核查", "", config.realtime) { onChange(config.copy(realtime = it)) }
         MonitorSwitch("关键画面分析", "", config.visual) { onChange(config.copy(visual = it)) }
         MonitorSlider("画面采样间隔", config.frameIntervalSeconds, 15..120, "秒") { onChange(config.copy(frameIntervalSeconds = it)) }
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
-        MonitorSwitch("悬浮球", "", config.bubble) { onChange(config.copy(bubble = it)) }
+        if (includeBubbleControl) MonitorSwitch("悬浮球", "", config.bubble) { onChange(config.copy(bubble = it)) }
         MonitorSwitch("观点重复观察", "", config.cocoon) { onChange(config.copy(cocoon = it)) }
         MonitorSwitch("内容情绪提醒", "", config.emotion) { onChange(config.copy(emotion = it)) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -70,7 +71,7 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Text("今日云端请求 $requestCount 次（含画面 $frameCount 次）", style = MaterialTheme.typography.bodySmall)
         cloudConfig?.let { ServiceConnectionTest(it) }
-        PojianTextButton(onClick = onCaptureTools) { Text("实时记录") }
+        if (!embedded) PojianTextButton(onClick = onCaptureTools) { Text("实时记录") }
     }
 }
 
