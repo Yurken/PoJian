@@ -1,5 +1,6 @@
 package com.emerge.app.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -12,6 +13,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
 import com.emerge.app.analysis.repeatedEvidenceShare
@@ -62,10 +67,21 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                 ring(); Box(Modifier.weight(1f)) { bars() }
             }
         }
-        repeat?.let {
-            Surface(color = Color(0xFFF8FAFC), shape = DesignTokens.InnerShape) {
-                Text("${it.repeated} / ${it.total} 条观点引用重复论据", Modifier.fillMaxWidth().padding(12.dp),
-                    color = Muted, style = MaterialTheme.typography.bodySmall)
+        repeat?.let { counts ->
+            val countStyle = SpanStyle(color = Ink, fontSize = MaterialTheme.typography.headlineSmall.fontSize,
+                fontWeight = FontWeight.SemiBold)
+            Surface(color = DesignTokens.Background, shape = DesignTokens.InnerShape,
+                border = BorderStroke(1.dp, DesignTokens.Border)) {
+                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.width(3.dp).fillMaxHeight().clip(DesignTokens.PillShape)
+                        .background(DesignTokens.Ink))
+                    Text(buildAnnotatedString {
+                        withStyle(countStyle) { append("${counts.repeated}") }
+                        append(" / ${counts.total} 条观点引用重复论据")
+                    }, Modifier.weight(1f).testTag("cocoon-repeat-summary"),
+                        color = Muted, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
         HorizontalDivider(color = DesignTokens.Border)

@@ -1,6 +1,7 @@
 package com.emerge.app.monitoring
 
 import android.accessibilityservice.AccessibilityService
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -8,6 +9,7 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.Display
 import android.view.Gravity
@@ -23,6 +25,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 import com.emerge.app.EmergeApplication
 import com.emerge.app.MainActivity
 import com.emerge.app.R
@@ -59,6 +62,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private var panel: ScrollView? = null
     private var panelAutomatic = false
     private var detail: TextView? = null
+    private val detailValues = mutableMapOf<String, TextView>()
     private val actions = mutableListOf<Button>()
     private var closePanel: Job? = null
     private var revision = 0L
@@ -375,13 +379,18 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
 
     private fun collapsePanel() {
         closePanel?.cancel()
-        panel?.visibility = View.GONE
+        panel?.apply {
+            animate().cancel()
+            alpha = 1f; translationY = 0f; visibility = View.GONE
+        }
+        bubble?.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
         layoutOverlay()
     }
 
     private fun show() {
         if (rootView != null) { layoutOverlay(); return }
         val textColor = Color.rgb(9, 9, 11)
+        val mutedColor = Color.rgb(113, 113, 122)
         val borderColor = Color.rgb(228, 228, 231)
         val secondaryColor = Color.rgb(244, 244, 245)
         val view = LinearLayout(service).apply { orientation = LinearLayout.VERTICAL }
@@ -389,9 +398,26 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             minimumHeight = dp(48)
-            setPadding(dp(12), 0, dp(12), 0)
-            setBackgroundResource(R.drawable.bg_monitor_bubble_v6)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            background = android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x1409090B),
+                ContextCompat.getDrawable(service, R.drawable.bg_monitor_bubble_v6), null)
             isFocusable = true
+            accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(host, info)
+                    info.className = Button::class.java.name
+                    info.addAction(if (panel?.visibility == View.VISIBLE && !panelAutomatic)
+                        AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE
+                    else AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND)
+                }
+
+                override fun performAccessibilityAction(host: View, action: Int, arguments: Bundle?): Boolean {
+                    if (action == AccessibilityNodeInfo.ACTION_EXPAND || action == AccessibilityNodeInfo.ACTION_COLLAPSE)
+                        return host.performClick()
+                    return super.performAccessibilityAction(host, action, arguments)
+                }
+            }
         }
         val dot = View(service)
         ball.addView(dot, LinearLayout.LayoutParams(dp(7), dp(7)).apply { rightMargin = dp(8) })
@@ -403,7 +429,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         ball.addView(value)
-        view.addView(ball, LinearLayout.LayoutParams(bubbleWidth(), dp(48)).apply { gravity = Gravity.RIGHT })
+        view.addView(ball, LinearLayout.LayoutParams(bubbleWidth(), LinearLayout.LayoutParams.WRAP_CONTENT)
+            .apply { gravity = Gravity.RIGHT })
         val box = LinearLayout(service).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12))
             background = GradientDrawable().apply {
@@ -415,9 +442,52 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             isFillViewport = false
             addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
+        val stackedFields = service.resources.configuration.fontScale > 1.3f
+        fun field(title: String, prominent: Boolean = false) {
+            val row = LinearLayout(service).apply {
+                orientation = if (stackedFields) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+                gravity = Gravity.TOP
+                setPadding(0, dp(4), 0, dp(4))
+                isScreenReaderFocusable = true
+            }
+            val caption = TextView(service).apply {
+                text = title; textSize = 12f; setTextColor(mutedColor)
+                includeFontPadding = false
+                setLineSpacing(dp(2).toFloat(), 1f)
+            }
+            row.addView(caption, LinearLayout.LayoutParams(
+                if (stackedFields) LinearLayout.LayoutParams.MATCH_PARENT else dp(88), LinearLayout.LayoutParams.WRAP_CONTENT))
+            val valueView = TextView(service).apply {
+                textSize = if (prominent) 20f else 14f
+                setTextColor(textColor); includeFontPadding = false
+                typeface = android.graphics.Typeface.create(if (prominent) "monospace" else "sans-serif-medium",
+                    android.graphics.Typeface.NORMAL)
+                fontFeatureSettings = "tnum"
+                setLineSpacing(dp(3).toFloat(), 1f)
+            }
+            row.addView(valueView, LinearLayout.LayoutParams(
+                if (stackedFields) LinearLayout.LayoutParams.MATCH_PARENT else 0, LinearLayout.LayoutParams.WRAP_CONTENT,
+                if (stackedFields) 0f else 1f).apply {
+                if (stackedFields) topMargin = dp(4) else marginStart = dp(12)
+            })
+            detailValues[title] = valueView
+            box.addView(row, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        }
+        field("当前应用")
+        field("观点集中度 · 近7天", prominent = true)
+        field("当前话题")
+        field("重复材料")
+        field("情绪特征")
+        box.addView(View(service).apply { setBackgroundColor(borderColor) },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
+                topMargin = dp(8); bottomMargin = dp(8)
+            })
         val label = TextView(service).apply {
+            visibility = View.GONE
             textSize = 14f; setTextColor(textColor); fontFeatureSettings = "tnum"
-            setLineSpacing(dp(5).toFloat(), 1f)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setLineSpacing(dp(4).toFloat(), 1f)
+            background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(secondaryColor) }
         }
         box.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         fun button(title: String, primary: Boolean = false, action: () -> Unit) {
@@ -447,7 +517,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)); collapsePanel()
         }
         button("暂停记录") { app.captureSettings.setEnabled(false); app.audioCoordinator.stopAll(); hide() }
-        view.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        view.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         var startX = 0; var startY = 0; var touchX = 0f; var touchY = 0f; var moved = false
         val slop = ViewConfiguration.get(service).scaledTouchSlop
         ball.setOnClickListener {
@@ -458,24 +529,30 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         }
         ball.setOnTouchListener { _, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { startX = position.x; startY = position.y; touchX = event.rawX; touchY = event.rawY; moved = false; true }
+                MotionEvent.ACTION_DOWN -> {
+                    startX = position.x; startY = position.y; touchX = event.rawX; touchY = event.rawY; moved = false
+                    ball.drawableHotspotChanged(event.x, event.y); ball.isPressed = true
+                    true
+                }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - touchX; val dy = event.rawY - touchY
                     moved = moved || abs(dx) > slop || abs(dy) > slop
                     if (moved) {
+                        ball.isPressed = false
                         dragging = true
-                        closePanel?.cancel(); scroll.visibility = View.GONE
+                        if (scroll.visibility == View.VISIBLE) collapsePanel()
                         position.x = startX + dx.toInt()
                         position.y = startY + dy.toInt()
                         layoutOverlay()
                     }; true
                 }
                 MotionEvent.ACTION_UP -> {
+                    ball.isPressed = false
                     dragging = false
                     if (!moved) ball.performClick() else layoutOverlay()
                     true
                 }
-                MotionEvent.ACTION_CANCEL -> { dragging = false; layoutOverlay(); true }
+                MotionEvent.ACTION_CANCEL -> { ball.isPressed = false; dragging = false; layoutOverlay(); true }
                 else -> false
             }
         }
@@ -508,14 +585,15 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         val currentFindings = state.findings.filter { it.contextToken.isNotBlank() && it.contextToken == state.contextToken }
         val finding = currentFindings.firstOrNull { it.id == panelFinding?.id } ?: currentFindings.firstOrNull()
         val topic = current?.topic ?: finding?.topic?.takeIf { it.isNotBlank() } ?: "—"
+        detailValues["当前应用"]?.text = appLabel(state.currentPackage)
+        detailValues["观点集中度 · 近7天"]?.text = value
+        detailValues["当前话题"]?.text = topic
+        detailValues["重复材料"]?.text = current?.repeatedMaterials?.let { "$it 条" } ?: "—"
+        detailValues["情绪特征"]?.text = current?.emotions?.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: "—"
+        detail?.visibility = if (finding == null) View.GONE else View.VISIBLE
         detail?.text = buildString {
-            append("当前应用  ${appLabel(state.currentPackage)}")
-            append("\n观点集中度 · 近7天  $value")
-            append("\n当前话题  $topic")
-            append("\n重复材料  ${current?.repeatedMaterials?.let { "$it 条" } ?: "—"}")
-            append("\n情绪特征  ${current?.emotions?.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: "—"}")
             finding?.let {
-                append("\n\n${it.label}\n${it.claim}")
+                append("${it.label}\n${it.claim}")
                 if (!panelAutomatic) append("\n${it.explanation.take(500)}")
             }
         }
@@ -523,6 +601,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     }
 
     private fun expand(finding: MonitorFinding?, automatic: Boolean) {
+        val opening = panel?.visibility != View.VISIBLE
         panelFinding = finding
         detail?.maxLines = if (automatic) 9 else Int.MAX_VALUE
         panelAutomatic = automatic
@@ -530,17 +609,23 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         panel?.visibility = View.VISIBLE
         panel?.scrollTo(0, 0)
         renderOverlay()
+        bubble?.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+        if (opening && ValueAnimator.areAnimatorsEnabled()) panel?.apply {
+            animate().cancel()
+            alpha = 0f; translationY = -dp(4).toFloat()
+            animate().alpha(1f).translationY(0f).setDuration(160L).start()
+        }
         closePanel?.cancel()
         if (automatic) closePanel = scope.launch {
             delay(monitor.config.value.displaySeconds * 1000L)
-            panel?.visibility = View.GONE
-            layoutOverlay()
+            collapsePanel()
         }
     }
     private fun hide() {
+        panel?.animate()?.cancel()
         closePanel?.cancel(); rootView?.let { runCatching { manager.removeView(it) } }
         rootView = null; bubble = null; bubbleValue = null; bubbleDot = null; panel = null; detail = null
-        panelFinding = null; dragging = false; actions.clear()
+        panelFinding = null; dragging = false; actions.clear(); detailValues.clear()
     }
     fun interrupt() { clearScreen(); hide() }
     fun stop() { monitor.bindManual(null); clearScreen(); scope.cancel(); screenTextRecognizer.close(); hide() }

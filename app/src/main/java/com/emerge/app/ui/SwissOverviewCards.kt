@@ -2,6 +2,7 @@ package com.emerge.app.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
@@ -12,8 +13,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.*
@@ -28,6 +34,7 @@ import java.time.ZoneId
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun SwissEvidenceTrend(events: List<BrowseEvent>, semantics: List<EventSemantics>, now: Long) {
+    var selectedTime by remember { mutableStateOf<Long?>(null) }
     val request = Triple(events, semantics, now)
     var error by remember(request) { mutableStateOf(false) }
     val result by produceState<Pair<Triple<List<BrowseEvent>, List<EventSemantics>, Long>, List<SwissEvidenceBucket>>?>(null, request) {
@@ -42,34 +49,58 @@ internal fun SwissEvidenceTrend(events: List<BrowseEvent>, semantics: List<Event
     val buckets = result?.takeIf { it.first == request }?.second.orEmpty()
     WhiteCard(Modifier.testTag("swiss-evidence-trend")) {
         Text("24小时新旧论据", style = MaterialTheme.typography.titleMedium)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SwissLegend("新增论据", DesignTokens.Ink)
-            SwissLegend("重复材料", DesignTokens.Rose)
-            SwissLegend("未判断", Color(0xFFD4D4D8))
-        }
         if (error) Text("分析暂不可用", color = Muted, style = MaterialTheme.typography.bodySmall)
         else if (result?.first != request) Text("加载中", color = Muted, style = MaterialTheme.typography.bodySmall)
-        else {
-            val maximum = buckets.maxOfOrNull { it.total }?.coerceAtLeast(1) ?: 1
-            Canvas(Modifier.fillMaxWidth().height(116.dp).semantics {
-                contentDescription = buckets.joinToString("；") { "${it.label} 新增${it.fresh} 重复${it.repeated} 未判断${it.unknown}" }
-            }) {
-                val step = size.width / buckets.size.coerceAtLeast(1)
-                drawLine(DesignTokens.Border, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
-                buckets.forEachIndexed { index, bucket ->
-                    var bottom = size.height
-                    listOf(bucket.fresh to DesignTokens.Ink, bucket.repeated to DesignTokens.Rose,
-                        bucket.unknown to Color(0xFFD4D4D8)).forEach { (count, color) ->
-                        val height = count.toFloat() / maximum * (size.height - 4.dp.toPx())
-                        if (height > 0) drawRect(color, Offset(index * step + step * .17f, bottom - height), Size(step * .66f, height))
-                        bottom -= height
-                    }
-                }
+        else SwissEvidenceChart(buckets, selectedTime) { selectedTime = it }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun SwissEvidenceChart(buckets: List<SwissEvidenceBucket>, selectedTime: Long?, onSelectedTime: (Long) -> Unit) {
+    if (buckets.isEmpty()) return
+    val selectedIndex = buckets.indexOfFirst { bucket -> selectedTime?.let {
+        it >= bucket.start && (it < bucket.end || bucket == buckets.last() && it == bucket.end)
+    } == true }.takeIf { it >= 0 } ?: buckets.lastIndex
+    val selected = buckets[selectedIndex]
+    fun select(index: Int) {
+        buckets.getOrNull(index)?.let { onSelectedTime(it.start + (it.end - it.start) / 2) }
+    }
+    val interval = swissEvidenceInterval(selected)
+    val maximum = buckets.maxOf { it.total }.coerceAtLeast(1)
+    Canvas(Modifier.fillMaxWidth().height(136.dp).testTag("swiss-evidence-plot")
+        .pointerInput(buckets) {
+            detectTapGestures { point -> swissChartSelection(point.x, size.width.toFloat(), buckets.size)?.let(::select) }
+        }.semantics {
+            contentDescription = "$interval 新增论据 ${selected.fresh} 重复材料 ${selected.repeated} 未判断 ${selected.unknown}"
+            customActions = buildList {
+                if (selectedIndex > 0) add(CustomAccessibilityAction("上一小时") { select(selectedIndex - 1); true })
+                if (selectedIndex < buckets.lastIndex) add(CustomAccessibilityAction("下一小时") { select(selectedIndex + 1); true })
             }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                buckets.filterIndexed { i, _ -> i % 6 == 0 }.forEach { Text(it.label, style = MaterialTheme.typography.labelSmall, color = Muted) }
+        }) {
+        val step = size.width / buckets.size
+        drawRect(DesignTokens.Ink.copy(alpha = .055f), Offset(selectedIndex * step, 0f), Size(step, size.height))
+        drawLine(DesignTokens.Border, Offset(0f, size.height), Offset(size.width, size.height), 1.dp.toPx())
+        buckets.forEachIndexed { index, bucket ->
+            var bottom = size.height
+            listOf(bucket.fresh to DesignTokens.Ink, bucket.repeated to DesignTokens.Rose,
+                bucket.unknown to Color(0xFFD4D4D8)).forEach { (count, color) ->
+                val height = count.toFloat() / maximum * (size.height - 4.dp.toPx())
+                if (height > 0) drawRect(color, Offset(index * step + step * .17f, bottom - height), Size(step * .66f, height))
+                bottom -= height
             }
         }
+        drawLine(DesignTokens.Ink, Offset(selectedIndex * step + step * .08f, size.height),
+            Offset(selectedIndex * step + step * .92f, size.height), 2.dp.toPx())
+    }
+    SwissChartAxis(buckets.filterIndexed { index, _ -> index % 6 == 0 }.map { it.label to null })
+    SwissChartSelectionHeader(interval, "上一小时", "下一小时", selectedIndex > 0, selectedIndex < buckets.lastIndex,
+        { select(selectedIndex - 1) }, { select(selectedIndex + 1) }, "swiss-evidence")
+    FlowRow(Modifier.fillMaxWidth().testTag("swiss-evidence-readout").semantics { liveRegion = LiveRegionMode.Polite },
+        horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        SwissLegend("新增论据 ${selected.fresh}", DesignTokens.Ink)
+        SwissLegend("重复材料 ${selected.repeated}", DesignTokens.Rose)
+        SwissLegend("未判断 ${selected.unknown}", Color(0xFFD4D4D8))
     }
 }
 

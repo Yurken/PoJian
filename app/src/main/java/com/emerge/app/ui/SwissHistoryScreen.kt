@@ -20,9 +20,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.*
@@ -215,6 +218,13 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
     }
     val emotions = analyzed.flatMap { it.presentation?.emotions.orEmpty() }.distinct()
     val matches = remember(event, events, report) { swissHistoryMatches(event, report, events) }
+    val numberStyle = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace,
+        fontFeatureSettings = "tnum")
+    val numberMeasurer = rememberTextMeasurer()
+    val numberWidth = with(LocalDensity.current) {
+        numberMeasurer.measure(evidence.size.coerceAtLeast(1).toString().padStart(2, '0'), numberStyle)
+            .size.width.toDp()
+    }.coerceAtLeast(24.dp)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Color.White) {
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 720.dp).testTag("swiss-work-detail"),
@@ -233,6 +243,7 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
                         Icon(Icons.Outlined.Close, contentDescription = "关闭")
                     }
                 }
+                Spacer(Modifier.height(12.dp))
                 Text(event.contentText.lineSequence().firstOrNull { it.isNotBlank() } ?: "内容为空",
                     style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
@@ -259,15 +270,17 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
             if (evidence.isEmpty()) item { Text("暂无论据", color = Muted, style = MaterialTheme.typography.bodyMedium) }
             items(evidence.size) { index ->
                 val fragment = evidence[index]
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text((index + 1).toString().padStart(2, '0'), color = Muted, fontFamily = FontFamily.Monospace)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text((index + 1).toString().padStart(2, '0'), color = Muted, style = numberStyle,
+                        textAlign = TextAlign.End, modifier = Modifier.width(numberWidth).alignByBaseline())
+                    Column(Modifier.weight(1f).alignByBaseline(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(fragment.text, style = MaterialTheme.typography.bodyMedium)
                         fragment.historyMatches.distinct().forEach { match ->
                             events.firstOrNull { it.id == match.eventId && it.timestamp < event.timestamp && it.visibleText.contains(match.quote) }?.let { source ->
                                 Surface(onClick = { onRelated(source) }, color = DesignTokens.Amber.copy(alpha = .07f),
-                                    shape = DesignTokens.InnerShape, modifier = Modifier.testTag("history-related-${source.id}")) {
-                                    Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    shape = DesignTokens.InnerShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                        .testTag("history-related-${source.id}")) {
+                                    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         Text("历史记录 #${source.id}", style = MaterialTheme.typography.labelSmall, color = DesignTokens.Amber)
                                         Text(match.quote, style = MaterialTheme.typography.bodySmall)
                                     }
@@ -279,9 +292,13 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
             }
             val audio = attached.filter { it.sourceType.startsWith("audio_") }
             if (audio.isNotEmpty()) item {
-                SwissCard {
-                    Text("语音转文字摘录", style = MaterialTheme.typography.titleSmall)
-                    audio.forEach { Text(it.contentText, style = MaterialTheme.typography.bodyMedium) }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Spacer(Modifier.width(numberWidth))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        HorizontalDivider(color = DesignTokens.Border)
+                        Text("语音转文字摘录", style = MaterialTheme.typography.titleSmall)
+                        audio.forEach { Text(it.contentText, style = MaterialTheme.typography.bodyMedium) }
+                    }
                 }
             }
             item { WorkOriginalContent(event) }

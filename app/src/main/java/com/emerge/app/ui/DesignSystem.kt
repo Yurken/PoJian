@@ -1,7 +1,14 @@
 package com.emerge.app.ui
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,13 +36,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -118,12 +128,30 @@ internal fun SwissCard(
             border = border, shadowElevation = 0.dp, tonalElevation = 0.dp, content = cardContent
         )
     } else {
+        val interactions = remember { MutableInteractionSource() }
+        val pressed by interactions.collectIsPressedAsState()
+        val motionEnabled = rememberSystemMotionEnabled()
+        val scale by animateFloatAsState(
+            targetValue = if (pressed && motionEnabled) .99f else 1f,
+            animationSpec = if (motionEnabled) spring(
+                dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium,
+                visibilityThreshold = .0001f
+            ) else snap(),
+            label = "swiss-card-press"
+        )
+        val view = LocalView.current
         Surface(
-            onClick = onClick,
-            modifier = modifier.fillMaxWidth(), shape = shape,
+            onClick = {
+                // The platform respects the user's haptic setting; no vibration permission is needed.
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                onClick()
+            },
+            interactionSource = interactions,
+            modifier = modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }, shape = shape,
             color = DesignTokens.Surface,
             contentColor = DesignTokens.Ink,
-            border = border, shadowElevation = 0.dp, tonalElevation = 0.dp, content = cardContent
+            border = if (pressed) BorderStroke(1.dp, DesignTokens.Ink.copy(alpha = .24f)) else border,
+            shadowElevation = 0.dp, tonalElevation = 0.dp, content = cardContent
         )
     }
 }
