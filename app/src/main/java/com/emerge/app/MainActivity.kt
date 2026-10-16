@@ -235,7 +235,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         }
     }
     if (showReports) SwissReportDialog(all, semantics, now, onDismiss = { showReports = false },
-        purpose = analysis.purpose, onPurposeChange = model::updatePurpose, analysisStatuses = analysisStatuses)
+        purpose = analysis.purpose, onPurposeChange = model::updatePurpose, analysisStatuses = analysisStatuses, appNames = appNames)
     if (showFindings) ModalBottomSheet(onDismissRequest = { showFindings = false },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {

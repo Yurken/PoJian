@@ -154,6 +154,15 @@ internal fun SwissViewpointsScreen(
     val trend = data?.trend.orEmpty()
     val requests = data?.requests.orEmpty()
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var groupKey by remember(period, selectedTopic) { mutableStateOf<String?>(null) }
+    val selectedGroup = candidates.firstOrNull { it.key == groupKey }
+    val detailInput = remember(selectedGroup, events, semantics, scopedReport) { Any() }
+    val groupDetail by produceState<Pair<Any, SwissViewpointDetails>?>(null, detailInput) {
+        value = null
+        selectedGroup?.let { group ->
+            value = detailInput to withContext(Dispatchers.Default) { swissViewpointDetails(group, events, semantics, zone, scopedReport) }
+        }
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().testTag("swiss-viewpoints-screen"),
@@ -456,7 +465,7 @@ internal fun SwissViewpointsScreen(
             val example = group.items.firstOrNull()?.claims?.firstOrNull()
             val repeatedCount = data?.repeatedWorks?.get(group.key) ?: 0
             SwissCard(
-                onClick = { detailId = group.items.firstOrNull()?.record?.id },
+                onClick = { groupKey = group.key },
                 modifier = Modifier.testTag("viewpoints-claim-${group.key}")
             ) {
                 Row(
@@ -543,6 +552,13 @@ internal fun SwissViewpointsScreen(
                     )
                 }
             }
+        }
+    }
+    groupDetail?.takeIf { it.first === detailInput }?.second?.let { details ->
+        selectedGroup?.let { group ->
+            SwissArgumentDetailSheet(SwissArgumentSelection(group.items.firstNotNullOfOrNull { it.quote } ?: group.label,
+                group.items.firstOrNull()?.claims?.firstOrNull()?.conditions.orEmpty(), details), events, semantics,
+                scopedReport, appNames, onDismiss = { groupKey = null })
         }
     }
     events.firstOrNull { it.id == detailId }?.let { event ->

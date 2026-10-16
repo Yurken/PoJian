@@ -4,7 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.*
@@ -27,7 +26,8 @@ import java.time.format.DateTimeFormatter
 
 @Composable
 internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventSemantics>, now: Long, onDismiss: () -> Unit,
-    purpose: String = "", onPurposeChange: (String) -> Unit = {}, analysisStatuses: Map<Long, String> = emptyMap()) {
+    purpose: String = "", onPurposeChange: (String) -> Unit = {}, analysisStatuses: Map<Long, String> = emptyMap(),
+    appNames: Map<String, String> = emptyMap()) {
     var level by rememberSaveable { mutableIntStateOf(1) }
     // Returning from the document picker refreshes the app clock; the opened report keeps its window.
     val anchorNow = rememberSaveable { now }
@@ -45,6 +45,7 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
         catch (_: Exception) { loadError = true }
     }
     val report = result?.takeIf { it.first == request }?.second
+    var selection by remember(request) { mutableStateOf<SwissArgumentSelection?>(null) }
     val context = LocalContext.current
     val exportModel: SwissReportExportViewModel = viewModel()
     val exportState = exportModel.session
@@ -72,7 +73,7 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
                 PojianTextField(purpose, { onPurposeChange(it.take(120)) }, label = { Text("浏览目的") },
                     modifier = Modifier.fillMaxWidth().testTag("purpose-input"), maxLines = 3)
                 PojianSegmentedTabs(listOf("小时报告", "每日报告", "月度报告"), level, { level = it }, modifier = Modifier.testTag("report-levels"))
-                LazyColumn(Modifier.weight(1f).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                LazyColumn(Modifier.weight(1f).padding(vertical = 12.dp).testTag("swiss-report-content"), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     when {
                         loadError -> item { Text("报告生成失败"); PojianTextButton({ retry++ }) { Text("重试") } }
                         report == null -> item { LinearProgressIndicator(Modifier.fillMaxWidth()) }
@@ -87,18 +88,7 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
                                     style = MaterialTheme.typography.labelSmall, color = Muted)
                             }
                             item { Text(report.period, style = MaterialTheme.typography.labelMedium, color = Muted) }
-                            items(report.topicDigests, key = { it.key }) { topic ->
-                                WhiteCard {
-                                    Text(topic.topic, style = MaterialTheme.typography.titleMedium)
-                                    Text("${topic.workCount} 篇", style = MaterialTheme.typography.labelSmall, color = Muted)
-                                    topic.viewpoints.forEach { viewpoint ->
-                                        Text(viewpoint.quote, style = MaterialTheme.typography.bodyMedium)
-                                        viewpoint.evidence.forEachIndexed { index, evidence ->
-                                            Text("${(index + 1).toString().padStart(2, '0')}  ${evidence.text}", style = MaterialTheme.typography.bodySmall, color = Muted)
-                                        }
-                                    }
-                                }
-                            }
+                            swissReportSections(report, events) { selection = it }
                             if (report.rawRecords == 0) item { Text("暂无记录", color = Muted) }
                         }
                     }
@@ -110,5 +100,8 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
                 }
             }
         }
+    }
+    if (report != null) selection?.let { selected ->
+        SwissArgumentDetailSheet(selected, events, semantics, report, appNames, onDismiss = { selection = null })
     }
 }

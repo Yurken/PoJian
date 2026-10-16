@@ -18,7 +18,8 @@ data class ViewpointExposure(val key: String, val topic: String, val subject: St
     val previousShare: Double?, val diversityChange: Double?, val alignedApps: Int,
     val concentrated: Boolean, val latest: ClaimObservation, val eventIds: List<Long>,
     val sufficient: Boolean = distribution.sufficient,
-    val longitudinal: LongitudinalEvidenceAssessment = LongitudinalEvidenceAssessment()) {
+    val longitudinal: LongitudinalEvidenceAssessment = LongitudinalEvidenceAssessment(),
+    val supportingEventIds: List<Long> = eventIds) {
     val shareChange: Double? get() = previousShare?.let { share - it }
     val narrowing: Boolean get() = concentrated && (shareChange ?: 0.0) >= .15 && (diversityChange ?: 0.0) <= -.1
     val title: String get() = when {
@@ -180,7 +181,8 @@ object ExposureAnalyzer {
                 if (historyComparable) dist.diversity - old.diversity else null, alignedApps,
                 classified.sufficient && topics.sufficient && dist.sufficient && dominant.value >= .75,
                 latest, members.sortedByDescending { it.timestamp }.map { it.eventId }.distinct().take(8),
-                classified.sufficient && topics.sufficient && dist.sufficient, longitudinal)
+                classified.sufficient && topics.sufficient && dist.sufficient, longitudinal,
+                members.sortedByDescending { it.timestamp }.map { it.eventId }.distinct())
         }.sortedWith(compareByDescending<ViewpointExposure> { it.concentrated }
             .thenByDescending { it.distribution.contacts }.thenBy { it.key })
         return ExposureAssessment(start, now, topics, leadingTopic, topicChange, viewpoints,

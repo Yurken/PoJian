@@ -96,6 +96,18 @@ object ViewpointTimeline {
     }
     fun label(quote: String): String = ViewpointLabeler.label(quote)
 
+    internal fun localClaims(event: BrowseEvent, observations: List<ClaimObservation>, zone: ZoneId): List<ViewpointClaim> {
+        val reportClaims = observations.filter {
+            it.analysisSource == "local_rules" && event.visibleText.contains(it.quote)
+        }.map { ViewpointClaim(it.quote, it.topic, it.subject, it.dimension, it.stance, it.conditions,
+            it.uncertainAttribution, it.analysisSource, event, zone.id) }
+        val fallback = event.contentText.lines().map {
+            it.trim().replace(Regex("(?:\\.\\.\\.|…)?\\s*展开[>〉]?\\s*$"), "").trim()
+        }.firstOrNull { it.length in 10..300 && predicate.containsMatchIn(it) &&
+            !Regex("按钮|来自|回复|评论|图片[,，]").containsMatchIn(it) }
+        return reportClaims.ifEmpty { fallback?.let { listOf(ViewpointClaim(it, record = event, zoneId = zone.id)) }.orEmpty() }
+    }
+
     fun build(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long, zone: ZoneId,
         report: CognitiveReport? = null, semantics: List<EventSemantics> = emptyList()): List<ViewpointBucket> {
         val window = ObservationWindow.forPeriod(period, now, zone)
@@ -127,16 +139,7 @@ object ViewpointTimeline {
                 result?.claims.orEmpty().map { ViewpointClaim(it.quote,it.topic,it.subject,it.dimension,it.stance,it.conditions,
                     it.uncertain,"structured_model",material,zone.id,it.evidence,it.presentation,result!!.inputKind,result.analyzedAt) } }
             // A report may be stale; only the full input snapshot can authorize a model result here.
-            val reportClaims = observations[event.id].orEmpty().filter {
-                it.analysisSource == "local_rules" && event.visibleText.contains(it.quote)
-            }.map { ViewpointClaim(it.quote, it.topic,
-                it.subject, it.dimension, it.stance, it.conditions, it.uncertainAttribution, it.analysisSource, event, zone.id) }
-            val fallback = event.contentText.lines().map {
-                it.trim().replace(Regex("(?:\\.\\.\\.|…)?\\s*展开[>〉]?\\s*$"), "").trim()
-            }
-                .firstOrNull { it.length in 10..300 && predicate.containsMatchIn(it) &&
-                    !Regex("按钮|来自|回复|评论|图片[,，]").containsMatchIn(it) }
-            val chosen = ((modelClaims ?: reportClaims.ifEmpty { fallback?.let { listOf(ViewpointClaim(it, record = event)) }.orEmpty() }) + attachedClaims).distinctBy { it.key }
+            val chosen = ((modelClaims ?: localClaims(event, observations[event.id].orEmpty(), zone)) + attachedClaims).distinctBy { it.key }
             val source = if (model != null || chosen.any { it.analysisSource == "structured_model" }) "structured_model" else "local_rules"
             ViewpointItem(event, chosen.firstOrNull()?.label, chosen.firstOrNull()?.quote, chosen.any {
                 emotion.containsMatchIn(it.quote) && !negatedEmotion.containsMatchIn(it.quote)

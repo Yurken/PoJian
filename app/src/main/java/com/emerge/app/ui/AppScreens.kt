@@ -90,6 +90,10 @@ fun OverviewScreen(
             SwissTopicList(report, rawEvents, semantics, period, now, onTopic)
         }
 
+        item(key = "topic-timeline") {
+            SwissTopicTimeline(rawEvents, semantics, period, now, appNames, report)
+        }
+
         // 底部报告与采集引导区
         item(key = "report-entry") {
             SwissCard {

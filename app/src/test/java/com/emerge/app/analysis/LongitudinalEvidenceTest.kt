@@ -68,6 +68,14 @@ class LongitudinalEvidenceTest {
         assertTrue(assessment.signals.isEmpty())
     }
 
+    @Test fun unknownEvidenceStillKeepsEverySupportingOriginalBeyondTheSummaryLimit() {
+        val assessment = fixture(evidence = { "" }).report.exposure!!
+        val view = assessment.primary!!
+        assertTrue(view.longitudinal.evidence.isEmpty())
+        assertEquals(8, view.eventIds.size)
+        assertEquals((1L..30L).toSet(), view.supportingEventIds.toSet())
+    }
+
     @Test fun aMinorityOfRepeatedEvidenceDoesNotTriggerDespiteFullCoverage() {
         val assessment = fixture(evidence = { if (it < 15) repeatedEvidence else
             "报告松岚记录本季度招聘岗位同比减少${it + 25}%" }).report.exposure!!
