@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -178,46 +177,40 @@ private fun RecordingAudioActions(canImport: Boolean, onImport: () -> Unit, onOp
     }
 }
 
-private val recordingPlatforms = listOf(
-    "com.ss.android.ugc.aweme" to "抖音", "com.xingin.xhs" to "小红书",
-    "tv.danmaku.bili" to "B站", "com.zhihu.android" to "知乎"
-)
-
 @Composable
 private fun RecordingApplications(apps: List<CaptureApp>, selected: Set<String>,
     onChange: (Set<String>) -> Unit, onChooseApps: () -> Unit) {
-    val availablePackages = remember(apps) { apps.map { it.packageName }.toSet() }
+    val selectedApps = remember(apps, selected) {
+        val names = apps.associate { it.packageName to it.label }
+        selected.map { packageName -> packageName to (names[packageName] ?: platformName(packageName)) }
+    }
     WhiteCard(Modifier.testTag("recording-app-scope")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("记录应用范围", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             PojianTextButton(onClick = onChooseApps) { Text("全部应用") }
         }
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (selectedApps.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth()) {
             val columns = if (maxWidth / LocalDensity.current.fontScale < 280.dp) 2 else 4
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                recordingPlatforms.chunked(columns).forEach { row ->
+                selectedApps.chunked(columns).forEach { row ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         row.forEach { (packageName, label) ->
-                            val checked = packageName in selected
-                            val available = packageName in availablePackages || checked
                             Surface(Modifier.weight(1f).testTag("recording-app-$packageName")
-                                .toggleable(checked, enabled = available, role = Role.Switch) { value ->
-                                    onChange(if (value) selected + packageName else selected - packageName)
-                                }, shape = RoundedCornerShape(12.dp),
-                                color = if (checked) Ink else MaterialTheme.colorScheme.surface,
-                                contentColor = if (checked) Color.White else if (available) Ink else Muted,
+                                .toggleable(true, role = Role.Switch) { onChange(selected - packageName) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = Ink,
+                                contentColor = Color.White,
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)) {
                                 Column(Modifier.heightIn(min = 88.dp).padding(horizontal = 4.dp, vertical = 12.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    if (checked) Icon(Icons.Outlined.Check, null, Modifier.size(22.dp))
-                                    else if (available) SourceAppIcon(packageName, size = 22.dp)
-                                    else Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) { Text("—") }
-                                    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1)
-                                    if (!available) Text("未发现", style = MaterialTheme.typography.labelSmall)
+                                    SourceAppIcon(packageName, size = 28.dp)
+                                    Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis)
                                 }
                             }
                         }
+                        repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
                     }
                 }
             }
@@ -310,7 +303,7 @@ private fun RecordingTranscriptStream(state: AudioUiState, sessions: List<AudioS
     }
 }
 
-private fun appsLabel(packageName: String): String = recordingPlatforms.firstOrNull { it.first == packageName }?.second ?: packageName
+private fun appsLabel(packageName: String): String = platformName(packageName)
 
 /** Decorative recording activity, deliberately unrelated to measured sound amplitude. */
 @Composable

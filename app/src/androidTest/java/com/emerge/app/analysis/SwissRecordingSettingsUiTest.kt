@@ -22,24 +22,43 @@ import org.junit.runner.RunWith
 class SwissRecordingSettingsUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Test fun scopeOnlyEnablesAvailableAppsAndCaptureUsesActualSelection() {
+    @Test fun scopeDisplaysOnlyUserSelectedAppsAndCaptureUsesActualSelection() {
         val douyin = "com.ss.android.ugc.aweme"
+        val reader = "example.reader"
         var selected by mutableStateOf(emptySet<String>())
         var captureChanges = 0
+        var pickerRequests = 0
         render {
-            SwissRecordingScreen(false, false, CaptureStatus(), listOf(CaptureApp(douyin, "抖音")),
+            SwissRecordingScreen(false, false, CaptureStatus(),
+                listOf(CaptureApp(douyin, "抖音"), CaptureApp(reader, "阅读器")),
                 selected, emptyList(), null, AudioUiState(), emptyList(),
                 onCapture = { captureChanges++ }, onOpenSettings = {}, onPackagesChange = { selected = it },
-                onChooseApps = {}, onImport = {}, onAudioCapture = {}, onDownloadModel = {},
+                onChooseApps = { pickerRequests++ }, onImport = {}, onAudioCapture = {}, onDownloadModel = {},
                 onCancelTask = {}, onOpenAudioRecords = {})
         }
         compose.onNodeWithTag("capture-toggle").assertIsNotEnabled()
-        compose.onNodeWithTag("recording-app-com.xingin.xhs").assertIsNotEnabled()
-        compose.onNodeWithTag("recording-app-$douyin").performClick().assertIsOn()
+        listOf(douyin, "com.xingin.xhs", "tv.danmaku.bili", "com.zhihu.android", reader).forEach {
+            compose.onNodeWithTag("recording-app-$it").assertDoesNotExist()
+        }
+        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("recording-app-scope"))
+        compose.onNodeWithText("全部应用").performClick()
+        compose.runOnIdle {
+            assertEquals(1, pickerRequests)
+            assertEquals(emptySet<String>(), selected)
+            selected = setOf(douyin, reader)
+        }
+        compose.onNodeWithTag("recording-app-$douyin").assertIsOn()
+        compose.onNodeWithTag("recording-app-$reader").assertIsOn().assertTextContains("阅读器").performClick()
+        compose.onNodeWithTag("recording-app-$reader").assertDoesNotExist()
+        compose.onNodeWithTag("recording-app-com.xingin.xhs").assertDoesNotExist()
         compose.runOnIdle { assertEquals(setOf(douyin), selected) }
+        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("capture-toggle"))
         compose.onNodeWithTag("capture-toggle").assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(1, captureChanges) }
         compose.onNodeWithTag("audio-record-toggle").assertIsNotEnabled()
+        compose.runOnIdle { selected = emptySet() }
+        compose.onNodeWithTag("capture-toggle").assertIsNotEnabled()
+        compose.onNodeWithTag("recording-app-$douyin").assertDoesNotExist()
     }
 
     @Test fun unsupportedAttestationRemainsUnavailableAndCannotClaimDatabaseEncryption() {
