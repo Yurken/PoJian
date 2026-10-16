@@ -322,6 +322,8 @@ internal fun platformName(packageName: String): String = when (packageName) {
     "com.xingin.xhs" -> "小红书"
     "tv.danmaku.bili" -> "B站"
     "com.zhihu.android" -> "知乎"
+    "com.sina.weibo" -> "微博"
+    "com.smile.gifmaker" -> "快手"
     else -> packageName
 }
 

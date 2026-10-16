@@ -39,7 +39,7 @@ class SwissChartUiTest {
         compose.onNodeWithTag("swiss-evidence-date").assertTextEquals(swissEvidenceInterval(hour(1)))
         compose.runOnIdle { buckets = listOf(hour(1, fresh = 9), hour(2), hour(3)) }
         compose.onNodeWithTag("swiss-evidence-date").assertTextEquals(swissEvidenceInterval(hour(1)))
-        compose.onNode(hasText("新增论据 9") and hasAnyAncestor(hasTestTag("swiss-evidence-readout"))).assertExists()
+        compose.onNode(hasText("新增依据 9") and hasAnyAncestor(hasTestTag("swiss-evidence-readout"))).assertExists()
         compose.onNodeWithTag("swiss-evidence-previous").assertIsNotEnabled()
         compose.onNodeWithTag("swiss-evidence-plot").performTouchInput { click(Offset(width - 1f, height / 2f)) }
         compose.onNodeWithTag("swiss-evidence-date").assertTextEquals(swissEvidenceInterval(hour(3)))

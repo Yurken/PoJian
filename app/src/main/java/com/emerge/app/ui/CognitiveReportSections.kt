@@ -40,7 +40,7 @@ internal fun CognitiveReportSections(report: CognitiveReport, events: List<Brows
                     QuoteBlock(evidence.text)
                     MetadataText(evidence.eventIds.joinToString(" · ") { "#$it" })
                 }
-                if (viewpoint.evidence.size > evidenceLimit) PojianTextButton(onClick = { evidenceLimit += 3 }) { Text("更多论据") }
+                if (viewpoint.evidence.size > evidenceLimit) PojianTextButton(onClick = { evidenceLimit += 3 }) { Text("更多依据") }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     PojianTextButton(onClick = { onClaims(viewpoint.observations) }) { Text("原文") }
                     PojianTextButton(enabled = supplementEnabled, onClick = {

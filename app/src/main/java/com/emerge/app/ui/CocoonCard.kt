@@ -64,7 +64,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                     )
                 }
                 Text(
-                    text = "内容集中度",
+                    text = "信息视野",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -157,7 +157,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
             }
         }
 
-        // 重复论据引用提示槽
+        // 重复依据引用提示槽
         repeat?.let { counts ->
             val countStyle = SpanStyle(
                 color = Ink,
@@ -226,7 +226,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                 )
                 VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                 SwissCount(
-                    label = "核心论据",
+                    label = "核心依据",
                     value = report?.claims?.flatMap { it.evidenceDetails }?.distinctBy { it.text }?.size?.toString() ?: "—",
                     modifier = Modifier.weight(1f),
                     emphasized = true

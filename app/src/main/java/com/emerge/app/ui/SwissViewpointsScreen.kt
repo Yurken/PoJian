@@ -64,7 +64,8 @@ private data class SwissViewpointsData(
     val candidates: List<ViewpointShare>,
     val trend: List<SwissStanceDay>,
     val requests: List<Pair<TopicDigest, SupplementRequest>>,
-    val repeatedWorks: Map<String, Int>
+    val repeatedWorks: Map<String, Int>,
+    val concentrations: List<TopicConcentration>
 )
 
 private fun prepareSwissViewpoints(
@@ -118,7 +119,8 @@ private fun prepareSwissViewpoints(
                 known.map { SupplementKnownArgument(it.quote, it.evidenceDetails.firstOrNull()?.text.orEmpty()) }
             )
         }
-    return SwissViewpointsData(selected.size, topics, shares, candidates, trend, requests, repeatedWorks)
+    return SwissViewpointsData(selected.size, topics, shares, candidates, trend, requests, repeatedWorks,
+        TopicConcentrations.analyze(works).filter { selectedTopic == null || it.topic == selectedTopic })
 }
 
 @Composable
@@ -285,6 +287,10 @@ internal fun SwissViewpointsScreen(
                     ) { detailId = it.record.id }
                 }
             }
+        }
+
+        items(data?.concentrations.orEmpty(), key = { "concentration-${it.topic}" }) { concentration ->
+            SwissTopicConcentration(concentration)
         }
 
         // 02 / 近7天观点倾向曲线
@@ -476,7 +482,7 @@ internal fun SwissViewpointsScreen(
                             color = DesignTokens.Amber.copy(alpha = 0.12f)
                         ) {
                             Text(
-                                text = "$repeatedCount 篇论据重复",
+                                text = "$repeatedCount 篇观点重复",
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color(0xFFB45309)
@@ -734,7 +740,7 @@ private fun SwissRepresentative(
                 )
                 Spacer(Modifier.weight(1f, fill = false))
                 Text(
-                    text = if (repeated > 0) "$repeated 篇论据重复" else "来源未核实",
+                    text = if (repeated > 0) "$repeated 篇观点重复" else "来源未核实",
                     color = Muted,
                     style = MaterialTheme.typography.labelSmall
                 )

@@ -236,7 +236,7 @@ private fun RecordingMaterials(events: List<BrowseEvent>, report: CognitiveRepor
     }
     val claims = report?.claims.orEmpty().filter { it.eventId in related }.distinctBy { it.quote }
     WhiteCard(Modifier.testTag("recording-materials")) {
-        SectionTitle("观点与论据")
+        SectionTitle("观点与依据")
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("屏幕文字", color = Muted, style = MaterialTheme.typography.labelMedium)

@@ -45,7 +45,7 @@ object ReportExporter {
             appendLine("${it.topic}：${it.recordCount}/${report.coverageSessions} 条（${percent(it.recordCount, report.coverageSessions)}）；停留时长 ${duration(it.durationMillis)}；时长占比 $durationShare")
         }
         appendLine("每条有效记录按主要内容归入一个主题，包括未分类和娱乐。条数比例的统计范围为全部 ${report.coverageSessions} 条有效记录；时长比例的统计范围为停留时长合计 ${duration(report.observedDurationMillis)}。时长未统计不表示没有阅读。")
-        appendLine("娱乐与休闲单独统计，不会因为缺少论据或反复观看而被评价为“低价值”。专题内容占比高，也可能正符合你的浏览目的。")
+        appendLine("娱乐与休闲单独统计，不会因为缺少依据或反复观看而被评价为“低价值”。专题内容占比高，也可能正符合你的浏览目的。")
         report.topics.forEach { appendLine("${it.topic}：${it.count}/${report.claims.size} 个观点（${percent(it.count, report.claims.size)}）") }
         if (report.claims.isEmpty()) appendLine("未识别到可回查的观点，无法据此判断是否存在信息同质化。")
         appendLine("观点比例的统计范围为识别出的 ${report.claims.size} 个观点，不代表全部内容或停留时间。云端分析的主题和立场需核对；本地识别只覆盖预设词表，立场未经语义模型确认。")
@@ -60,7 +60,7 @@ object ReportExporter {
                 appendLine("记录 #${claim.eventId} | ${time(claim.timestamp)} | ${claim.packageName} | 原句：${claim.quote}")
             }
         }
-        appendLine("判定规则：回查近7天，同一议题、对象、评价维度和条件至少30次已识别接触，总体及比较范围内的明确立场识别覆盖率均至少60%，同一立场占比至少75%。一天内样本充足也可判断集中；重复提醒另须覆盖至少3天、8个已知论据作品、论据已知覆盖至少60%、重复论据作品占比至少60%，当前内容亦须有可回查的重复依据。同次接触的多种立场平分权重。与前7天比较时，两期均须满足样本门槛、应用集合相同，识别覆盖率及各应用份额变化不超过20个百分点；同向占比上升至少15个百分点且多样性指数下降至少0.1才标为收窄线索。多样性为1减各立场份额平方和。跨应用要求至少2个应用各有10次已识别接触、覆盖率至少60%、同向占比至少75%。这些是未经校准的工程阈值，不是科学诊断或认知风险评分。")
+        appendLine("判定规则：回查近7天，同一议题、对象、评价维度和条件至少30次已识别接触，总体及比较范围内的明确立场识别覆盖率均至少60%，同一立场占比至少75%。一天内样本充足也可判断集中；重复提醒另须覆盖至少3天、8个已知依据作品、依据已知覆盖至少60%、重复依据作品占比至少60%，当前内容亦须有可回查的重复依据。同次接触的多种立场平分权重。与前7天比较时，两期均须满足样本门槛、应用集合相同，识别覆盖率及各应用份额变化不超过20个百分点；同向占比上升至少15个百分点且多样性指数下降至少0.1才标为收窄线索。多样性为1减各立场份额平方和。跨应用要求至少2个应用各有10次已识别接触、覆盖率至少60%、同向占比至少75%。这些是未经校准的工程阈值，不是科学诊断或认知风险评分。")
         appendLine("不满足上述规则不代表没有信息同质化；应用数量、主题集中、情绪倾向和观点一致都不能单独得出结论。时长不足或缺失时，也不能凭次数判断主要精力花在了哪里。")
         val signalLimit = if (appendixLimit == Int.MAX_VALUE) Int.MAX_VALUE else 20
         report.contentSignals.take(signalLimit).forEach {
@@ -76,7 +76,7 @@ object ReportExporter {
         if (report.topicDigests.sumOf { it.viewpoints.size } > digestRemaining)
             appendLine("主题观点仅列出前 $digestRemaining 项，完整内容见文本报告。")
         if (report.topicDigests.sumOf { it.viewpoints.sumOf { view -> view.evidence.size } } > evidenceRemaining)
-            appendLine("主题论据仅列出前 $evidenceRemaining 项，完整内容见文本报告。")
+            appendLine("主题依据仅列出前 $evidenceRemaining 项，完整内容见文本报告。")
         report.topicDigests.forEach { topic ->
             if (digestRemaining <= 0) return@forEach
             appendLine("${topic.topic} · ${topic.subject} · ${topic.workCount} 个作品")
@@ -167,7 +167,7 @@ object ReportExporter {
         }
         appendLine("## 9. 方法与局限")
         appendLine("方法：通过事件编号、完整原文和引用片段校验的云端分析优先用于主题、观点、对象、角度、立场、条件与依据；无有效结果时使用本地识别，包括文字过滤、词表主题和判断句规则。历史比较与时序汇总在本机完成。")
-        appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。本地相似观点阈值为 0.65；论据先核对当事对象、材料、数量单位、否定及已识别范围，再使用有限同义规范化与 0.85 字符相似度。明确独立的数量事实至多拆成 8 个原文片段，逐项检索历史并要求规范化内容一致；未拆出的条件、引用或未知语法仍按整段保留。相对月、季、年按观察时间对齐。每次最多对比最近 120 个同范围候选，未确认身份或超出比较预算的未覆盖片段保留待定。以上规则及阈值未经独立人工标注数据校准。")
+        appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。本地相似观点阈值为 0.65；依据先核对当事对象、材料、数量单位、否定及已识别范围，再使用有限同义规范化与 0.85 字符相似度。明确独立的数量事实至多拆成 8 个原文片段，逐项检索历史并要求规范化内容一致；未拆出的条件、引用或未知语法仍按整段保留。相对月、季、年按观察时间对齐。每次最多对比最近 120 个同范围候选，未确认身份或超出比较预算的未覆盖片段保留待定。以上规则及阈值未经独立人工标注数据校准。")
         appendLine("同一记录出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")
         appendLine("云端分析仍可能有误，原文校验不能确认观点归属或推理正确。历史依据比较使用本地识别规则，尚未实现语义编码、时序图学习、阅读投入估计或可信执行环境。音频转写和视觉提取文字可参与分析，不单独增加作品接触数或观看时长。")
         appendLine("这份回顾在本机生成。语音转写在本机完成；配置云端并启用相应分析、实时核查或关键画面开关后，必要文字或采样画面会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")

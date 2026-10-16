@@ -52,7 +52,7 @@ object DerivedMonitorFindings {
             val percent = String.format(Locale.CHINA, "%.1f", signal.share * 100)
             findings += MonitorFinding("exposure:" + MonitorPolicy.hash(signal.key), "event:${latest.eventId}",
                 source.packageName, source.timestamp, "cocoon", "concentration", latest.quote,
-                "${assessment.days}天；同向观点 $percent%；已知论据 ${assessment.known}/${assessment.contacts}；" +
+                "${assessment.days}天；同向观点 $percent%；已知依据 ${assessment.known}/${assessment.contacts}；" +
                     "重复 ${assessment.repeated}/${assessment.known}；记录 ${recordIds(assessment.eventIds)}",
                 topic = "${signal.topic} · ${signal.subject} · ${signal.dimension}", contextToken = token)
         }

@@ -56,14 +56,14 @@ fun OverviewScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 01 / 内容集中度（茧房集中度环与核心三元组指标）
+        // 01 / 信息视野
         item(key = "cocoon") {
             CocoonCard(analysis, period, visible = true)
         }
 
-        // 02 / 24小时浏览新鲜度（近24小时每小时新增依据与重复依据的构成）
-        item(key = "evidence-trend") {
-            SwissEvidenceTrend(rawEvents, semantics, now)
+        // 02 / 按实际浏览时长展示内容情绪，并展开时段内的主题与原句。
+        item(key = "emotion-timeline") {
+            SwissEmotionTimeline(rawEvents, semantics, now, appNames)
         }
 
         // 03 / 应用时长分布

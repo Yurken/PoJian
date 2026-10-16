@@ -148,7 +148,7 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(claims.map { it.stance }.filter(String::isNotBlank).distinct().joinToString(" · ").ifBlank { "未识别到观点" },
                         style = MaterialTheme.typography.labelSmall, color = DesignTokens.Blue)
-                    Text(if (model[event.id]?.validFor(event) == true) "${claims.map { it.evidence }.filter(String::isNotBlank).distinct().size} 条论据" else "未提取到论据",
+                    Text(if (model[event.id]?.validFor(event) == true) "${claims.map { it.evidence }.filter(String::isNotBlank).distinct().size} 条依据" else "未提取到依据",
                         style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
                     Text(swissRecordSource(event), style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
@@ -189,7 +189,7 @@ private fun SwissPlatformTag(text: String) {
 private fun SwissSourceBadge(repeated: Boolean) {
     val color = if (repeated) DesignTokens.Amber else Muted
     Surface(color = color.copy(alpha = .08f), shape = RoundedCornerShape(5.dp), border = BorderStroke(1.dp, color.copy(alpha = .2f))) {
-        Text(if (repeated) "论据重复" else "来源未核实", color = color, style = MaterialTheme.typography.labelSmall,
+        Text(if (repeated) "观点重复" else "来源未核实", color = color, style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
     }
 }
@@ -262,8 +262,8 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
                     }
                 }
             }
-            item { Text("核心论据与历史对照", style = MaterialTheme.typography.titleSmall) }
-            if (evidence.isEmpty()) item { Text("暂无论据", color = Muted, style = MaterialTheme.typography.bodyMedium) }
+            item { Text("核心依据与历史对照", style = MaterialTheme.typography.titleSmall) }
+            if (evidence.isEmpty()) item { Text("暂无依据", color = Muted, style = MaterialTheme.typography.bodyMedium) }
             items(evidence.size) { index ->
                 val fragment = evidence[index]
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
