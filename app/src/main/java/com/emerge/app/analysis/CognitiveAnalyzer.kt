@@ -12,8 +12,8 @@ enum class Increment(val label: String) {
     UNKNOWN("出处或依据不足，暂无法判断"), CONDITIONS("时间或条件不同，单独保留")
 }
 enum class EvidenceType(val label: String) {
-    FACT("事实/数据线索"), CONDITION("适用条件"), ADVICE("行动建议"),
-    EXPLANATION("原因/解释"), OTHER("其他线索")
+    FACT("事实与数据"), CONDITION("适用条件"), ADVICE("行动建议"),
+    EXPLANATION("原因/解释"), OTHER("其他")
 }
 /** A direct, retained historical quotation, not a claim of independent source or truth. */
 data class EvidenceHistoryMatch(val eventId: Long, val quote: String)

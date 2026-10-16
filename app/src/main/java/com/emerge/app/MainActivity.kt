@@ -10,8 +10,11 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -70,6 +73,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     LaunchedEffect(audioAlert) { audioAlert?.let { snackbar.showSnackbar(it) } }
     val all by model.allEvents.collectAsStateWithLifecycle()
     val semantics by model.semantics.collectAsStateWithLifecycle()
+    val analysisStatuses by model.analysisStatuses.collectAsStateWithLifecycle()
     val count by model.count.collectAsStateWithLifecycle()
     val storageUsage by app.localStorage.usage.collectAsStateWithLifecycle()
     val storageLimit by app.localStorageSettings.limitBytes.collectAsStateWithLifecycle()
@@ -88,10 +92,13 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val textSaver = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
         if (uri != null) model.exportReport(uri, false) else model.cancelExport()
     }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
-    LaunchedEffect(tab) { if (tab == 2) app.localStorage.refresh() }
-    var viewpointScrolling by remember { mutableStateOf(false) }
-    var period by rememberSaveable { mutableStateOf(StatisticsPeriod.DAY) }
+    var tab by rememberSaveable { mutableIntStateOf(2) }
+    LaunchedEffect(tab) { if (tab == 4) app.localStorage.refresh() }
+    var keyword by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedTopic by rememberSaveable { mutableStateOf<String?>(null) }
+    var showReports by rememberSaveable { mutableStateOf(false) }
+    var showFindings by rememberSaveable { mutableStateOf(false) }
+    var period by rememberSaveable { mutableStateOf(StatisticsPeriod.HOURS24) }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var confirmClear by remember { mutableStateOf(false) }
     var showApps by rememberSaveable { mutableStateOf(false) }
@@ -109,7 +116,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         "${app.repository.captureGeneration}|${app.captureSettings.authorizationRevision}|" +
             "${app.audioCoordinator.settings.authorizationRevision}")
     LaunchedEffect(discoveryRequest) {
-        if (discoveryRequest > 0) { tab = 1; showRecords = false; showCaptureTools = false; showAudioRecords = false }
+        if (discoveryRequest > 0) { tab = 0; showFindings = true; showRecords = false; showCaptureTools = false; showAudioRecords = false }
     }
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
@@ -123,7 +130,10 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         model.refreshPermission()
         onDispose { owner.lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(period) { model.setPeriod(period) }
+    LaunchedEffect(period) {
+        model.setPeriod(period)
+        if (!model.analysis.value.active) model.analyze(period)
+    }
     LaunchedEffect(all, period) {
         while (true) { now = System.currentTimeMillis(); model.refreshReportWindow(now); delay(60_000) }
     }
@@ -133,83 +143,104 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     }
     val appNames = remember(availableApps) { availableApps.associate { it.packageName to it.label } }
     val selectedApps = remember(allowed, appNames) { allowed.sorted().map { CaptureApp(it, appNames[it] ?: it) } }
-    val audioActions = rememberAudioActions(audioModel, selectedApps) { tab = 2; showCaptureTools = false; showApps = true }
+    val audioActions = rememberAudioActions(audioModel, selectedApps) { tab = 4; showCaptureTools = false; showApps = true }
     BackHandler(showRecords || showCaptureTools || showAudioRecords) {
         when { showAudioRecords -> showAudioRecords = false; showCaptureTools -> showCaptureTools = false; else -> showRecords = false }
     }
     val pauseAudio: (() -> Unit)? = if (audioRuntime.isCapturing) ({
         if (audioRuntime.isPaused) audioModel.runtime.resumePlayback() else audioModel.runtime.pausePlayback()
     }) else null
-    val titles = listOf("概览", "发现", "设置")
-    val icons = listOf(R.drawable.ic_overview, R.drawable.ic_records, R.drawable.ic_profile)
-    Scaffold(containerColor = PageBackground, snackbarHost = { SnackbarHost(snackbar) }, bottomBar = {
+    fun requestSupplement(request: SupplementRequest) {
+        if (!audioConfig.enabled) screenScope.launch { snackbar.showSnackbar("请先开启云端分析") }
+        else analysis.report?.takeIf { !analysis.stale && !analysis.running }?.let { report ->
+            supplement = SupplementSelection(request, report, supplementAuthorization())
+        }
+    }
+    fun setRecording(value: Boolean) {
+        if (!value) app.audioCoordinator.stopAll()
+        model.setCapture(value)
+    }
+    val currentReport = analysis.report?.takeIf { !analysis.stale && it.period == period.label }
+    val active = enabled && permission && diagnostics.connected && allowed.isNotEmpty()
+    val status = when { !enabled -> "已暂停"; allowed.isEmpty() -> "未选应用"; !permission -> "待授权"; !diagnostics.connected -> "待连接"; else -> "记录中" }
+    val titles = listOf("观点", "历史", "概览", "记录", "设置")
+    val pageState = rememberSaveableStateHolder()
+    val pageTitles = listOf("观点分布", "浏览历史", "信息概览", "实时记录", "系统设置")
+    val icons = listOf(R.drawable.ic_viewpoints, R.drawable.ic_records, R.drawable.ic_overview,
+        R.drawable.ic_recording, R.drawable.ic_profile)
+    Scaffold(containerColor = PageBackground, snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            SwissAppHeader(pageTitles[tab], period, { period = it; model.setPeriod(it) }, active, status,
+                onRecording = {
+                    when {
+                        allowed.isEmpty() -> tab = 3
+                        !permission && !active -> onOpenSettings()
+                        else -> setRecording(!enabled)
+                    }
+                })
+        }, bottomBar = {
         PojianNavigationBar(titles, selectedIndex = tab, onSelect = { index ->
             tab = index; showRecords = false; showCaptureTools = false; showAudioRecords = false
-        }, visible = !(tab == 0 && !showRecords && !showCaptureTools && !showAudioRecords && viewpointScrolling)) { index ->
-            Icon(painterResource(icons[index]), contentDescription = null, modifier = Modifier.size(23.dp))
-        }
+        }) { index -> Icon(painterResource(icons[index]), contentDescription = null, modifier = Modifier.size(23.dp)) }
     }) { padding ->
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-            val contentModifier = Modifier
-                .padding(padding)
-                .padding(top = 12.dp)
-                .widthIn(max = 760.dp).fillMaxWidth()
+            val contentModifier = Modifier.padding(padding).widthIn(max = 760.dp).fillMaxWidth()
+            pageState.SaveableStateProvider(if (showAudioRecords) "audio-records" else "tab-$tab") {
             when {
                 showAudioRecords -> AudioRecordsScreen(audioSessions, onSession = { audioDetailId = it.id },
                     onImport = audioActions.onImport, onBack = { showAudioRecords = false }, modifier = contentModifier,
                     canImport = audioState.modelState.status == AudioModelStatus.READY && audioState.task == null)
-                showCaptureTools -> Column(contentModifier) {
-                    PojianTextButton(onClick = { showCaptureTools = false }) { Text("返回设置") }
-                    RecordingScreen(audioState.copy(cloudLabel = if (audioConfig.enabled) "云端已启用" else "云端关闭"), audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
-                        audioModel::stopTask, { showAudioRecords = true }, modifier = Modifier.weight(1f),
-                        onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio, isPaused = audioRuntime.isPaused)
-                }
-                showRecords -> Column(contentModifier) {
-                    PojianTextButton(onClick = { showRecords = false }) { Text("返回发现") }
-                    RecordsScreen(all, count, appNames, Modifier.weight(1f), onDelete = { deleteEvent = it },
-                        onSettings = { showRecords = false; tab = 2 },
-                        audioContent = { AudioRecordsEntry(audioSessions.size, { showAudioRecords = true }) })
-                }
-                tab == 0 -> OverviewScreen(statistics, period, { period = it; model.setPeriod(it) },
-                    enabled && permission && diagnostics.connected && allowed.isNotEmpty(),
-                    when { allowed.isEmpty() -> "未选择范围"; !enabled -> "已暂停"; !permission -> "待授权"
-                        !diagnostics.connected -> "待连接"; else -> "采集中" },
-                    appNames, onRecords = { tab = 1; showRecords = true }, onSettings = { tab = 2 }, modifier = contentModifier,
+                tab == 0 -> SwissViewpointsScreen(all, semantics, currentReport, period, now, appNames,
+                    selectedTopic, { selectedTopic = it }, ::requestSupplement, contentModifier,
+                    onFactCheck = { showFindings = true }, findingCount = monitor.findings.size)
+                tab == 1 -> SwissHistoryScreen(all, semantics, currentReport, appNames, keyword,
+                    { keyword = null }, { deleteEvent = it }, contentModifier)
+                tab == 2 -> OverviewScreen(statistics, period, { period = it; model.setPeriod(it) }, active, status,
+                    appNames, onRecords = { tab = 1 }, onSettings = { tab = 3 }, modifier = contentModifier,
                     analysis = analysis, rawEvents = all,
                     onAnalyze = { purpose -> model.updatePurpose(purpose); model.analyze(period) },
                     onPurposeChange = model::updatePurpose, selectedAppCount = allowed.size, now = now,
-                    onExport = { report, pdf -> if (model.prepareExport(report)) {
-                        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
-                        if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
-                    } }, semantics = semantics, onViewpointScrolling = { viewpointScrolling = it },
-                    onPreviewReport = model::previewReport, onSupplement = { request ->
-                        if (!audioConfig.enabled) screenScope.launch { snackbar.showSnackbar("请先开启云端分析") }
-                        else analysis.report?.takeIf { !analysis.stale && !analysis.running }?.let { report ->
-                            supplement = SupplementSelection(request, report, supplementAuthorization())
-                        }
-                    })
-                tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
-                    onRecords = { showRecords = true }, events = all, semantics = semantics)
-                else -> SettingsScreen(permission, enabled, count, { value ->
-                    if (!value) app.audioCoordinator.stopAll()
-                    model.setCapture(value)
-                }, onOpenSettings,
-                    { confirmClear = true }, message, contentModifier, diagnostics, selectedApps,
-                    onChooseApps = { showApps = true }, audioContent = {
-                        MonitorSettingsSection(monitorConfig, app.monitor::saveConfig,
-                            app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { /* 网关配置见服务端管理台 */ }, { showCaptureTools = true },
-                            cloudEnabled = audioConfig.enabled, onCloudEnabledChange = { value ->
-                                audioModel.saveConfig(audioConfig.copy(enabled = value), {}, { error -> app.monitor.notice(error) })
-                            }, cloudConfig = audioConfig)
-                    }, updateContent = { com.emerge.app.update.UpdateSettingsSection() },
-                    storageUsage = storageUsage.copy(limitBytes = storageLimit),
-                    onSaveStorageLimit = { bytes -> withContext(Dispatchers.IO) { app.localStorageSettings.setLimitBytes(bytes) } },
-                    transcriptContent = {
+                    semantics = semantics, onPreviewReport = model::previewReport, onSupplement = ::requestSupplement,
+                    onKeyword = { keyword = it; tab = 1 }, onTopic = { selectedTopic = it; tab = 0 },
+                    onReports = { showReports = true })
+                tab == 3 -> SwissRecordingScreen(permission, enabled, diagnostics, availableApps, allowed, all,
+                    currentReport, audioState, audioSessions, ::setRecording, onOpenSettings, model::setAllowedPackages,
+                    { showApps = true }, audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
+                    audioModel::stopTask, { showAudioRecords = true }, contentModifier,
+                    onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio,
+                    isAudioPaused = audioRuntime.isPaused, message = message, onSettings = { tab = 4 })
+                else -> SwissSettingsScreen(storageUsage.copy(limitBytes = storageLimit), count > 0,
+                    { confirmClear = true }, { bytes -> withContext(Dispatchers.IO) { app.localStorageSettings.setLimitBytes(bytes) } },
+                    audioConfig, audioModel::saveConfig, monitorConfig, app.monitor::saveConfig,
+                    app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { tab = 3 },
+                    { showReports = true }, {
+                        app.captureSettings.setLocalThumbnails(false)
+                        withContext(Dispatchers.IO) { app.workThumbnails.maintain() }
+                    }, contentModifier, audioSettingsContent = {
+                        SwissSpeechModelSettings(audioState, audioModel::downloadModel, audioModel.runtime::cancelDownload)
+                    }, transcriptContent = {
                         AudioTranscriptSettings(audioSessions, onOpenRecords = { showAudioRecords = true },
-                            onSession = { audioDetailId = it.id })
+                            onSession = { audioDetailId = it.id }, embedded = true)
+                    }, updateContent = { com.emerge.app.update.UpdateSettingsSection(embedded = true) },
+                    captureSettingsContent = {
+                        SwissCaptureSettings(permission, enabled, diagnostics, allowed.size, audioState, audioRuntime.isPaused,
+                            monitorConfig.bubble, onOpenSettings, ::setRecording, { showApps = true },
+                            { app.monitor.saveConfig(monitorConfig.copy(bubble = it)) }, audioActions.onCapture, audioModel::stopTask, message)
                     })
             }
+            }
         }
+    }
+    if (showReports) SwissReportDialog(all, semantics, now, onDismiss = { showReports = false },
+        purpose = analysis.purpose, onPurposeChange = model::updatePurpose, analysisStatuses = analysisStatuses)
+    if (showFindings) ModalBottomSheet(onDismissRequest = { showFindings = false },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("事实核查", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+            PojianIconButton({ showFindings = false }) { Icon(Icons.Outlined.Close, "关闭") }
+        }
+        MonitorDiscoverScreen(monitor, appNames, Modifier.fillMaxHeight(.88f),
+            onRecords = { showFindings = false; tab = 1 }, events = all, semantics = semantics)
     }
     reportPreview?.let { ReportFilePreview(it, model::dismissReportPreview) }
     supplement?.let { selection ->

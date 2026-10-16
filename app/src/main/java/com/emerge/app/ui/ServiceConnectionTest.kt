@@ -19,7 +19,7 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.emerge.app.BuildConfig
+import com.emerge.app.audioanalysis.EndpointPolicy
 import com.emerge.app.audioanalysis.RemoteServiceProbe
 import com.emerge.app.audioanalysis.ServiceProbeResult
 import com.emerge.app.audioanalysis.TextServiceConfig
@@ -31,12 +31,13 @@ internal fun ServiceConnectionTest(config: TextServiceConfig) {
     val testing = attempt > 0 && result == null
     // Leaving settings or changing credentials cancels the request and discards its result.
     LaunchedEffect(config.endpoint, config.token, attempt) {
-        if (attempt > 0) result = RemoteServiceProbe.check(config, BuildConfig.DEBUG)
+        if (attempt > 0) result = connectionTestEndpointError(config.endpoint)?.let { ServiceProbeResult(it) }
+            ?: RemoteServiceProbe.check(config, allowLocalHttp = false)
     }
     PojianTextButton(enabled = !testing, modifier = Modifier.testTag("service-connection-test"), onClick = {
         result = null
         attempt++
-    }) { Text(if (testing) "测试中…" else "测试连接") }
+    }) { Text(if (testing) "测试中…" else "连接测试") }
     result?.let { response ->
         Column(Modifier.fillMaxWidth().testTag("service-connection-result")
             .semantics { liveRegion = LiveRegionMode.Polite }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -50,6 +51,14 @@ internal fun ServiceConnectionTest(config: TextServiceConfig) {
             }
         }
     }
+}
+
+/** This user-facing connection check only accepts HTTPS, including in debug builds. */
+internal fun connectionTestEndpointError(endpoint: String): String? {
+    val scheme = runCatching { java.net.URI(endpoint.trim()).scheme }.getOrNull()
+    if (!scheme.equals("https", ignoreCase = true)) return "仅支持 HTTPS"
+    return runCatching { EndpointPolicy.validate(endpoint, allowLocalHttp = false) }
+        .exceptionOrNull()?.let { "服务地址格式不正确" }
 }
 
 @Composable

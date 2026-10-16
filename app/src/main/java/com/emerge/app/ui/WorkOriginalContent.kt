@@ -9,6 +9,8 @@ import android.webkit.*
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -16,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -24,6 +27,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.emerge.app.EmergeApplication
+import com.emerge.app.R
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.data.OriginalLinks
 import kotlinx.coroutines.CancellationException
@@ -47,7 +51,7 @@ internal fun WorkOriginalContent(event: BrowseEvent) {
             PojianTextButton(onClick = { edit = true }, modifier = Modifier.testTag("work-original-link")) {
                 Text(if (url == null) "添加链接" else "修改链接")
             }
-            if (url != null) PojianTextButton(onClick = { expanded = true }) { Text("全屏") }
+            if (url != null) PojianIconButton(onClick = { expanded = true }) { Icon(painterResource(R.drawable.ic_open_in_new), contentDescription = "全屏") }
         }
         if (url == null) MetadataText("原作链接未保存")
         else if (!expanded) key(url) { OriginalPage(url, Modifier.fillMaxWidth().height(420.dp)) }
@@ -58,7 +62,7 @@ internal fun WorkOriginalContent(event: BrowseEvent) {
             Column(Modifier.fillMaxSize().safeDrawingPadding()) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text("原作", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-                    PojianTextButton(onClick = { expanded = false }) { Text("关闭") }
+                    PojianIconButton(onClick = { expanded = false }) { Icon(Icons.Outlined.Close, contentDescription = "关闭") }
                 }
                 key(url) { OriginalPage(url, Modifier.fillMaxWidth().weight(1f)) }
             }

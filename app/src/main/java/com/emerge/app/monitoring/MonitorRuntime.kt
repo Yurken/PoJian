@@ -409,10 +409,10 @@ class MonitorRuntime(private val app: EmergeApplication) {
                     ?: error("观点归属标记无效")
                 fun anchors(name: String): List<String> {
                     if (!row.has(name)) return emptyList()
-                    val values = row.get(name) as? JSONArray ?: error("论据身份字段类型无效")
-                    require(values.length() <= 4) { "论据身份字段数量超限" }
+                    val values = row.get(name) as? JSONArray ?: error("依据身份字段类型无效")
+                    require(values.length() <= 4) { "依据身份字段数量超限" }
                     return (0 until values.length()).map { item -> values.get(item) as? String
-                        ?: error("论据身份字段类型无效") }
+                        ?: error("依据身份字段类型无效") }
                 }
                 ArgumentUnit(string("quote", true), string("topic"), string("subject"),
                     string("dimension"), string("stance"), string("evidence"),

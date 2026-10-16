@@ -16,10 +16,10 @@ import androidx.compose.ui.unit.dp
 /** Settings observes the same persisted sessions as the transcript detail, including failures. */
 @Composable
 internal fun AudioTranscriptSettings(sessions: List<AudioSessionUi>, onOpenRecords: () -> Unit,
-    onSession: (AudioSessionUi) -> Unit) {
-    WhiteCard(Modifier.testTag("settings-audio-transcripts")) {
+    onSession: (AudioSessionUi) -> Unit, embedded: Boolean = false) {
+    SettingsContentFrame(embedded, Modifier.testTag("settings-audio-transcripts")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("录音转文字", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            if (!embedded) Text("录音转文字", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             PojianTextButton(onClick = onOpenRecords, modifier = Modifier.testTag("settings-audio-records")) {
                 Text("全部记录")
             }

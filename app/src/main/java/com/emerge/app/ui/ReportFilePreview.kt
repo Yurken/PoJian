@@ -86,9 +86,9 @@ internal fun ReportFilePreview(source: ReportPreviewSource, onClose: () -> Unit)
                     PojianTextButton(onClick = onClose) { Text("关闭") }
                 }
                 if (source is ReportPreviewSource.Generated) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(selected = pdf, onClick = { pdf = true }, label = { Text("PDF") },
+                    PojianFilterChip(selected = pdf, onClick = { pdf = true }, label = { Text("PDF") },
                         modifier = Modifier.testTag("report-preview-format-pdf"))
-                    FilterChip(selected = !pdf, onClick = { pdf = false }, label = { Text("文本") },
+                    PojianFilterChip(selected = !pdf, onClick = { pdf = false }, label = { Text("文本") },
                         modifier = Modifier.testTag("report-preview-format-text"))
                 }
                 val loaded = document

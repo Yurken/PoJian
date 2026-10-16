@@ -6,13 +6,11 @@ import android.os.Looper
 import android.provider.Settings
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.withInfiniteAnimationFrameNanos
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -24,68 +22,33 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
 /** The ring represents the existing concentration share, not a new diversity score. */
 @Composable
+@Suppress("UNUSED_PARAMETER")
 internal fun CocoonVisual(density: Float?, dark: Boolean, playing: Boolean, modifier: Modifier = Modifier) {
+    val knownDensity = density?.takeIf { it.isFinite() }?.coerceIn(0f, 1f)
     val systemMotion = rememberSystemMotionEnabled()
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val moving = playing && density != null && systemMotion && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
-    val amount by animateFloatAsState(density?.coerceIn(0f, 1f) ?: 0f,
+    val moving = playing && knownDensity != null && systemMotion && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
+    val amount by animateFloatAsState(knownDensity ?: 0f,
         tween(if (moving) 600 else 0), label = "cocoon-density")
-    val phase = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(moving) {
-        if (moving) {
-            var previous = 0L
-            while (true) withInfiniteAnimationFrameNanos { now ->
-                if (previous != 0L) phase.floatValue += ((now - previous) / 1_000_000_000f).coerceAtMost(.05f)
-                previous = now
-            }
-        }
-    }
     Canvas(modifier.testTag("cocoon-visual").semantics {
-        contentDescription = density?.let { "观点集中度 ${String.format(java.util.Locale.CHINA, "%.1f", it * 100)}%" } ?: "观察不足"
+        contentDescription = knownDensity?.let { "观点集中度 ${String.format(java.util.Locale.CHINA, "%.1f", it * 100)}%" } ?: "观察不足"
     }) {
         val stroke = 8.dp.toPx()
         val diameter = (size.minDimension - stroke * 2).coerceAtLeast(0f)
         val origin = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
         val bounds = Size(diameter, diameter)
-        val accent = if (dark) Color(0xFF2DD4BF) else Color(0xFF0D9488)
-        // The open baseline keeps missing observations visible without inventing a measured value.
-        val openness = (1f - amount) * (1f - amount) * (1f - amount)
-        if (openness > .005f) {
-            val unit = size.minDimension
-            val gold = if (dark) Color(0xFFFBBF24) else Color(0xFFD97706)
-            val sky = if (dark) Color(0xFF7DD3FC) else Color(0xFF0284C7)
-            val halo = unit * .46f
-            drawCircle(Brush.radialGradient(
-                0f to gold.copy(alpha = openness * .18f),
-                .42f to accent.copy(alpha = openness * .24f),
-                1f to accent.copy(alpha = 0f), center = center, radius = halo), halo, center)
-            for (i in 0..2) {
-                val radius = unit * (.32f + i * .05f)
-                val color = when (i) { 0 -> accent; 1 -> sky; else -> gold }
-                val start = -145f + i * 115f + phase.floatValue * 3f
-                drawArc(color.copy(alpha = openness * .85f), start, 112f, false,
-                    center - Offset(radius, radius), Size(radius * 2, radius * 2),
-                    style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
-                val end = (start + 112f) * PI.toFloat() / 180f
-                drawCircle(color.copy(alpha = openness), unit * .014f,
-                    center + Offset(cos(end) * radius, sin(end) * radius))
-            }
-        }
-        if (density != null) {
-            drawArc((if (dark) Color.White else Color(0xFFE2E8F0))
-                .copy(alpha = (if (dark) .14f else 1f) * (1f - openness)),
-                0f, 360f, false, origin, bounds, style = Stroke(stroke, cap = StrokeCap.Round))
-            val glow = .08f + (sin(phase.floatValue * 1.5f) + 1f) * .035f
-            drawArc(accent.copy(alpha = glow), -90f, amount * 360f, false, origin, bounds,
-                style = Stroke(stroke * 1.8f, cap = StrokeCap.Round))
+        drawArc(DesignTokens.Border, 0f, 360f, false, origin, bounds,
+            style = Stroke(stroke, cap = StrokeCap.Round))
+        if (knownDensity != null) {
+            val accent = Color(computeCocoonTheme(amount * 100f).colorArgb)
             drawArc(accent, -90f, amount * 360f, false, origin, bounds,
                 style = Stroke(stroke, cap = StrokeCap.Round))
+            if (amount == 0f) {
+                drawCircle(accent, stroke / 2f, Offset(size.width / 2f, origin.y))
+            }
         }
     }
 }

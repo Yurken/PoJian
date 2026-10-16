@@ -1,7 +1,14 @@
 package com.emerge.app.ui
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,14 +36,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -45,13 +54,26 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 internal object DesignTokens {
-    val CardShape = RoundedCornerShape(20.dp)
-    val InnerShape = RoundedCornerShape(14.dp)
+    val Ink = Color(0xFF09090B)
+    val Background = Color(0xFFF8FAFC)
+    val Surface = Color.White
+    val Border = Color(0xFFE4E4E7)
+    val SecondaryText = Color(0xFF52525B)
+    val MutedText = Color(0xFFA1A1AA)
+    val Rose = Color(0xFFE11D48)
+    val Amber = Color(0xFFF59E0B)
+    val Blue = Color(0xFF2563EB)
+    val Emerald = Color(0xFF10B981)
+    val CardShape = RoundedCornerShape(16.dp)
+    val InnerShape = RoundedCornerShape(10.dp)
     val PillShape = RoundedCornerShape(999.dp)
-    val CocoonHeroBrush = Brush.linearGradient(listOf(Color(0xFF0F172A), Color(0xFF1E293B), Color(0xFF134E4A)))
-    val SupportAccent = Color(0xFF14B8A6)
-    val NeutralAccent = Color(0xFF6366F1)
-    val ChallengeAccent = Color(0xFFF59E0B)
+    val ControlShape = RoundedCornerShape(14.dp)
+    val SegmentShape = RoundedCornerShape(12.dp)
+    val ControlInk = Color(0xFF18181B)
+    val CocoonHeroBrush = Brush.linearGradient(listOf(Ink, Ink))
+    val SupportAccent = Blue
+    val NeutralAccent = Amber
+    val ChallengeAccent = Rose
 }
 
 val Accent: Color
@@ -72,28 +94,28 @@ internal val Blue: Color
 internal val Amber: Color
     @Composable get() = MaterialTheme.colorScheme.tertiary
 
-/** Charts keep the same category order in either theme; accompanying labels carry the values. */
+/** Fixed category colors accompany visible labels and values. */
 internal val ChartColors: List<Color>
-    @Composable get() {
-        val scheme = MaterialTheme.colorScheme
-        return if (scheme.background.luminance() < 0.5f) {
-            listOf(scheme.primary, scheme.secondary, scheme.tertiary,
-                Color(0xFF94A3B8), Color(0xFF5EEAD4), Color(0xFFC4B5FD))
-        } else {
-            listOf(scheme.primary, scheme.secondary, scheme.tertiary,
-                Color(0xFF64748B), Color(0xFF0F766E), Color(0xFF7C3AED))
-        }
-    }
+    @Composable get() = listOf(DesignTokens.Ink, DesignTokens.Blue, DesignTokens.Rose,
+        DesignTokens.Amber, DesignTokens.Emerald, DesignTokens.MutedText)
 
 @Composable
+@Suppress("UNUSED_PARAMETER")
 internal fun WhiteCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
-    elevation: Dp = 2.dp,
+    elevation: Dp = 0.dp,
+    content: @Composable ColumnScope.() -> Unit
+) = SwissCard(modifier = modifier, onClick = onClick, content = content)
+
+@Composable
+internal fun SwissCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val shape = DesignTokens.CardShape
-    val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+    val border = BorderStroke(1.dp, DesignTokens.Border)
     val cardContent: @Composable () -> Unit = {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -104,17 +126,35 @@ internal fun WhiteCard(
     if (onClick == null) {
         Surface(
             modifier = modifier.fillMaxWidth(), shape = shape,
-            color = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = border, shadowElevation = elevation, content = cardContent
+            color = DesignTokens.Surface,
+            contentColor = DesignTokens.Ink,
+            border = border, shadowElevation = 0.dp, tonalElevation = 0.dp, content = cardContent
         )
     } else {
+        val interactions = remember { MutableInteractionSource() }
+        val pressed by interactions.collectIsPressedAsState()
+        val motionEnabled = rememberSystemMotionEnabled()
+        val scale by animateFloatAsState(
+            targetValue = if (pressed && motionEnabled) .99f else 1f,
+            animationSpec = if (motionEnabled) spring(
+                dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium,
+                visibilityThreshold = .0001f
+            ) else snap(),
+            label = "swiss-card-press"
+        )
+        val view = LocalView.current
         Surface(
-            onClick = onClick,
-            modifier = modifier.fillMaxWidth(), shape = shape,
-            color = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = border, shadowElevation = elevation, content = cardContent
+            onClick = {
+                // The platform respects the user's haptic setting; no vibration permission is needed.
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                onClick()
+            },
+            interactionSource = interactions,
+            modifier = modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }, shape = shape,
+            color = DesignTokens.Surface,
+            contentColor = DesignTokens.Ink,
+            border = if (pressed) BorderStroke(1.dp, DesignTokens.Ink.copy(alpha = .24f)) else border,
+            shadowElevation = 0.dp, tonalElevation = 0.dp, content = cardContent
         )
     }
 }
@@ -145,7 +185,7 @@ internal fun PojianActionChip(text: String, onClick: () -> Unit, modifier: Modif
     PojianSecondaryButton(
         onClick = onClick,
         modifier = modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(10.dp),
+        shape = DesignTokens.ControlShape,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {

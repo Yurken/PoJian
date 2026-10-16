@@ -100,7 +100,7 @@ internal fun InformationSupplementPanel(request: SupplementRequest, config: Text
         Column(Modifier.fillMaxWidth().fillMaxHeight(.9f).testTag("information-supplement")) {
             Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically) {
-                Text("外部资料", style = MaterialTheme.typography.titleLarge,
+                Text("补充资料", style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.weight(1f).semantics { heading() })
                 PojianIconButton(onClick = { guard.cancel(); onDismiss() }) {
                     Icon(Icons.Outlined.Close, contentDescription = "关闭", modifier = Modifier.size(20.dp))
@@ -116,7 +116,7 @@ internal fun InformationSupplementPanel(request: SupplementRequest, config: Text
                     PojianTextButton(onClick = { attempt += 1 }) { Text("重试") }
                 } }
                 if (!state.loading && state.error == null && state.sources.isEmpty()) item {
-                    Text("暂无可引用资料", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("暂无补充资料", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 items(state.sources, key = { it.url }) { source -> SupplementSource(source) }
             }

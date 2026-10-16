@@ -164,7 +164,7 @@ class InformationSupplementTest {
             InformationSupplementClient.retrieve(request, config, false, { true }, openConnection = { http })
             fail("Oversized response should fail")
         } catch (error: Exception) {
-            assertEquals("补全响应超限", InformationSupplementClient.errorMessage(error))
+            assertEquals("补充资料超限", InformationSupplementClient.errorMessage(error))
         }
         assertTrue(http.disconnected)
     }

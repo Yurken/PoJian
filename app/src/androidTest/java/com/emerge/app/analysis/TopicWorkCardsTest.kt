@@ -39,7 +39,7 @@ class TopicWorkCardsTest {
         compose.onNodeWithText("2 分 0 秒").assertIsDisplayed()
         compose.onAllNodesWithText(raw).assertCountEquals(0)
         compose.onNodeWithTag("work-card-${item.workIdentity}")
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "影响提示高")).performClick()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "影响程度：高")).performClick()
         compose.onNodeWithTag("work-detail-content").performScrollToNode(hasText("大模型分析"))
         compose.onNodeWithText("大模型分析").assertIsDisplayed()
         compose.onNodeWithTag("work-detail-content").performScrollToNode(hasText(presentation.suggestions.single()))

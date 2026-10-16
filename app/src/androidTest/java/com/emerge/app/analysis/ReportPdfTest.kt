@@ -29,7 +29,7 @@ class ReportPdfTest {
         val report = CognitiveAnalyzer().analyze(records, StatisticsPeriod.WEEK, now,
             purpose = "合成测试：比较就业信息", semantics = listOf(model))
         assertEquals(1, report.structuredAnalyzedRecords)
-        assertTrue(ReportExporter.text(report).contains("判断维度：技能要求；立场：提高"))
+        assertTrue(ReportExporter.text(report).contains("角度：技能要求；立场：提高"))
         val output = File(context.cacheDir, "report-qa.pdf")
         output.outputStream().use { ReportExporter.writePdf(report, it) }
         assertTrue(output.length() > 500)

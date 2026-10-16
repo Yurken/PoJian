@@ -82,8 +82,6 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
     val allExpanded = visible.isNotEmpty() && visible.all(::expanded)
     val visibleGroups = visible.flatMap { it.groups }
     val source = visibleGroups.firstOrNull { it.key == sourceKey }
-    val green = distributionGreen()
-
     Column(Modifier.fillMaxWidth().testTag("daily-viewpoint-card"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("观点分布", style = MaterialTheme.typography.titleSmall, modifier = Modifier.semantics { heading() })
@@ -95,9 +93,9 @@ internal fun DailyViewpointDistribution(groups: List<ViewpointShare>, date: Stri
                 sourceKey = null
             }
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TopicChip("全部观点 ($total)", activeTopic == null, green, { topicKey = null }, "viewpoint-topic-all")
+                TopicChip("全部观点 ($total)", activeTopic == null, { topicKey = null }, "viewpoint-topic-all")
                 topics.forEach { topic ->
-                    TopicChip("${topic.title} (${topic.workCount})", activeTopic == topic.key, green,
+                    TopicChip("${topic.title} (${topic.workCount})", activeTopic == topic.key,
                         { topicKey = topic.key }, "viewpoint-filter-${topic.key}")
                 }
             }
@@ -237,12 +235,9 @@ private fun ViewpointPageControls(index: Int, count: Int, onChange: (Int) -> Uni
 }
 
 @Composable
-private fun TopicChip(text: String, selected: Boolean, accent: Color, onClick: () -> Unit, tag: String) {
-    FilterChip(selected = selected, onClick = onClick, modifier = Modifier.heightIn(min = 48.dp).testTag(tag),
-        label = { Text(text, style = MaterialTheme.typography.labelMedium) }, shape = RoundedCornerShape(12.dp),
-        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = accent.copy(alpha = .13f),
-            selectedLabelColor = accent), border = BorderStroke(1.dp,
-            if (selected) accent.copy(alpha = .4f) else MaterialTheme.colorScheme.outlineVariant))
+private fun TopicChip(text: String, selected: Boolean, onClick: () -> Unit, tag: String) {
+    PojianFilterChip(selected = selected, onClick = onClick, modifier = Modifier.testTag(tag),
+        label = { Text(text) })
 }
 
 @Composable
@@ -319,7 +314,7 @@ private fun StructuredViewpointCard(share: ViewpointShare, start: Long, end: Lon
                 Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                     color = scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    DistributionBadge("影响提示${level.label}", accent)
+                    DistributionBadge("影响程度：${level.label}", accent)
                     if (uncertain) DistributionBadge("待确认", scheme.tertiary)
                     Text("${share.items.size} 个 · ${percentage(share.percent)}%", Modifier.align(Alignment.CenterVertically),
                         style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)

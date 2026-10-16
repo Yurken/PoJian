@@ -212,7 +212,7 @@ internal fun AnalysisCards(
                     }
 
                     WhiteCard {
-                        CollapsibleReportSection("长期观察 · 近7天") {
+                        CollapsibleReportSection("近7天观察") {
                             report.findings.forEach { finding ->
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     MetadataText(finding.topic)
@@ -232,7 +232,7 @@ internal fun AnalysisCards(
 
                     if (report.contentSignals.isNotEmpty()) {
                         WhiteCard {
-                            CollapsibleReportSection("表达特征") {
+                            CollapsibleReportSection("措辞特征") {
                                 report.contentSignals.take(8).forEach { signal ->
                                     Text(signal.label, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                     QuoteBlock(signal.quote)
@@ -447,9 +447,9 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
         Text(item.increment.label, color = incrementColor(item.increment), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             MetadataText(if (item.analysisSource == "structured_model") "云端分析" else "本地识别")
-            Text("讨论对象：${item.subject.ifBlank { "未识别" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
+            Text("对象：${item.subject.ifBlank { "未识别" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
             if (item.analysisSource == "structured_model") {
-                Text("判断维度：${item.dimension.ifBlank { "待确认" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
+                Text("角度：${item.dimension.ifBlank { "待确认" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
                 Text("立场：${item.stance.ifBlank { "待确认" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
             }
             Text("适用条件：${item.conditions.ifBlank { "未识别" }}", color = Ink, fontSize = 13.sp, lineHeight = 22.sp)
@@ -458,19 +458,19 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
                 else "$durationLabel：${durationMillis?.let(::formatDuration) ?: "未统计"}")
         }
         if (item.evidenceDetails.isNotEmpty()) {
-            Text(if (fromAudio) "依据片段（来自音频转写）" else "依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (fromAudio) "依据（来自语音转写）" else "依据（同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             item.evidenceDetails.forEach { fragment ->
                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                     Text("${fragment.type.label}${if (fragment.isNew) " · 新增" else ""}",
                         color = if (fragment.isNew) Accent else Muted, fontSize = 12.sp)
                     QuoteBlock(fragment.text, fromAudio = fromAudio)
-                    if (fragment.identity.actors.isNotEmpty()) MetadataText("案例当事对象：${fragment.identity.actors.joinToString("、")}")
-                    if (fragment.identity.origins.isNotEmpty()) MetadataText("原材料线索：${fragment.identity.origins.joinToString("、")}")
+                    if (fragment.identity.actors.isNotEmpty()) MetadataText("涉及对象：${fragment.identity.actors.joinToString("、")}")
+                    if (fragment.identity.origins.isNotEmpty()) MetadataText("材料来源：${fragment.identity.origins.joinToString("、")}")
                     if (fragment.identityUnresolved) MetadataText("材料关系待确认")
                 }
             }
         } else if (item.evidence.isNotEmpty()) {
-            Text(if (fromAudio) "依据片段（来自音频转写）" else "依据片段（来自同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(if (fromAudio) "依据（来自语音转写）" else "依据（同一页面）", color = Ink, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
             item.evidence.forEach { QuoteBlock(it, fromAudio = fromAudio) }
         } else MetadataText("未识别到相关依据。")
         if (current != null) OriginalRecord(current, zone, appNames, "本条采集原文：")
@@ -480,7 +480,7 @@ private fun ClaimDetail(item: ClaimObservation, events: List<BrowseEvent>, zone:
         }
         item.previousEventId?.let { previous ->
             val previousEvent = events.firstOrNull { it.id == previous }
-            Text("用于对比的早期记录 #$previous", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text("较早的对比记录 #$previous", color = Ink, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             if (previousEvent != null) OriginalRecord(previousEvent, zone, appNames, "早期采集原文：")
             else MetadataText("记录已不在本机，无法查看原文。")
         }
@@ -497,7 +497,7 @@ private fun OriginalRecord(event: BrowseEvent, zone: String, appNames: Map<Strin
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(title, color = Ink, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
-            "事件 #${event.id} · ${reportTime(event.timestamp, zone)} · ${appNames[event.packageName] ?: event.packageName}",
+            "记录 #${event.id} · ${reportTime(event.timestamp, zone)} · ${appNames[event.packageName] ?: event.packageName}",
             appName = appNames[event.packageName] ?: event.packageName)
         event.visualSourceLabel?.let { MetadataText(it) }
         if (event.sourceType.startsWith("audio_")) MetadataText("音频转写 · 音频位置 ${audioTimestamp(event.mediaStartMillis)} — ${audioTimestamp(event.mediaEndMillis)}")

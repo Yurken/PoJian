@@ -1,8 +1,0 @@
-Use case: text-localization / precise-object-edit.
-Edit target: the attached existing 1024 × 1536 Chinese poster for 破茧 PoJian.
-Make exactly ONE copy correction: replace the first large headline line “察觉观点重复” with “察觉信息茧房”.
-The replacement must read exactly these six Simplified Chinese characters: 察 觉 信 息 茧 房. Render them together as “察觉信息茧房”, without spaces or quote marks.
-Keep the same typography, ink color, font size, weight, baseline, left alignment, and approximate width as the original six-character line.
-Preserve the second headline line “查证眼前信息” unchanged.
-Preserve EVERYTHING ELSE: 破茧 brand wordmark, PoJian, mint/gold opening cocoon artwork and individual strands, white background, all three feature headings and descriptions, footer “Android 10+ · 产品原型”, proportions, margins and 1024 × 1536 portrait framing. In particular keep the lower feature heading “观点重复监测” and its description unchanged.
-No additional text, no redesigned elements, no cropped edges. Opaque background.

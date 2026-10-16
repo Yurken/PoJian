@@ -5,6 +5,9 @@ import com.emerge.app.ui.PojianTextButton
 import com.emerge.app.ui.PojianSegmentedTabs
 import com.emerge.app.ui.SourceAppText
 import com.emerge.app.ui.AudioSourceContent
+import com.emerge.app.ui.DesignTokens
+import com.emerge.app.ui.Ink
+import com.emerge.app.ui.Muted
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -36,6 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -53,38 +57,121 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, modifier: Modifier = Modifier,
-    onRecords: () -> Unit, events: List<BrowseEvent> = emptyList(), semantics: List<EventSemantics> = emptyList()) {
+fun MonitorDiscoverScreen(
+    state: MonitorState,
+    appNames: Map<String, String>,
+    modifier: Modifier = Modifier,
+    onRecords: () -> Unit,
+    events: List<BrowseEvent> = emptyList(),
+    semantics: List<EventSemantics> = emptyList()
+) {
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableIntStateOf(0) }
     val repetitions = state.findings.filter { it.kind == "cocoon" }
     val facts = state.findings.filter { it.kind == "fact" }
     val emotions = state.findings.filter { it.kind == "emotion" }
-    val displayed = when (filter) { 0 -> repetitions; 1 -> facts; else -> emotions }
+    val displayed = when (filter) {
+        0 -> repetitions
+        1 -> facts
+        else -> emotions
+    }
     // Resolve by identity on every update: revised results and deleted entries never leave stale sheets.
     val selected = state.findings.firstOrNull { it.id == selectedId }
     LaunchedEffect(selected) { if (selected == null) selectedId = null }
     Column(modifier.fillMaxSize()) {
-        PojianSegmentedTabs(listOf("重复观点", "事实核查", "内容情绪"), filter, onSelect = { filter = it },
+        PojianSegmentedTabs(
+            labels = listOf("重复观点", "事实核查", "内容情绪"),
+            selectedIndex = filter,
+            onSelect = { filter = it },
             counts = listOf(repetitions.size, facts.size, emotions.size),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("monitor-discovery-list"),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp)
+        )
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .testTag("monitor-discovery-list"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (state.pending > 0) item { MetadataText("正在处理 ${state.pending} 项") }
-            if (displayed.isEmpty()) item {
-                Text(when (filter) { 0 -> "暂未发现重复观点"; 1 -> "暂无核查结果"; else -> "暂无情绪提醒" },
-                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 24.dp))
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (state.pending > 0) {
+                item("pending-status") {
+                    Surface(
+                        shape = DesignTokens.InnerShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            CircularProgressIndicator(Modifier.size(14.dp), strokeWidth = 2.dp, color = Ink)
+                            MetadataText("正在处理 ${state.pending} 项")
+                        }
+                    }
+                }
+            }
+            if (displayed.isEmpty()) {
+                item("empty-state") {
+                    Surface(
+                        shape = DesignTokens.CardShape,
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, DesignTokens.Border),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 28.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = when (filter) {
+                                    0 -> "暂未发现重复观点"
+                                    1 -> "暂无核查结果"
+                                    else -> "暂无情绪提醒"
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Ink
+                            )
+                        }
+                    }
+                }
             }
             items(displayed.sortedByDescending { it.capturedAt }, key = { it.id }) { finding ->
                 DiscoveryCard(finding, appNames) { selectedId = finding.id }
             }
-            item { PojianTextButton(onClick = onRecords) { Text("全部记录") } }
+            item("all-records-action") {
+                PojianSecondaryButton(
+                    onClick = onRecords,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 46.dp),
+                    border = BorderStroke(1.dp, DesignTokens.Border)
+                ) {
+                    Text("全部记录", modifier = Modifier.weight(1f))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Muted
+                    )
+                }
+            }
         }
     }
     selected?.let { finding ->
-        DiscoveryDetail(finding, events, appNames, semantics, onDismiss = { selectedId = null },
-            onRecords = { selectedId = null; onRecords() })
+        DiscoveryDetail(
+            finding = finding,
+            events = events,
+            appNames = appNames,
+            semantics = semantics,
+            onDismiss = { selectedId = null },
+            onRecords = { selectedId = null; onRecords() }
+        )
     }
 }
 
@@ -94,37 +181,49 @@ private fun VerdictBadge(verdict: String) {
     val dark = scheme.background.luminance() < 0.5f
     val (bgColor, textColor) = when (verdict) {
         "supported" -> if (dark) Color(0xFF143D2C) to Color(0xFF86EFAC)
-            else Color(0xFFDCFCE7) to Color(0xFF15803D)
+        else Color(0xFFDCFCE7) to Color(0xFF15803D)
         "contradicted" -> scheme.errorContainer to scheme.onErrorContainer
         "conflicting" -> scheme.tertiaryContainer to scheme.onTertiaryContainer
         "opinion" -> scheme.primaryContainer to scheme.onPrimaryContainer
         else -> scheme.surfaceVariant to scheme.onSurfaceVariant
     }
-    Surface(shape = RoundedCornerShape(8.dp), color = bgColor, contentColor = textColor) {
-        Row(Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    Surface(shape = RoundedCornerShape(6.dp), color = bgColor, contentColor = textColor) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(Modifier.size(6.dp).background(textColor, RoundedCornerShape(50)))
-            Text(discoveryVerdict(verdict), style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold)
+            Text(
+                text = discoveryVerdict(verdict),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
 
 @Composable
-private fun DiscoveryCard(finding: MonitorFinding, appNames: Map<String, String>, onOpen: () -> Unit) {
+private fun DiscoveryCard(
+    finding: MonitorFinding,
+    appNames: Map<String, String>,
+    onOpen: () -> Unit
+) {
     val scheme = MaterialTheme.colorScheme
     val repetition = finding.kind == "cocoon"
     Surface(
         onClick = onOpen,
         modifier = Modifier.fillMaxWidth().testTag("discovery-${finding.id}"),
-        shape = MaterialTheme.shapes.medium,
+        shape = DesignTokens.CardShape,
         color = scheme.surface,
         contentColor = scheme.onSurface,
-        border = BorderStroke(1.dp, scheme.outlineVariant.copy(alpha = 0.7f))
+        border = BorderStroke(1.dp, DesignTokens.Border)
     ) {
         Column {
-            Column(Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 DiscoveryCardMetadata(finding, appNames)
                 Text(
                     text = "“${finding.claim}”",
@@ -143,19 +242,36 @@ private fun DiscoveryCard(finding: MonitorFinding, appNames: Map<String, String>
                     )
                 }
             }
-            HorizontalDivider(Modifier.padding(horizontal = 16.dp),
-                color = scheme.outlineVariant.copy(alpha = 0.6f))
+            HorizontalDivider(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                color = DesignTokens.Border.copy(alpha = 0.75f),
+                thickness = 0.75.dp
+            )
             Row(
-                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 46.dp)
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(when (finding.kind) { "cocoon" -> "查看原文与对比"; "emotion" -> "查看原文"; else -> "查看核查依据" },
-                    modifier = Modifier.weight(1f), color = scheme.primary,
-                    style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = when (finding.kind) {
+                        "cocoon" -> "查看原文与对比"
+                        "emotion" -> "查看原文"
+                        else -> "查看核查依据"
+                    },
+                    modifier = Modifier.weight(1f),
+                    color = scheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
                 Spacer(Modifier.width(12.dp))
-                Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                    contentDescription = null, modifier = Modifier.size(20.dp), tint = scheme.primary)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = scheme.primary
+                )
             }
         }
     }
@@ -164,19 +280,37 @@ private fun DiscoveryCard(finding: MonitorFinding, appNames: Map<String, String>
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DiscoveryCardMetadata(finding: MonitorFinding, appNames: Map<String, String>) {
-    FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
-        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         if (finding.kind in setOf("cocoon", "emotion")) {
-            Text(finding.topic.ifBlank { if (finding.kind == "emotion") discoveryVerdict(finding.verdict) else "重复观点" },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.CenterVertically))
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.align(Alignment.CenterVertically)
+            ) {
+                Text(
+                    text = finding.topic.ifBlank {
+                        if (finding.kind == "emotion") discoveryVerdict(finding.verdict) else "重复观点"
+                    },
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         } else {
             VerdictBadge(finding.verdict)
         }
-        SourceAppText(finding.packageName,
-            "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}",
-            modifier = Modifier.align(Alignment.CenterVertically), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        SourceAppText(
+            packageName = finding.packageName,
+            text = "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}",
+            modifier = Modifier.align(Alignment.CenterVertically),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -193,8 +327,14 @@ private fun discoveryVerdict(verdict: String): String = when (verdict) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, appNames: Map<String, String>,
-    semantics: List<EventSemantics>, onDismiss: () -> Unit, onRecords: () -> Unit) {
+private fun DiscoveryDetail(
+    finding: MonitorFinding,
+    events: List<BrowseEvent>,
+    appNames: Map<String, String>,
+    semantics: List<EventSemantics>,
+    onDismiss: () -> Unit,
+    onRecords: () -> Unit
+) {
     val repetition = finding.kind == "cocoon"
     val originals = remember(finding, events) {
         events.filter { it.packageName == finding.packageName || repetition }.filter {
@@ -207,62 +347,101 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
         DiscoveryEmotionEvidence.resolve(finding, events, semantics)
     }
     var linkError by remember(finding.id) { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss,
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
         containerColor = if (repetition) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.background,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ) {
         if (finding.kind == "emotion") {
             EmotionDetailContent(finding, originals, emotionEvidence, appNames, onDismiss, onRecords)
             return@ModalBottomSheet
         }
         if (!repetition) {
-            FactCheckDetailContent(finding, originals, appNames, linkError,
-                onDismiss = onDismiss, onRecords = onRecords,
-                onOpenSource = { source -> linkError = runCatching { uri.openUri(source.url) }.isFailure })
+            FactCheckDetailContent(
+                finding = finding,
+                originals = originals,
+                appNames = appNames,
+                linkError = linkError,
+                onDismiss = onDismiss,
+                onRecords = onRecords,
+                onOpenSource = { source -> linkError = runCatching { uri.openUri(source.url) }.isFailure }
+            )
             return@ModalBottomSheet
         }
         Column(Modifier.fillMaxWidth().fillMaxHeight(.9f)) {
             DiscoverySheetHeader("观点对比", onDismiss)
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 item {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        MetadataText("反复出现的说法")
-                        SelectionContainer {
-                            Text(finding.claim, style = MaterialTheme.typography.titleMedium,
-                                fontSize = 17.sp, lineHeight = 26.sp)
+                    FactDetailCard {
+                        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            MetadataText("反复出现的说法")
+                            SelectionContainer {
+                                Text(
+                                    text = finding.claim,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontSize = 17.sp,
+                                    lineHeight = 26.sp
+                                )
+                            }
+                            SourceAppText(
+                                packageName = finding.packageName,
+                                text = "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}"
+                            )
                         }
-                        SourceAppText(finding.packageName,
-                            "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}")
                     }
                 }
                 item {
-                    Text(if (originals.isEmpty()) "对应原文暂不可用" else "包含这句话的记录 · ${originals.size} 条",
+                    Text(
+                        text = if (originals.isEmpty()) "对应原文暂不可用" else "包含这句话的记录 · ${originals.size} 条",
                         style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(top = 4.dp).semantics { heading() })
+                        modifier = Modifier.padding(top = 4.dp).semantics { heading() }
+                    )
                 }
                 itemsIndexed(originals, key = { _, event -> event.id }) { index, event ->
-                    DiscoveryOriginalRecord(finding, event, appNames, repetition = true,
-                        first = index == 0, last = index == originals.lastIndex)
+                    DiscoveryOriginalRecord(
+                        finding = finding,
+                        event = event,
+                        appNames = appNames,
+                        repetition = true,
+                        first = index == 0,
+                        last = index == originals.lastIndex
+                    )
                 }
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("为什么提醒你", style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(top = 4.dp).semantics { heading() })
-                        Text(finding.explanation, style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = "为什么提醒你",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(top = 4.dp).semantics { heading() }
+                        )
+                        Text(
+                            text = finding.explanation,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-                if (finding.sources.isNotEmpty()) item {
-                    Text("参考资料", style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.semantics { heading() })
+                if (finding.sources.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "参考资料",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.semantics { heading() }
+                        )
+                    }
                 }
                 items(finding.sources) { source ->
                     DiscoverySourceCard(source) {
                         linkError = runCatching { uri.openUri(source.url) }.isFailure
                     }
                 }
-                if (linkError) item { Text("无法打开链接，请稍后重试", color = MaterialTheme.colorScheme.error) }
+                if (linkError) {
+                    item { Text("无法打开链接，请稍后重试", color = MaterialTheme.colorScheme.error) }
+                }
                 item { PojianTextButton(onClick = onRecords) { Text("全部记录") } }
             }
         }
@@ -270,30 +449,51 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
 }
 
 @Composable
-private fun EmotionDetailContent(finding: MonitorFinding, originals: List<BrowseEvent>,
-    evidence: List<EmotionEvidence>, appNames: Map<String, String>, onDismiss: () -> Unit, onRecords: () -> Unit) {
+private fun EmotionDetailContent(
+    finding: MonitorFinding,
+    originals: List<BrowseEvent>,
+    evidence: List<EmotionEvidence>,
+    appNames: Map<String, String>,
+    onDismiss: () -> Unit,
+    onRecords: () -> Unit
+) {
     Column(Modifier.fillMaxWidth().fillMaxHeight(.9f)) {
         DiscoverySheetHeader(discoveryVerdict(finding.verdict), onDismiss)
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             item {
                 FactDetailCard {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (finding.topic.isNotBlank()) Text(finding.topic, style = MaterialTheme.typography.titleMedium)
                         SelectionContainer { Text(finding.claim, style = MaterialTheme.typography.bodyLarge) }
-                        if (finding.explanation.isNotBlank()) Text(finding.explanation,
-                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (finding.explanation.isNotBlank()) {
+                            Text(
+                                text = finding.explanation,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
             item {
-                Text(if (originals.isEmpty()) "对应原文暂不可用" else "包含这句话的记录 · ${originals.size} 条",
-                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+                Text(
+                    text = if (originals.isEmpty()) "对应原文暂不可用" else "包含这句话的记录 · ${originals.size} 条",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.semantics { heading() }
+                )
             }
             items(originals, key = { it.id }) { event ->
-                DiscoveryOriginalRecord(finding, event, appNames, repetition = false,
-                    emotions = evidence.filter { it.eventId == event.id })
+                DiscoveryOriginalRecord(
+                    finding = finding,
+                    event = event,
+                    appNames = appNames,
+                    repetition = false,
+                    emotions = evidence.filter { it.eventId == event.id }
+                )
             }
             item { PojianTextButton(onClick = onRecords) { Text("全部记录") } }
         }
@@ -301,62 +501,101 @@ private fun EmotionDetailContent(finding: MonitorFinding, originals: List<Browse
 }
 
 @Composable
-private fun FactCheckDetailContent(finding: MonitorFinding, originals: List<BrowseEvent>,
-    appNames: Map<String, String>, linkError: Boolean, onDismiss: () -> Unit,
-    onRecords: () -> Unit, onOpenSource: (WebEvidence) -> Unit) {
+private fun FactCheckDetailContent(
+    finding: MonitorFinding,
+    originals: List<BrowseEvent>,
+    appNames: Map<String, String>,
+    linkError: Boolean,
+    onDismiss: () -> Unit,
+    onRecords: () -> Unit,
+    onOpenSource: (WebEvidence) -> Unit
+) {
     val scheme = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth().fillMaxHeight(.9f)) {
         DiscoverySheetHeader("事实核查", onDismiss)
-        LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             item {
                 FactDetailCard {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         VerdictBadge(finding.verdict)
                         MetadataText("核查的说法")
                         SelectionContainer {
-                            Text(finding.claim, style = MaterialTheme.typography.titleMedium,
-                                fontSize = 17.sp, lineHeight = 26.sp)
+                            Text(
+                                text = finding.claim,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 17.sp,
+                                lineHeight = 26.sp
+                            )
                         }
-                        SourceAppText(finding.packageName,
-                            "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}")
+                        SourceAppText(
+                            packageName = finding.packageName,
+                            text = "${appNames[finding.packageName] ?: finding.packageName} · ${discoveryTime(finding.capturedAt)}"
+                        )
                         if (finding.explanation.isNotBlank()) {
-                            Text(finding.explanation, style = MaterialTheme.typography.bodyMedium,
-                                color = scheme.onSurfaceVariant)
+                            Text(
+                                text = finding.explanation,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = scheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
             }
-            if (finding.sources.isNotEmpty()) item {
-                Text("参考资料", style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 4.dp).semantics { heading() })
+            if (finding.sources.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "参考资料",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 4.dp).semantics { heading() }
+                    )
+                }
             }
             items(finding.sources) { source ->
                 DiscoverySourceCard(source) { onOpenSource(source) }
             }
-            if (linkError) item {
-                Surface(shape = RoundedCornerShape(12.dp), color = scheme.errorContainer,
-                    contentColor = scheme.onErrorContainer) {
-                    Text("无法打开链接，请稍后重试", modifier = Modifier.fillMaxWidth().padding(12.dp),
-                        style = MaterialTheme.typography.bodyMedium)
+            if (linkError) {
+                item {
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = scheme.errorContainer,
+                        contentColor = scheme.onErrorContainer
+                    ) {
+                        Text(
+                            text = "无法打开链接，请稍后重试",
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
                 }
             }
             item {
-                Text(if (originals.isEmpty()) "对应原文暂不可用" else "包含这句话的记录 · ${originals.size} 条",
+                Text(
+                    text = if (originals.isEmpty()) "对应原文暂不可用" else "包含这句话的记录 · ${originals.size} 条",
                     style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(top = 4.dp).semantics { heading() })
+                    modifier = Modifier.padding(top = 4.dp).semantics { heading() }
+                )
             }
             items(originals, key = { it.id }) { event ->
                 DiscoveryOriginalRecord(finding, event, appNames, repetition = false)
             }
             item {
-                PojianSecondaryButton(onClick = onRecords, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-                    shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, scheme.outlineVariant)) {
+                PojianSecondaryButton(
+                    onClick = onRecords,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, scheme.outlineVariant)
+                ) {
                     Text("全部记录", modifier = Modifier.weight(1f))
                     Spacer(Modifier.width(12.dp))
-                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null,
-                        modifier = Modifier.size(20.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
         }
@@ -365,24 +604,33 @@ private fun FactCheckDetailContent(finding: MonitorFinding, originals: List<Brow
 
 @Composable
 private fun FactDetailCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface, contentColor = MaterialTheme.colorScheme.onSurface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f))) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = DesignTokens.CardShape,
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(1.dp, DesignTokens.Border)
+    ) {
         Column(content = content)
     }
 }
 
 @Composable
 private fun DiscoverySheetHeader(title: String, onDismiss: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = MaterialTheme.typography.titleLarge,
-            modifier = Modifier.weight(1f).semantics { heading() })
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 12.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.weight(1f).semantics { heading() }
+        )
         IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Outlined.Close, contentDescription = "关闭", modifier = Modifier.size(20.dp))
         }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+    HorizontalDivider(color = DesignTokens.Border.copy(alpha = 0.75f))
 }
 
 @Composable
@@ -393,11 +641,16 @@ private fun DiscoverySourceCard(source: WebEvidence, onOpen: () -> Unit) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(source.title, style = MaterialTheme.typography.titleSmall)
-                    if (!host.isNullOrBlank()) MetadataText(host)
+                    if (!host.isNullOrBlank()) {
+                        Text(host, style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
+                    }
                 }
                 IconButton(onClick = onOpen, enabled = source.valid(), modifier = Modifier.size(48.dp)) {
-                    Icon(painterResource(R.drawable.ic_open_in_new), contentDescription = "打开来源",
-                        modifier = Modifier.size(20.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.ic_open_in_new),
+                        contentDescription = "打开来源",
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
             QuoteBlock(source.quote)
@@ -406,9 +659,15 @@ private fun DiscoverySourceCard(source: WebEvidence, onOpen: () -> Unit) {
 }
 
 @Composable
-private fun DiscoveryOriginalRecord(finding: MonitorFinding, event: BrowseEvent, appNames: Map<String, String>,
-    repetition: Boolean, first: Boolean = true, last: Boolean = true,
-    emotions: List<EmotionEvidence> = emptyList()) {
+private fun DiscoveryOriginalRecord(
+    finding: MonitorFinding,
+    event: BrowseEvent,
+    appNames: Map<String, String>,
+    repetition: Boolean,
+    first: Boolean = true,
+    last: Boolean = true,
+    emotions: List<EmotionEvidence> = emptyList()
+) {
     var expanded by rememberSaveable(finding.id, event.id) { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val lineColor = scheme.outlineVariant
@@ -428,11 +687,16 @@ private fun DiscoveryOriginalRecord(finding: MonitorFinding, event: BrowseEvent,
         }
     }
     val source: @Composable () -> Unit = {
-        SourceAppText(event.packageName.takeUnless { event.sourceType == "audio_import" },
-            "${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
+        SourceAppText(
+            packageName = event.packageName.takeUnless { event.sourceType == "audio_import" },
+            text = "${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}"
+        )
     }
     val original: @Composable () -> Unit = {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(if (emotions.isEmpty()) 0.dp else 8.dp)) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (emotions.isEmpty()) 0.dp else 8.dp)
+        ) {
             emotions.forEach { emotion ->
                 MetadataText("${emotion.category.label} · ${emotion.level.label}")
                 emotion.trigger?.let { trigger ->
@@ -442,31 +706,56 @@ private fun DiscoveryOriginalRecord(finding: MonitorFinding, event: BrowseEvent,
             }
             AudioSourceContent(event.sourceType.startsWith("audio_")) {
                 SelectionContainer {
-                    Text(highlighted, style = MaterialTheme.typography.bodyMedium,
-                        maxLines = if (expanded) Int.MAX_VALUE else 4, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        text = highlighted,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = if (expanded) Int.MAX_VALUE else 4,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
-            IconButton(onClick = { expanded = !expanded },
+            IconButton(
+                onClick = { expanded = !expanded },
                 modifier = Modifier.align(Alignment.End).size(48.dp).semantics {
                     stateDescription = if (expanded) "已展开" else "已收起"
-                }) {
-                Icon(if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                }
+            ) {
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
                     contentDescription = if (expanded) "收起原文" else "展开原文",
-                    tint = scheme.primary, modifier = Modifier.size(20.dp))
+                    tint = scheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     }
     val tag = Modifier.fillMaxWidth().testTag("discovery-original-${event.id}")
     if (repetition) {
-        Column(tag.drawBehind {
-            val x = if (layoutDirection == LayoutDirection.Rtl) size.width - 4.dp.toPx() else 4.dp.toPx()
-            val y = 9.dp.toPx()
-            if (!first || !last) drawLine(lineColor, Offset(x, if (first) y else 0f),
-                Offset(x, if (last) y else size.height + 16.dp.toPx()), strokeWidth = 1.dp.toPx())
-            drawCircle(dotColor, radius = 3.dp.toPx(), center = Offset(x, y))
-        }.padding(start = 20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = tag
+                .drawBehind {
+                    val x = if (layoutDirection == LayoutDirection.Rtl) size.width - 4.dp.toPx() else 4.dp.toPx()
+                    val y = 9.dp.toPx()
+                    if (!first || !last) {
+                        drawLine(
+                            color = lineColor,
+                            start = Offset(x, if (first) y else 0f),
+                            end = Offset(x, if (last) y else size.height + 16.dp.toPx()),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+                    drawCircle(dotColor, radius = 3.dp.toPx(), center = Offset(x, y))
+                }
+                .padding(start = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             source()
-            Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = scheme.surface) { original() }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                color = scheme.surface,
+                border = BorderStroke(1.dp, DesignTokens.Border)
+            ) { original() }
         }
     } else {
         FactDetailCard(tag) {

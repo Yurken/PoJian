@@ -54,20 +54,20 @@ class CocoonUiTest {
         }
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("cocoon-card"))
         compose.onNodeWithText("观点集中度 · 近7天").assertIsDisplayed()
-        compose.onNodeWithText("信息视野 · 今天").assertIsDisplayed()
-        compose.onNodeWithTag("cocoon-share").assertTextEquals("60.0%")
-        compose.onNodeWithText("30次接触 · 1天").assertIsDisplayed()
+        compose.onNodeWithText("信息视野").assertIsDisplayed()
+        compose.onNodeWithTag("cocoon-share").assertTextEquals("60%")
+        compose.onNodeWithText("3 / 5 条观点引用重复依据").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-density").assertDoesNotExist()
         compose.runOnIdle { analysis.value = analysis.value.copy(stale = true) }
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
         compose.onNodeWithText("待更新").assertIsDisplayed()
         compose.runOnIdle { analysis.value = state(3); period.value = StatisticsPeriod.WEEK }
-        compose.onNodeWithText("信息视野 · 最近 7 天").assertIsDisplayed()
+        compose.onNodeWithText("信息视野").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
         compose.onNodeWithText("暂无分析").assertIsDisplayed()
     }
 
-    @Test fun fourDirectionWeaveSupportsDarkLargeTextAndDataExtremes() {
+    @Test fun ringSupportsSystemDarkPreferenceLargeTextAndDataExtremes() {
         val analysis = mutableStateOf(state(0))
         for (dark in listOf(false, true)) {
             compose.runOnUiThread {
@@ -85,7 +85,7 @@ class CocoonUiTest {
             }
             for (repeated in listOf(0, 3, 5)) {
                 compose.runOnIdle { analysis.value = state(repeated) }
-                compose.onNodeWithTag("cocoon-share").performScrollTo().assertTextEquals("${repeated * 20}.0%")
+                compose.onNodeWithTag("cocoon-share").performScrollTo().assertTextEquals("${repeated * 20}%")
                 screenshot("cocoon-${if(dark) "dark-large" else "light"}-${repeated * 20}.png")
             }
             compose.runOnIdle { analysis.value = state(0, 0) }
@@ -100,27 +100,30 @@ class CocoonUiTest {
         }
     }
 
-    @Test fun motionAdvancesAndPauseStopsTheWeave() {
+    @Test fun measuredChangeUpdatesTheRingAndSettlesWithoutPerpetualMotion() {
+        val density = mutableStateOf(.2f)
         val moving = mutableStateOf(true)
         compose.mainClock.autoAdvance = false
         compose.runOnUiThread {
             compose.activity.setContent {
-                EmergeTheme { CocoonVisual(.6f, true, moving.value, Modifier.size(280.dp)) }
+                EmergeTheme { CocoonVisual(density.value, false, moving.value, Modifier.size(280.dp)) }
             }
         }
         compose.mainClock.advanceTimeBy(100)
         val first = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
-        compose.mainClock.advanceTimeBy(600)
+        compose.runOnUiThread { density.value = .8f }
+        compose.mainClock.advanceTimeBy(800)
         val next = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
-        assertFalse("Silk should move while playing", first.sameAs(next))
+        assertFalse("A changed measurement must update the ring", first.sameAs(next))
+        compose.onNodeWithContentDescription("观点集中度 80.0%").assertExists()
         compose.runOnUiThread { moving.value = false }
         compose.mainClock.advanceTimeBy(400)
         val paused = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
         compose.mainClock.advanceTimeBy(600)
-        assertTrue("Paused silk should stay still", paused.sameAs(compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()))
+        assertTrue("A settled ring stays still", paused.sameAs(compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()))
     }
 
-    @Test fun systemMotionSwitchImmediatelyStopsAnimationAndRemovesPlaybackControl() {
+    @Test fun disabledSystemMotionKeepsMeasurementsVisibleWithoutPlaybackControl() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val resolver = instrumentation.targetContext.contentResolver
         val key = android.provider.Settings.Global.ANIMATOR_DURATION_SCALE
@@ -130,15 +133,12 @@ class CocoonUiTest {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { it.readBytes() }
         }
         try {
-            setScale(1f)
+            setScale(0f)
             compose.runOnUiThread {
                 compose.activity.setContent { EmergeTheme { CocoonCard(state(3), StatisticsPeriod.DAY, true) } }
             }
-            compose.onNodeWithTag("cocoon-play").assertIsDisplayed().performClick()
-            compose.onNodeWithText("播放").assertIsDisplayed().performClick()
-            setScale(0f)
-            compose.waitUntil(5_000) { compose.onAllNodesWithTag("cocoon-play").fetchSemanticsNodes().isEmpty() }
-            compose.onNodeWithTag("cocoon-share").assertTextEquals("60.0%")
+            compose.onNodeWithTag("cocoon-play").assertDoesNotExist()
+            compose.onNodeWithTag("cocoon-share").assertTextEquals("60%")
             val still = compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()
             compose.mainClock.advanceTimeBy(600)
             assertTrue(still.sameAs(compose.onNodeWithTag("cocoon-visual").captureToImage().asAndroidBitmap()))

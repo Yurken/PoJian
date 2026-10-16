@@ -331,7 +331,7 @@ Room v2 JSON schema 与更名前完全一致，identity hash 保持 `777cfc8fd18
 
 ## Logo 接入验证（2026-10-08）
 
-将 `docs/brand/pojian-logo-v1.png` 接入启动图标，提供五种屏幕密度的透明前景、独立背景以及 Android 13 单色主题图标。旧启动别名继续继承应用图标。
+将 [Logo v1](docs/brand/pojian-logo-v1.md) 接入启动图标，提供五种屏幕密度的透明前景、独立背景以及 Android 13 单色主题图标。旧启动别名继续继承应用图标。
 
 - `assembleDebug`、`lintDebug` 成功；lint 为 0 errors、10 warnings，没有新增图标警告。
 - 已检查圆形、圆角方形、单色及 48px 本地预览，右上金色翼尖与茧形轮廓完整。

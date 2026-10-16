@@ -82,7 +82,7 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
                 border = BorderStroke(1.dp, accent.copy(alpha = .25f)),
                 modifier = Modifier.fillMaxWidth().testTag("work-card-${item.workIdentity}")
                     .clickable(role = Role.Button) { detail = item.workIdentity }
-                    .semantics { stateDescription = "影响提示${impact.label}" }) {
+                    .semantics { stateDescription = "影响程度：${impact.label}" }) {
             Row(Modifier.fillMaxWidth().padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (thumbnail != null) WorkImage(thumbnail, app, 48.dp)
@@ -107,7 +107,7 @@ internal fun BrowseWorkCards(items: List<ViewpointItem>, start: Long, end: Long,
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         MetadataText(duration?.let(::formatDuration) ?: "时长未统计")
-                        Text("影响提示${impact.label}", color = accent, style = MaterialTheme.typography.labelMedium)
+                        Text("影响程度：${impact.label}", color = accent, style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -188,7 +188,7 @@ internal fun WorkAnalysisContent(item: ViewpointItem, window: ObservationWindow)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SectionTitle("分析", help = "颜色按已保存的内容分析与本时段有效停留时长计算，不是心理诊断或风险概率。高信号累计停留至少 1 分钟、或中信号至少 3 分钟时为红色；其余已识别中高信号为黄色，完整低信号为绿色。缺少依据或时长为未评估。单条内容不能证明已经形成信息茧房。")
         val duration = item.durationMillis(window)
-        MetadataText("影响提示${WorkTopicPresentation.impact(item.claims, duration).label} · ${duration?.let(::formatDuration) ?: "时长未统计"}")
+        MetadataText("影响程度：${WorkTopicPresentation.impact(item.claims, duration).label} · ${duration?.let(::formatDuration) ?: "时长未统计"}")
         if (item.claims.isEmpty()) MetadataText("暂无大模型分析")
         item.claims.distinctBy { it.key }.forEach { claim ->
             Text(WorkTopicPresentation.phrase(claim), style = MaterialTheme.typography.titleSmall)
@@ -202,7 +202,7 @@ internal fun WorkAnalysisContent(item: ViewpointItem, window: ObservationWindow)
             if (presentation == null) {
                 if (claim.analysisSource == "structured_model") {
                     listOf(claim.stance, claim.conditions, claim.evidence).filter(String::isNotBlank).distinct().forEach { QuoteBlock(it) }
-                    MetadataText("影响分析未生成")
+                    MetadataText("暂无影响分析")
                 } else MetadataText("暂无大模型分析")
             } else PresentationAnalysis(presentation)
         }
@@ -224,18 +224,15 @@ internal fun PresentationAnalysis(presentation: ClaimPresentation) {
 }
 
 @Composable
-internal fun LocalThumbnailControl() {
+internal fun LocalThumbnailControl(embedded: Boolean = false) {
     val app = LocalContext.current.applicationContext as? EmergeApplication ?: return
     val enabled by app.captureSettings.localThumbnails.collectAsState()
     val status by app.workThumbnails.status.collectAsState()
     var confirm by rememberSaveable { mutableStateOf(false) }
-    WhiteCard {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("本地缩略图", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-            PojianSwitch(checked = enabled, enabled = Build.VERSION.SDK_INT >= 30,
-                onCheckedChange = { if (it) confirm = true else app.captureSettings.setLocalThumbnails(false) },
-                modifier = Modifier.testTag("local-thumbnail-toggle"))
-        }
+    SettingsContentFrame(embedded) {
+        SettingsSwitchRow("本地缩略图", enabled,
+            { if (it) confirm = true else app.captureSettings.setLocalThumbnails(false) },
+            Modifier.testTag("local-thumbnail-toggle"), enabled = Build.VERSION.SDK_INT >= 30)
         if (Build.VERSION.SDK_INT < 30) MetadataText("当前系统仅显示文字")
         if (enabled && status.isNotBlank()) Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     }
