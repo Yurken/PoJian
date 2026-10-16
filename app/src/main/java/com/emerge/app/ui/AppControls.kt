@@ -13,6 +13,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -47,10 +49,11 @@ import androidx.compose.ui.unit.dp
 /** App-wide controls retain Material input, focus and disabled behavior with shared visual roles. */
 @Composable
 internal fun PojianButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-    shape: Shape = RoundedCornerShape(12.dp), colors: ButtonColors = ButtonDefaults.buttonColors(),
-    contentPadding: PaddingValues = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+    shape: Shape = DesignTokens.ControlShape,
+    colors: ButtonColors = ButtonDefaults.buttonColors(containerColor = DesignTokens.ControlInk),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
     content: @Composable RowScope.() -> Unit) {
-    Button(onClick, modifier.heightIn(min = 48.dp), enabled = enabled, shape = shape,
+    Button(onClick, modifier.defaultMinSize(minWidth = 1.dp).heightIn(min = 40.dp), enabled = enabled, shape = shape,
         colors = colors, elevation = null, contentPadding = contentPadding) {
         ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) { content() }
     }
@@ -58,11 +61,11 @@ internal fun PojianButton(onClick: () -> Unit, modifier: Modifier = Modifier, en
 
 @Composable
 internal fun PojianSecondaryButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-    shape: Shape = RoundedCornerShape(12.dp), border: BorderStroke? = null,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+    shape: Shape = DesignTokens.ControlShape, border: BorderStroke? = null,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
     content: @Composable RowScope.() -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    Button(onClick, modifier.heightIn(min = 48.dp), enabled = enabled, shape = shape, border = border,
+    Button(onClick, modifier.defaultMinSize(minWidth = 1.dp).heightIn(min = 40.dp), enabled = enabled, shape = shape, border = border,
         colors = ButtonDefaults.buttonColors(containerColor = scheme.surfaceVariant,
             contentColor = scheme.onSurface, disabledContainerColor = scheme.surfaceVariant.copy(alpha = 0.5f),
             disabledContentColor = scheme.onSurface.copy(alpha = 0.38f)),
@@ -73,11 +76,14 @@ internal fun PojianSecondaryButton(onClick: () -> Unit, modifier: Modifier = Mod
 
 @Composable
 internal fun PojianTextButton(onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true,
-    shape: Shape = RoundedCornerShape(10.dp),
-    colors: ButtonColors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+    shape: Shape = DesignTokens.ControlShape,
+    colors: ButtonColors = ButtonDefaults.textButtonColors(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .7f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .35f)),
+    contentPadding: PaddingValues = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
     content: @Composable RowScope.() -> Unit) {
-    TextButton(onClick, modifier.heightIn(min = 48.dp), enabled = enabled, shape = shape,
+    TextButton(onClick, modifier.defaultMinSize(minWidth = 1.dp).heightIn(min = 36.dp), enabled = enabled, shape = shape,
         colors = colors, contentPadding = contentPadding) {
         ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) { content() }
     }
@@ -148,17 +154,26 @@ internal fun PojianRadioButton(selected: Boolean, onClick: (() -> Unit)?, modifi
 @Composable
 internal fun PojianFilterChip(selected: Boolean, onClick: () -> Unit, label: @Composable () -> Unit,
     modifier: Modifier = Modifier) {
-    FilterChip(selected, onClick, label, modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(10.dp),
-        border = null, colors = FilterChipDefaults.filterChipColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant,
-            labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer))
+    val scheme = MaterialTheme.colorScheme
+    FilterChip(selected, onClick, label = {
+        ProvideTextStyle(MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)) { label() }
+    }, modifier = modifier, shape = DesignTokens.ControlShape,
+        border = FilterChipDefaults.filterChipBorder(enabled = true, selected = selected,
+            borderColor = Color.Transparent, selectedBorderColor = scheme.outlineVariant,
+            selectedBorderWidth = 1.dp),
+        elevation = FilterChipDefaults.filterChipElevation(elevation = if (selected) 1.dp else 0.dp),
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = scheme.surfaceVariant,
+            labelColor = scheme.onSurfaceVariant,
+            selectedContainerColor = scheme.surface,
+            selectedLabelColor = scheme.onSurface))
 }
 
 @Composable
 internal fun PojianSuggestionChip(onClick: () -> Unit, label: @Composable () -> Unit, modifier: Modifier = Modifier) {
-    SuggestionChip(onClick, label, modifier.heightIn(min = 48.dp), shape = RoundedCornerShape(10.dp), border = null,
+    SuggestionChip(onClick, label = {
+        ProvideTextStyle(MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold)) { label() }
+    }, modifier = modifier, shape = DesignTokens.ControlShape, border = null,
         colors = SuggestionChipDefaults.suggestionChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant,
             labelColor = MaterialTheme.colorScheme.onSurface))
 }
@@ -204,30 +219,49 @@ internal fun PojianSlider(value: Float, onValueChange: (Float) -> Unit, valueRan
         })
 }
 
+/** The painted track is inset within the controls' taller touch area. */
+@Composable
+internal fun PojianSegmentedGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+    Box(modifier) {
+        Box(Modifier.matchParentSize().padding(vertical = 4.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, DesignTokens.ControlShape))
+        Row(Modifier.padding(horizontal = 4.dp).selectableGroup(),
+            verticalAlignment = Alignment.CenterVertically, content = content)
+    }
+}
+
+@Composable
+internal fun PojianSegmentOption(selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit) {
+    val scheme = MaterialTheme.colorScheme
+    // Labels determine width; the 48dp height retains a generous vertical touch target.
+    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 0.dp) {
+        Surface(selected = selected, onClick = onClick,
+            modifier = modifier.heightIn(min = 48.dp).semantics { role = Role.Tab },
+            shape = DesignTokens.SegmentShape, color = Color.Transparent,
+            contentColor = if (selected) scheme.onSurface else scheme.onSurfaceVariant) {
+            Box(Modifier.padding(vertical = 8.dp), contentAlignment = Alignment.Center) {
+                Row(Modifier.shadow(if (selected) 1.dp else 0.dp, DesignTokens.SegmentShape)
+                    .background(if (selected) scheme.surface else Color.Transparent, DesignTokens.SegmentShape)
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                    ProvideTextStyle(MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)) { content() }
+                }
+            }
+        }
+    }
+}
+
 @Composable
 internal fun PojianSegmentedTabs(labels: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier, counts: List<Int> = emptyList()) {
-    val scheme = MaterialTheme.colorScheme
-    Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(14.dp), color = scheme.surfaceVariant) {
-        Row(Modifier.padding(4.dp).selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            labels.forEachIndexed { index, label ->
-                val selected = index == selectedIndex
-                val color by animateColorAsState(if (selected) scheme.surface else Color.Transparent)
-                Surface(selected = selected, onClick = { onSelect(index) },
-                    modifier = Modifier.weight(1f).heightIn(min = 48.dp).semantics { role = Role.Tab },
-                    shape = RoundedCornerShape(10.dp), color = color,
-                    contentColor = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
-                    shadowElevation = if (selected) 1.dp else 0.dp) {
-                    Row(Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                        Text(label, style = MaterialTheme.typography.labelLarge,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.weight(1f, fill = false))
-                        counts.getOrNull(index)?.takeIf { it > 0 }?.let { count ->
-                            Text("$count", Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelSmall,
-                                color = scheme.onSurfaceVariant)
-                        }
-                    }
+    PojianSegmentedGroup(modifier.horizontalScroll(rememberScrollState())) {
+        labels.forEachIndexed { index, label ->
+            PojianSegmentOption(index == selectedIndex, { onSelect(index) }) {
+                Text(label, maxLines = 1)
+                counts.getOrNull(index)?.takeIf { it > 0 }?.let { count ->
+                    Text("$count", Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }

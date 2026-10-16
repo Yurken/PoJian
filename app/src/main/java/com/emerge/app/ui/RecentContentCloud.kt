@@ -91,10 +91,10 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PojianFilterChip(selected = current.category == null, onClick = { category = null },
-                    modifier = Modifier.heightIn(min = 48.dp).testTag("recent-content-category-all"), label = { Text("全部") })
+                    modifier = Modifier.testTag("recent-content-category-all"), label = { Text("全部") })
                 current.categories.forEach { title ->
                     PojianFilterChip(selected = current.category == title, onClick = { category = title },
-                        modifier = Modifier.heightIn(min = 48.dp).widthIn(max = 200.dp).testTag("recent-content-category-$title"),
+                        modifier = Modifier.widthIn(max = 200.dp).testTag("recent-content-category-$title"),
                         label = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) })
                 }
             }

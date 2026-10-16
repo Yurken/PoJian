@@ -67,6 +67,9 @@ internal object DesignTokens {
     val CardShape = RoundedCornerShape(16.dp)
     val InnerShape = RoundedCornerShape(10.dp)
     val PillShape = RoundedCornerShape(999.dp)
+    val ControlShape = RoundedCornerShape(14.dp)
+    val SegmentShape = RoundedCornerShape(12.dp)
+    val ControlInk = Color(0xFF18181B)
     val CocoonHeroBrush = Brush.linearGradient(listOf(Ink, Ink))
     val SupportAccent = Blue
     val NeutralAccent = Amber
@@ -182,7 +185,7 @@ internal fun PojianActionChip(text: String, onClick: () -> Unit, modifier: Modif
     PojianSecondaryButton(
         onClick = onClick,
         modifier = modifier.heightIn(min = 48.dp),
-        shape = RoundedCornerShape(10.dp),
+        shape = DesignTokens.ControlShape,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {

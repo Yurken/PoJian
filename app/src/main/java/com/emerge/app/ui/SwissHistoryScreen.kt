@@ -86,12 +86,8 @@ internal val swissKnownApps = linkedMapOf(
 
 @Composable
 internal fun SwissFilterChip(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    FilterChip(selected = selected, onClick = onClick, modifier = modifier.heightIn(min = 48.dp),
-        shape = DesignTokens.PillShape, label = { Text(label, style = MaterialTheme.typography.labelMedium) },
-        colors = FilterChipDefaults.filterChipColors(containerColor = Color.White, labelColor = DesignTokens.Ink,
-            selectedContainerColor = DesignTokens.Ink, selectedLabelColor = Color.White),
-        border = FilterChipDefaults.filterChipBorder(enabled = true, selected = selected,
-            borderColor = DesignTokens.Border, selectedBorderColor = DesignTokens.Ink))
+    PojianFilterChip(selected = selected, onClick = onClick, modifier = modifier,
+        label = { Text(label) })
 }
 
 @Composable
