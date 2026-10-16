@@ -3,6 +3,7 @@ package com.emerge.app.ui
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -47,7 +48,7 @@ private data class RecentCloudContent(val request: RecentCloudRequest, val categ
 
 @Composable
 internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
-    semantics: List<EventSemantics>, appNames: Map<String, String> = emptyMap()) {
+    semantics: List<EventSemantics>, appNames: Map<String, String> = emptyMap(), onWordSelected: ((String) -> Unit)? = null) {
     var category by rememberSaveable(period) { mutableStateOf<String?>(null) }
     var expanded by rememberSaveable(period, category) { mutableStateOf(false) }
     var selected by rememberSaveable(period, category) { mutableStateOf<String?>(null) }
@@ -76,7 +77,7 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
     }
     WhiteCard(Modifier.testTag("recent-content-card").animateContentSize(tween(220))) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("近期接触", color = Ink, style = MaterialTheme.typography.titleMedium,
+            Text("近期高频热词", color = Ink, style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.weight(1f).semantics { heading() })
             if (current != null && current.words.size > collapsedLines) {
                 PojianTextButton(onClick = { expanded = !expanded }, modifier = Modifier.testTag("recent-content-expand")) {
@@ -104,7 +105,9 @@ internal fun RecentContentCloud(events: List<BrowseEvent>, period: StatisticsPer
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("暂无关键词", style = MaterialTheme.typography.bodyMedium, color = Ink)
             }
-            else -> ContentWordCloud(current.words, expanded, enabled = isCurrent) { selected = it.text }
+            else -> ContentWordCloud(current.words, expanded, enabled = isCurrent) {
+                if (onWordSelected != null) onWordSelected(it.text) else selected = it.text
+            }
         }
     }
     selected?.let { word ->
@@ -136,11 +139,11 @@ private fun ContentWordCloud(words: List<ContentWord>, expanded: Boolean, enable
 private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val tier = when { ratio >= .75f -> 2; ratio >= .45f -> 1; else -> 0 }
-    val background = when (tier) { 2 -> scheme.tertiaryContainer; 1 -> scheme.primaryContainer; else -> scheme.surfaceContainerLow }
-    val foreground = when (tier) { 2 -> scheme.onTertiaryContainer; 1 -> scheme.onPrimaryContainer; else -> scheme.onSurfaceVariant }
-    Surface(color = background, shape = RoundedCornerShape(10.dp),
-        border = if (tier == 2) BorderStroke(1.dp, scheme.tertiary.copy(alpha = .35f)) else null,
-        modifier = modifier.clip(RoundedCornerShape(10.dp))
+    val background = scheme.surface
+    val foreground = scheme.onSurface
+    Surface(color = background, shape = DesignTokens.PillShape,
+        border = BorderStroke(1.dp, scheme.outlineVariant),
+        modifier = modifier.clip(DesignTokens.PillShape)
             .clickable(enabled = enabled, role = Role.Button, onClickLabel = "查看相关内容", onClick = onClick)
             .clearAndSetSemantics {
                 contentDescription = "${word.text}，${word.recordCount} 条记录"
@@ -149,9 +152,10 @@ private fun ContentWordChip(word: ContentWord, ratio: Float, modifier: Modifier,
             }) {
         Row(Modifier.heightIn(min = 48.dp).padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Box(Modifier.size(6.dp).clip(androidx.compose.foundation.shape.CircleShape).background(DesignTokens.MutedText))
             Text(word.text, Modifier.weight(1f, fill = false), color = foreground,
-                fontSize = when (tier) { 2 -> 14.sp; 1 -> 13.sp; else -> 12.sp },
-                fontWeight = if (tier == 2) FontWeight.SemiBold else FontWeight.Medium,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(word.recordCount.toString(), color = foreground, fontSize = 11.sp, maxLines = 1)
         }

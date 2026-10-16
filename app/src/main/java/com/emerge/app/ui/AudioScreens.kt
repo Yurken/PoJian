@@ -14,6 +14,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -211,7 +214,7 @@ private fun AudioStatusLabel(label: String) {
 }
 
 @Composable
-private fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, onCancel: () -> Unit,
+internal fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, onCancel: () -> Unit,
     compact: Boolean = false) {
     when (state.status) {
         AudioModelStatus.READY -> if (!compact) MetadataText("本地语音模型已就绪")
@@ -245,8 +248,8 @@ private fun ModelPreparation(state: AudioModelUiState, onDownload: () -> Unit, o
 }
 
 @Composable
-private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compact: Boolean,
-    onPauseResume: (() -> Unit)?, isPaused: Boolean) {
+internal fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compact: Boolean,
+    onPauseResume: (() -> Unit)?, isPaused: Boolean, showTranscript: Boolean = true) {
     Column(Modifier.fillMaxWidth().testTag("audio-task"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -292,7 +295,7 @@ private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compac
                 }
             }
         }
-        if (task.partialText.isNotBlank()) {
+        if (showTranscript && task.partialText.isNotBlank()) {
             if (compact) Surface(shape = RoundedCornerShape(12.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow) {
                 Text(task.partialText, color = Muted, style = MaterialTheme.typography.bodyMedium,
@@ -302,7 +305,7 @@ private fun AudioTaskProgress(task: AudioTaskUiState, onStop: () -> Unit, compac
                 MetadataText("实时转写")
                 QuoteBlock(task.partialText, Modifier.testTag("audio-live-transcript"), fromAudio = true)
             }
-        } else MetadataText(if (task.phase == AudioTaskPhase.CAPTURING)
+        } else if (showTranscript) MetadataText(if (task.phase == AudioTaskPhase.CAPTURING)
             "等待音频输入…" else "等待识别结果…")
     }
 }
@@ -516,7 +519,9 @@ fun AudioSessionDetailSheet(
                     }
                 }
             }
-            PojianTextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End).heightIn(min = 48.dp)) { Text("关闭") }
+            PojianIconButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
+                Icon(Icons.Outlined.Close, contentDescription = "关闭")
+            }
         }
     }
     if (confirmDelete) PojianDialog(onDismissRequest = { confirmDelete = false },

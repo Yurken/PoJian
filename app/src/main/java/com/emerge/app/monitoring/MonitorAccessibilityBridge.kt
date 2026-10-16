@@ -26,12 +26,22 @@ import android.widget.TextView
 import com.emerge.app.EmergeApplication
 import com.emerge.app.MainActivity
 import com.emerge.app.R
+import com.emerge.app.analysis.CognitiveAnalyzer
+import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.ui.StatisticsPeriod
+import com.emerge.app.ui.computeCocoonTheme
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.*
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private data class OverlayAnalysisInput(
+    val events: List<BrowseEvent>,
+    val semantics: List<EventSemantics>,
+    val generation: Long,
+    val minute: Long
+)
 
 /** Mounted only in an explicitly selected, unlocked foreground application. */
 class MonitorAccessibilityBridge(private val service: AccessibilityService, private val app: EmergeApplication) {
@@ -39,7 +49,13 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val manager = service.getSystemService(WindowManager::class.java)
     private var rootView: LinearLayout? = null
-    private var bubble: TextView? = null
+    private var bubble: LinearLayout? = null
+    private var bubbleValue: TextView? = null
+    private var bubbleDot: View? = null
+    private var overlayPresentation = MonitorOverlayPresentation()
+    private var panelFinding: MonitorFinding? = null
+    private var dragging = false
+    private val appLabels = mutableMapOf<String, String>()
     private var panel: ScrollView? = null
     private var panelAutomatic = false
     private var detail: TextView? = null
@@ -66,6 +82,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
 
     fun start() {
         monitor.bindManual { scope.launch { refresh(); if (monitor.config.value.visual) screenshot(true) else monitor.submitCurrentText() } }
+        observeOverlayPresentation()
         scope.launch {
             combine(monitor.state, monitor.config, app.captureSettings.enabled, app.captureSettings.allowedPackages) { state, config, enabled, packages ->
                 Triple(state, config, enabled && state.currentPackage in packages)
@@ -75,7 +92,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                     else {
                         show()
                         if (shotPending && Build.VERSION.SDK_INT < 34) rootView?.visibility = View.INVISIBLE
-                        bubble?.text = if (state.busy) "…" else ""
+                        renderOverlay()
                         val finding = state.findings.firstOrNull { it.contextToken == state.contextToken && state.contextToken.isNotBlank() }
                         if (finding != null && monitor.consumeAlert(finding)) expand(finding, automatic = true)
                     }
@@ -87,6 +104,54 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                 val config = monitor.config.value
                 if (config.visual && app.audioCoordinator.settings.config.value.enabled) screenshot(false)
                 delay(2000)
+            }
+        }
+    }
+
+    /** Read-only UI projection; sampling, saved records, and monitoring decisions are untouched. */
+    private fun observeOverlayPresentation() {
+        scope.launch {
+            val selectedApp = combine(monitor.state.map { it.currentPackage }.distinctUntilChanged(),
+                app.captureSettings.allowedPackages) { packageName, packages -> packageName.isNotBlank() && packageName in packages
+            }.distinctUntilChanged()
+            val active = combine(app.captureSettings.enabled, monitor.config.map { it.bubble }.distinctUntilChanged(), selectedApp) {
+                enabled, bubbleEnabled, selected -> enabled && bubbleEnabled && selected
+            }.distinctUntilChanged()
+            val minute = flow {
+                while (currentCoroutineContext().isActive) {
+                    emit(System.currentTimeMillis() / 60_000L)
+                    delay(60_000L - System.currentTimeMillis() % 60_000L)
+                }
+            }
+            combine(app.repository.allEvents, app.repository.semantics, active, minute) { events, semantics, enabled, at ->
+                if (enabled) OverlayAnalysisInput(events, semantics, app.repository.captureGeneration, at) else null
+            }.distinctUntilChanged { previous, current ->
+                when {
+                    previous === current -> true
+                    previous == null || current == null -> false
+                    else -> previous.minute == current.minute && previous.generation == current.generation &&
+                        previous.semantics == current.semantics && sameOverlayDisplayEvents(previous.events, current.events)
+                }
+            }.collectLatest { input ->
+                overlayPresentation = MonitorOverlayPresentation()
+                renderOverlay()
+                if (input == null || input.events.isEmpty()) return@collectLatest
+                delay(500)
+                try {
+                    val presentation = withContext(Dispatchers.Default) {
+                        val report = CognitiveAnalyzer().analyze(input.events, StatisticsPeriod.WEEK,
+                            System.currentTimeMillis(), checkCancellation = { coroutineContext.ensureActive() }, semantics = input.semantics)
+                        coroutineContext.ensureActive()
+                        monitorOverlayPresentation(report, input.events)
+                    }
+                    if (input.generation == app.repository.captureGeneration && app.captureSettings.enabled.value && monitor.config.value.bubble) {
+                        overlayPresentation = presentation
+                        renderOverlay()
+                    }
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+                    android.util.Log.w("EmergeOverlay", "Display analysis unavailable", error)
+                }
             }
         }
     }
@@ -277,6 +342,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         }
     }
     private fun dp(value: Int) = (value * service.resources.displayMetrics.density).roundToInt()
+    private fun bubbleWidth() = dp((96 * service.resources.configuration.fontScale.coerceIn(1f, 2f)).roundToInt())
 
     private fun overlaySize(): Pair<Int, Int> {
         if (Build.VERSION.SDK_INT >= 30) {
@@ -293,7 +359,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private fun layoutOverlay() {
         val view = rootView ?: return
         val (screenWidth, screenHeight) = overlaySize()
-        val width = (if (panel?.visibility == View.VISIBLE) dp(296) else dp(44))
+        val width = (if (panel?.visibility == View.VISIBLE) dp(296) else bubbleWidth())
             .coerceAtMost((screenWidth - dp(8)).coerceAtLeast(1))
         val height = (screenHeight - dp(16)).coerceAtLeast(1)
         // Measure the whole expanded window, including buttons; ScrollView receives the remaining height.
@@ -301,7 +367,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST))
         position.width = width
         position.height = view.measuredHeight.coerceAtMost(height)
-        position.x = position.x.coerceIn(0, (screenWidth - width).coerceAtLeast(0))
+        val right = (screenWidth - width).coerceAtLeast(0)
+        position.x = if (dragging) position.x.coerceIn(0, right) else right
         position.y = position.y.coerceIn(0, (screenHeight - position.height - dp(8)).coerceAtLeast(0))
         runCatching { manager.updateViewLayout(view, position) }
     }
@@ -314,43 +381,58 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
 
     private fun show() {
         if (rootView != null) { layoutOverlay(); return }
-        val dark = service.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
-            android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val panelColor = if (dark) Color.rgb(23, 34, 53) else Color.WHITE
-        val actionColor = if (dark) Color.rgb(147, 197, 253) else Color.rgb(37, 99, 235)
-        val secondaryColor = if (dark) Color.rgb(38, 52, 73) else Color.rgb(241, 245, 249)
-        val textColor = if (dark) Color.rgb(241, 245, 249) else Color.rgb(15, 23, 42)
+        val textColor = Color.rgb(9, 9, 11)
+        val borderColor = Color.rgb(228, 228, 231)
+        val secondaryColor = Color.rgb(244, 244, 245)
         val view = LinearLayout(service).apply { orientation = LinearLayout.VERTICAL }
-        val ball = TextView(service).apply {
-            textSize = 17f; gravity = Gravity.CENTER; setTextColor(Color.WHITE); alpha = 0.72f
-            contentDescription = "破茧监测悬浮球，点击核查或查看提醒，拖动调整位置"
-            setBackgroundResource(R.mipmap.ic_launcher)
+        val ball = LinearLayout(service).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            minimumHeight = dp(48)
+            setPadding(dp(12), 0, dp(12), 0)
+            setBackgroundResource(R.drawable.bg_monitor_bubble_v6)
+            isFocusable = true
         }
-        view.addView(ball, LinearLayout.LayoutParams(dp(44), dp(44)))
+        val dot = View(service)
+        ball.addView(dot, LinearLayout.LayoutParams(dp(7), dp(7)).apply { rightMargin = dp(8) })
+        val value = TextView(service).apply {
+            textSize = 15f; gravity = Gravity.CENTER
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            fontFeatureSettings = "tnum"
+            includeFontPadding = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }
+        ball.addView(value)
+        view.addView(ball, LinearLayout.LayoutParams(bubbleWidth(), dp(48)).apply { gravity = Gravity.RIGHT })
         val box = LinearLayout(service).apply {
             orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12))
-            background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(panelColor) }
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat(); setColor(Color.WHITE); setStroke(dp(1), borderColor)
+            }
         }
         val scroll = ScrollView(service).apply {
             visibility = View.GONE
             isFillViewport = false
             addView(box, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
-        val label = TextView(service).apply { textSize = 14f; setTextColor(textColor) }
+        val label = TextView(service).apply {
+            textSize = 14f; setTextColor(textColor); fontFeatureSettings = "tnum"
+            setLineSpacing(dp(5).toFloat(), 1f)
+        }
         box.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         fun button(title: String, primary: Boolean = false, action: () -> Unit) {
             val button = Button(service).apply {
                 text = title; textSize = 14f; minHeight = dp(48); isAllCaps = false
                 typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-                setTextColor(if (primary) { if (dark) Color.rgb(23, 37, 84) else Color.WHITE } else textColor)
+                setTextColor(if (primary) Color.WHITE else textColor)
                 setPadding(dp(16), dp(12), dp(16), dp(12))
                 backgroundTintList = null; stateListAnimator = null; elevation = 0f
                 val fill = GradientDrawable().apply {
-                    cornerRadius = dp(12).toFloat(); setColor(if (primary) actionColor else secondaryColor)
+                    cornerRadius = dp(10).toFloat(); setColor(if (primary) textColor else secondaryColor)
                 }
                 val mask = GradientDrawable().apply { cornerRadius = dp(12).toFloat(); setColor(Color.WHITE) }
                 background = android.graphics.drawable.RippleDrawable(
-                    android.content.res.ColorStateList.valueOf(if (dark) 0x22FFFFFF else 0x140F172A), fill, mask)
+                    android.content.res.ColorStateList.valueOf(if (primary) 0x22FFFFFF else 0x1409090B), fill, mask)
                 setOnClickListener { action() }
             }
             actions += button
@@ -358,14 +440,13 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
         button("核查当前内容", primary = true) {
-            monitor.checkCurrent(); label.text = "已请求核查当前内容，结果可能稍后出现在发现页。"
-            layoutOverlay()
+            monitor.checkCurrent()
         }
-        button("查看发现") {
+        button("查看信息盲区 →") {
             service.startActivity(Intent(service, MainActivity::class.java).putExtra("monitor_discover", true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)); collapsePanel()
         }
-        button("暂停全部监测") { app.captureSettings.setEnabled(false); app.audioCoordinator.stopAll(); hide() }
+        button("暂停记录") { app.captureSettings.setEnabled(false); app.audioCoordinator.stopAll(); hide() }
         view.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         var startX = 0; var startY = 0; var touchX = 0f; var touchY = 0f; var moved = false
         val slop = ViewConfiguration.get(service).scaledTouchSlop
@@ -382,32 +463,73 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                     val dx = event.rawX - touchX; val dy = event.rawY - touchY
                     moved = moved || abs(dx) > slop || abs(dy) > slop
                     if (moved) {
+                        dragging = true
                         closePanel?.cancel(); scroll.visibility = View.GONE
                         position.x = startX + dx.toInt()
                         position.y = startY + dy.toInt()
                         layoutOverlay()
                     }; true
                 }
-                MotionEvent.ACTION_UP -> { if (!moved) ball.performClick(); true }
-                MotionEvent.ACTION_CANCEL -> true
+                MotionEvent.ACTION_UP -> {
+                    dragging = false
+                    if (!moved) ball.performClick() else layoutOverlay()
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> { dragging = false; layoutOverlay(); true }
                 else -> false
             }
         }
         try {
-            manager.addView(view, position); rootView = view; bubble = ball; panel = scroll; detail = label
+            manager.addView(view, position); rootView = view; bubble = ball; bubbleValue = value; bubbleDot = dot; panel = scroll; detail = label
+            renderOverlay()
             layoutOverlay()
         }
         catch (_: Exception) { monitor.notice("悬浮球无法显示，请检查辅助功能服务状态") }
     }
+
+    @Suppress("DEPRECATION")
+    private fun appLabel(packageName: String): String = appLabels.getOrPut(packageName) {
+        runCatching { service.packageManager.getApplicationLabel(service.packageManager.getApplicationInfo(packageName, 0)).toString() }
+            .getOrDefault(packageName)
+    }
+
+    private fun renderOverlay() {
+        val share = overlayPresentation.concentration
+        val value = share?.let { String.format(java.util.Locale.CHINA, "%.0f%%", it * 100) } ?: "—"
+        val accent = share?.let { computeCocoonTheme(it * 100).colorArgb } ?: Color.rgb(161, 161, 170)
+        bubbleValue?.text = value
+        bubbleValue?.setTextColor(accent)
+        bubbleDot?.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(accent) }
+        bubble?.contentDescription = "观点集中度，近7天，$value"
+        val state = monitor.state.value
+        actions.firstOrNull()?.apply { isEnabled = !state.busy; text = if (state.busy) "核查中" else "核查当前内容" }
+        if (panel?.visibility != View.VISIBLE) return
+        val current = overlayPresentation.current(state.currentPackage, state.screenText)
+        val currentFindings = state.findings.filter { it.contextToken.isNotBlank() && it.contextToken == state.contextToken }
+        val finding = currentFindings.firstOrNull { it.id == panelFinding?.id } ?: currentFindings.firstOrNull()
+        val topic = current?.topic ?: finding?.topic?.takeIf { it.isNotBlank() } ?: "—"
+        detail?.text = buildString {
+            append("当前应用  ${appLabel(state.currentPackage)}")
+            append("\n观点集中度 · 近7天  $value")
+            append("\n当前话题  $topic")
+            append("\n重复材料  ${current?.repeatedMaterials?.let { "$it 条" } ?: "—"}")
+            append("\n情绪特征  ${current?.emotions?.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: "—"}")
+            finding?.let {
+                append("\n\n${it.label}\n${it.claim}")
+                if (!panelAutomatic) append("\n${it.explanation.take(500)}")
+            }
+        }
+        layoutOverlay()
+    }
+
     private fun expand(finding: MonitorFinding?, automatic: Boolean) {
-        val text = finding?.let { "${it.label}\n${it.claim}\n${if (automatic) it.explanation.take(160) else it.explanation}" }
-            ?: "当前内容暂无核查结果。可点击“核查当前内容”；没有提醒不表示内容真实。"
-        detail?.text = text; detail?.maxLines = if (automatic) 3 else Int.MAX_VALUE
+        panelFinding = finding
+        detail?.maxLines = if (automatic) 9 else Int.MAX_VALUE
         panelAutomatic = automatic
         actions.forEach { it.visibility = if (automatic) View.GONE else View.VISIBLE }
         panel?.visibility = View.VISIBLE
         panel?.scrollTo(0, 0)
-        layoutOverlay()
+        renderOverlay()
         closePanel?.cancel()
         if (automatic) closePanel = scope.launch {
             delay(monitor.config.value.displaySeconds * 1000L)
@@ -417,7 +539,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     }
     private fun hide() {
         closePanel?.cancel(); rootView?.let { runCatching { manager.removeView(it) } }
-        rootView = null; bubble = null; panel = null; detail = null; actions.clear()
+        rootView = null; bubble = null; bubbleValue = null; bubbleDot = null; panel = null; detail = null
+        panelFinding = null; dragging = false; actions.clear()
     }
     fun interrupt() { clearScreen(); hide() }
     fun stop() { monitor.bindManual(null); clearScreen(); scope.cancel(); screenTextRecognizer.close(); hide() }

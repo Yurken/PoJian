@@ -2,7 +2,9 @@ package com.emerge.app.analysis
 
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Scaffold
@@ -10,15 +12,18 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.emerge.app.MainActivity
+import com.emerge.app.capture.CaptureStatus
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.ui.*
 import com.emerge.app.ui.theme.EmergeTheme
@@ -35,28 +40,36 @@ import org.junit.runner.RunWith
 class FunctionalMinimalUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
-    @Test fun mainActivityPrioritizesOverviewDiscoverAndSettings() {
+    @Test fun mainActivityConnectsFiveTabsFactChecksAndRecordingSettings() {
         tab("概览").assertIsSelected()
         compose.onNodeWithTag("overview-list").assertIsDisplayed()
-        tab("录制").assertDoesNotExist()
+        listOf("概览", "观点", "记录", "历史", "设置").forEach { tab(it).assertExists() }
+        tab("发现").assertDoesNotExist()
         compose.onNodeWithTag("audio-entry").assertDoesNotExist()
         saveScreenshot("pojian-monitor-overview.png")
-        tab("发现").performClick().assertIsSelected()
+        tab("观点").performClick().assertIsSelected()
+        compose.onNodeWithTag("swiss-viewpoints-screen").assertIsDisplayed()
+        compose.onNodeWithText("事实核查").performClick()
         compose.onNodeWithTag("monitor-discovery-list").assertIsDisplayed()
         compose.onNodeWithText("重复观点").assertIsDisplayed()
-        compose.onNodeWithText("事实核查").assertIsDisplayed()
+        compose.onAllNodesWithText("事实核查").onLast().assertIsDisplayed()
         compose.onNodeWithTag("monitor-discovery-list").performScrollToNode(hasText("全部记录"))
         compose.onNodeWithText("全部记录").performClick()
-        compose.onNodeWithText("浏览记录").assertIsDisplayed()
+        tab("历史").assertIsSelected()
+        compose.onNodeWithTag("swiss-history-screen").assertIsDisplayed()
+        compose.onNodeWithTag("monitor-discovery-list").assertDoesNotExist()
         tab("设置").performClick().assertIsSelected()
-        compose.onNodeWithTag("capture-toggle").assertExists()
-        compose.onNodeWithText("监测与提醒").performScrollTo()
+        compose.onNodeWithTag("swiss-settings-screen").assertIsDisplayed()
+        compose.onNodeWithTag("capture-toggle").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-settings-screen").performScrollToNode(hasText("提醒频率与隐私安全"))
         saveScreenshot("pojian-monitor-settings-analysis.png")
         compose.onNodeWithText("专题研究模式").performScrollTo()
         saveScreenshot("pojian-monitor-settings-alerts.png")
-        compose.onNodeWithText("采集工具").performScrollTo().performClick()
-        compose.onNodeWithTag("recording-screen").assertIsDisplayed()
-        compose.onNodeWithText("返回设置").performClick()
+        compose.onNodeWithText("实时记录").performScrollTo().performClick()
+        tab("记录").assertIsSelected()
+        compose.onNodeWithTag("swiss-recording-screen").assertIsDisplayed()
+        compose.onNodeWithTag("capture-toggle").assertExists()
+        compose.onNodeWithTag("audio-record-toggle").assertExists()
         tab("概览").performClick().assertIsSelected()
         compose.onNodeWithTag("overview-list").assertIsDisplayed()
     }
@@ -73,9 +86,16 @@ class FunctionalMinimalUiTest {
             active = false, statusLabel = "已暂停", appNames = mapOf("com.example.reader" to "资料阅读器"),
             onRecords = {}, onSettings = {}, analysis = AnalysisState(), rawEvents = records,
             onAnalyze = { analysisCalls++ }, now = now) }
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-0"))
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasText("应用时长分布"))
+        compose.onNodeWithTag("overview-list").performScrollToNode(hasText("1 分 0 秒"))
+        compose.onNodeWithText("资料阅读器").assertIsDisplayed()
+        compose.onNodeWithText("1 分 0 秒").assertIsDisplayed()
+        compose.onNodeWithText("2 分 0 秒").assertDoesNotExist()
+        // The retained timeline still covers window-clipped source retrieval independently of overview layout.
+        render { TimelineHarness(records, StatisticsPeriod.DAY, now, mapOf("com.example.reader" to "资料阅读器")) }
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-bar-0"))
         compose.onNodeWithTag("viewpoint-bar-0").performClick()
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onAllNodesWithText(original).assertCountEquals(0)
         compose.onNode(hasText("1 分 0 秒") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
@@ -90,12 +110,13 @@ class FunctionalMinimalUiTest {
     @Test fun activeRecordingPausesResumesAndStopsThroughItsCallbacks() {
         val paused = mutableStateOf(false)
         var pauseCalls = 0; var stopCalls = 0; var startCalls = 0; var downloadCalls = 0
-        render { RecordingScreen(AudioUiState(modelState = AudioModelUiState(AudioModelStatus.READY),
+        render { RecordingHarness(AudioUiState(modelState = AudioModelUiState(AudioModelStatus.READY),
             task = AudioTaskUiState(AudioTaskPhase.CAPTURING, partialText = "实时识别到的原文", elapsedMillis = 24_000L)),
             onImport = { startCalls++ }, onCapture = { startCalls++ }, onDownloadModel = { downloadCalls++ },
             onCancelTask = { stopCalls++ }, onOpenRecords = {},
             onPauseResume = { pauseCalls++; paused.value = !paused.value }, isPaused = paused.value) }
-        compose.onNodeWithText("00:24").assertIsDisplayed()
+        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("audio-pause-resume"))
+        compose.onAllNodesWithText("00:24").onFirst().assertIsDisplayed()
         saveScreenshot("pojian-minimal-active-recording.png")
         compose.onNodeWithTag("audio-pause-resume").assertIsEnabled().performClick()
         compose.onNodeWithTag("audio-pause-resume").assertTextContains("继续录音")
@@ -103,8 +124,9 @@ class FunctionalMinimalUiTest {
         compose.onNodeWithTag("audio-pause-resume").performClick().assertTextContains("暂停录音")
         compose.onNodeWithTag("audio-stop-task").performClick()
         compose.runOnIdle { assertEquals(2, pauseCalls); assertEquals(false, paused.value); assertEquals(1, stopCalls) }
-        compose.onNodeWithTag("audio-import").assertDoesNotExist()
-        compose.onNodeWithTag("audio-capture").assertDoesNotExist()
+        compose.onNodeWithTag("audio-import").assertIsNotEnabled()
+        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("audio-record-toggle"))
+        compose.onNodeWithTag("audio-record-toggle").assertIsOn()
     }
 
     @Test fun weeklyViewpointBarsOpenSpecificViewpointQuotes() {
@@ -113,18 +135,16 @@ class FunctionalMinimalUiTest {
         val records = (1L..4L).map { id -> BrowseEvent(id, "reader", midnight + 3600000L, 32,
             when (id) { 3L -> "女性应该经济独立并自主生活"; 4L -> "菜单"; else -> "找工作很难，很多人因此感到焦虑" }, endTimestamp = midnight + 3660000L,
             durationMillis = 60000, sampleCount = 2, workKey = "work-$id") }
-        render { OverviewScreen(calculateStatistics(records, StatisticsPeriod.WEEK, now), StatisticsPeriod.WEEK, {},
-            active = false, statusLabel = "已暂停", appNames = mapOf("reader" to "测试阅读器"),
-            onRecords = {}, onSettings = {}, rawEvents = records, now = now) }
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
+        render { TimelineHarness(records, StatisticsPeriod.WEEK, now, mapOf("reader" to "测试阅读器")) }
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
         saveScreenshot("emerge-viewpoint-chart.png")
         compose.onNodeWithTag("viewpoint-bar-6").performClick()
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-details"))
         compose.onNodeWithTag("viewpoint-details").assertIsDisplayed()
         compose.onAllNodesWithText("就业焦虑").onFirst().assertIsDisplayed()
         compose.onNodeWithTag("daily-viewpoint-pie").assertDoesNotExist()
         compose.onNodeWithText("全部观点").performClick()
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
         compose.onNodeWithTag("daily-viewpoint-pie").assertContentDescriptionEquals("就业焦虑，2个作品，50.0%；女性独立，1个作品，25.0%；未识别，1个作品，25.0%")
         saveScreenshot("emerge-daily-viewpoint-pie.png")
         saveScreenshot("pojian-distribution-card.png", "daily-viewpoint-card")
@@ -139,11 +159,13 @@ class FunctionalMinimalUiTest {
 
     @Test fun recordingStartsRemainGatedUntilTheUserDownloadsAModel() {
         var downloadCalls = 0; var startCalls = 0; var pauseCalls = 0
-        render { RecordingScreen(AudioUiState(), onImport = { startCalls++ }, onCapture = { startCalls++ },
+        render { RecordingHarness(AudioUiState(), onImport = { startCalls++ }, onCapture = { startCalls++ },
             onDownloadModel = { downloadCalls++ }, onCancelTask = {}, onOpenRecords = {}, onPauseResume = { pauseCalls++ }) }
+        compose.onNodeWithTag("audio-record-toggle").assertIsNotEnabled()
+        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("audio-import"))
         compose.onNodeWithTag("audio-import").assertIsNotEnabled()
-        compose.onNodeWithTag("audio-capture").assertIsNotEnabled()
         compose.onNodeWithTag("audio-pause-resume").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-recording-screen").performScrollToNode(hasTestTag("audio-download-model"))
         compose.onNodeWithTag("audio-download-model").assertIsEnabled().performClick()
         compose.runOnIdle { assertEquals(1, downloadCalls); assertEquals(0, startCalls); assertEquals(0, pauseCalls) }
     }
@@ -172,10 +194,8 @@ class FunctionalMinimalUiTest {
         val semantics = listOf(EventSemantics(row.id, row.visibleText, now, listOf(
             ArgumentUnit("今年招聘岗位减少", "就业", "招聘岗位", "数量", "减少", conditions = "今年", uncertain = false),
             ArgumentUnit("未来岗位需求可能回升", "就业", "招聘岗位", "需求", "回升", conditions = "未来", uncertain = false))))
-        render { OverviewScreen(calculateStatistics(records, StatisticsPeriod.WEEK, now), StatisticsPeriod.WEEK, {},
-            active = false, statusLabel = "已暂停", appNames = mapOf("reader" to "测试阅读器"),
-            onRecords = {}, onSettings = {}, rawEvents = records, now = now, semantics = semantics) }
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
+        render { TimelineHarness(records, StatisticsPeriod.WEEK, now, mapOf("reader" to "测试阅读器"), semantics) }
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("daily-viewpoint-pie"))
         compose.onNodeWithTag("daily-viewpoint-pie").assert(SemanticsMatcher("multi-viewpoint work denominator") { node ->
             val description = node.config[SemanticsProperties.ContentDescription].joinToString()
             description.contains("今年 · 减少，1个作品，50.0%") &&
@@ -183,30 +203,32 @@ class FunctionalMinimalUiTest {
         })
         saveScreenshot("pojian-model-viewpoint-shares.png")
         saveScreenshot("pojian-overlapping-distribution-card.png", "daily-viewpoint-card")
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
         compose.onNodeWithTag("viewpoint-bar-6").performClick()
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("viewpoint-details"))
-        compose.onNodeWithTag("overview-list").performScrollToNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details")))
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-details"))
+        compose.onNodeWithTag("work-card-list").performScrollToNode(hasTestTag("work-card-${BrowseWorkKey.of(row)}"))
+        compose.onNode(hasText("今年招聘岗位减少") and hasAnyAncestor(hasTestTag("viewpoint-details"))).assertExists()
         compose.onAllNodes(hasTestTag("work-card-${BrowseWorkKey.of(row)}")).assertCountEquals(1)
     }
 
-    @Test fun chartStaysPinnedAndNavigationHidesDuringBothDirectionsOfWorkScrolling() {
+    @Test fun retainedTimelineStaysPinnedAndFiveTabNavigationRemainsVisibleWhileWorkListScrolls() {
         val midnight = LocalDate.of(2026, 10, 13).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
         val now = midnight + 12 * 3600000L
         val records = (1L..40).map { id -> BrowseEvent(id, "reader", midnight + 3600000L, 32,
             "职业能力需要持续提升，作品 $id 的项目经历", workKey = "scroll-work-$id", sampleCount = 1) }
-        val hidden = mutableStateOf(false)
+        val scrolling = mutableStateOf(false)
+        val scrollingChanges = mutableListOf<Boolean>()
         render {
             Scaffold(bottomBar = {
-                PojianNavigationBar(listOf("概览", "发现", "设置"), 0, {}, visible = !hidden.value) { Text("•") }
+                PojianNavigationBar(listOf("概览", "观点", "记录", "历史", "设置"), 1, {}) { Text("•") }
             }) { padding ->
-                OverviewScreen(calculateStatistics(records, StatisticsPeriod.WEEK, now), StatisticsPeriod.WEEK, {},
-                    false, "已暂停", mapOf("reader" to "测试阅读器"), {}, {}, Modifier.padding(padding),
-                    rawEvents = records, now = now, onViewpointScrolling = { hidden.value = it })
+                TimelineHarness(records, StatisticsPeriod.WEEK, now, mapOf("reader" to "测试阅读器"),
+                    modifier = Modifier.padding(padding), onWorkScrolling = { scrolling.value = it; scrollingChanges += it })
             }
         }
-        compose.onNodeWithTag("overview-list").performScrollToIndex(4)
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-bar-6"))
         compose.onNodeWithTag("viewpoint-bar-6").performClick()
+        compose.onNodeWithTag("timeline-test-list").performScrollToNode(hasTestTag("viewpoint-details"))
         val chartTop = compose.onNodeWithTag("viewpoint-chart-pinned").fetchSemanticsNode().boundsInRoot.top
         for (direction in listOf(-1f, 1f)) {
             compose.mainClock.autoAdvance = false
@@ -215,14 +237,16 @@ class FunctionalMinimalUiTest {
                 moveBy(Offset(0f, direction * 90f), delayMillis = 200)
             }
             compose.mainClock.advanceTimeBy(200)
-            compose.onNodeWithTag("main-navigation").assertDoesNotExist()
+            compose.onNodeWithTag("main-navigation").assertIsDisplayed()
+            assertTrue(scrolling.value)
             val movedTop = compose.onNodeWithTag("viewpoint-chart-pinned").fetchSemanticsNode().boundsInRoot.top
             assertTrue(kotlin.math.abs(chartTop - movedTop) < 8f)
             compose.onNodeWithTag("work-card-list").performTouchInput { advanceEventTime(400); up() }
             compose.mainClock.autoAdvance = true
-            compose.waitUntil(5000) { !hidden.value }
+            compose.waitUntil(5000) { !scrolling.value }
             compose.onNodeWithTag("main-navigation").assertIsDisplayed()
         }
+        compose.runOnIdle { assertTrue(scrollingChanges.contains(true)); assertEquals(false, scrollingChanges.last()) }
     }
 
     @Test fun cloudMasterSwitchHasAnIndependentCallback() {
@@ -234,6 +258,29 @@ class FunctionalMinimalUiTest {
             cloudEnabled = cloud.value, onCloudEnabledChange = { cloud.value = it; cloudCalls++ }) }
         compose.onNodeWithTag("monitor-switch-云端分析").assertIsOn().performClick().assertIsOff()
         compose.runOnIdle { assertEquals(1, cloudCalls); assertEquals(0, monitorCalls) }
+    }
+
+    @Composable
+    private fun TimelineHarness(records: List<BrowseEvent>, period: StatisticsPeriod, now: Long,
+        names: Map<String, String>, semantics: List<EventSemantics> = emptyList(),
+        modifier: Modifier = Modifier, onWorkScrolling: (Boolean) -> Unit = {}) {
+        val state = rememberViewpointTimelineState(records, period, now, report = null, semantics = semantics)
+        LazyColumn(modifier.fillMaxSize().testTag("timeline-test-list"), contentPadding = PaddingValues(16.dp)) {
+            viewpointTimeline(state, names, plotHeight = 120.dp, onWorkScrolling = onWorkScrolling)
+        }
+    }
+
+    @Composable
+    private fun RecordingHarness(state: AudioUiState, onImport: () -> Unit, onCapture: () -> Unit,
+        onDownloadModel: () -> Unit, onCancelTask: () -> Unit, onOpenRecords: () -> Unit,
+        onPauseResume: (() -> Unit)? = null, isPaused: Boolean = false) {
+        SwissRecordingScreen(permission = true, enabled = true, diagnostics = CaptureStatus(connected = true),
+            apps = listOf(CaptureApp("com.ss.android.ugc.aweme", "抖音")),
+            selectedPackages = setOf("com.ss.android.ugc.aweme"), events = emptyList(), report = null,
+            audioState = state, audioSessions = emptyList(), onCapture = {}, onOpenSettings = {},
+            onPackagesChange = {}, onChooseApps = {}, onImport = onImport, onAudioCapture = onCapture,
+            onDownloadModel = onDownloadModel, onCancelTask = onCancelTask, onOpenAudioRecords = onOpenRecords,
+            onPauseResume = onPauseResume, isAudioPaused = isPaused)
     }
 
     private fun saveScreenshot(name: String, tag: String? = null) {

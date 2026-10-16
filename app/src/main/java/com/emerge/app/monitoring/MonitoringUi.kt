@@ -37,7 +37,7 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
     cloudConfig: TextServiceConfig? = null) {
     var showMore by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionTitle("监测与提醒", help = "悬浮球：在所选应用内点击核查。\n观点重复观察：比较议题、观点与依据。\n实时事实核查：自动核查新增文字与口播。\n关键画面分析：采样当前画面，需 Android 11 及以上。\n专题研究模式：保留统计，暂缓重复提醒。\n夜间免打扰：${config.quietStart}:00—${config.quietEnd}:00 不主动提醒，提醒始终静音。")
+        SectionTitle("提醒频率与隐私安全")
         MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
         MonitorSwitch("实时事实核查", "", config.realtime) { onChange(config.copy(realtime = it)) }
         MonitorSwitch("关键画面分析", "", config.visual) { onChange(config.copy(visual = it)) }
@@ -46,6 +46,11 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         MonitorSwitch("悬浮球", "", config.bubble) { onChange(config.copy(bubble = it)) }
         MonitorSwitch("观点重复观察", "", config.cocoon) { onChange(config.copy(cocoon = it)) }
         MonitorSwitch("内容情绪提醒", "", config.emotion) { onChange(config.copy(emotion = it)) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("情绪提醒观察窗口", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+            Text("30 分钟 · 固定", style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         MonitorSwitch("专题研究模式", "", config.researchMode) { onChange(config.copy(researchMode = it)) }
         MonitorSwitch("夜间免打扰", "${config.quietStart}:00—${config.quietEnd}:00", config.quiet) { onChange(config.copy(quiet = it)) }
         PojianTextButton(onClick = { showMore = !showMore },
@@ -65,7 +70,7 @@ fun MonitorSettingsSection(config: MonitorConfig, onChange: (MonitorConfig) -> U
         HorizontalDivider(Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
         Text("今日云端请求 $requestCount 次（含画面 $frameCount 次）", style = MaterialTheme.typography.bodySmall)
         cloudConfig?.let { ServiceConnectionTest(it) }
-        PojianTextButton(onClick = onCaptureTools) { Text("采集工具") }
+        PojianTextButton(onClick = onCaptureTools) { Text("实时记录") }
     }
 }
 
@@ -106,16 +111,23 @@ fun MonitorGatewayDialog(config: TextServiceConfig, onDismiss: () -> Unit,
     var token by remember { mutableStateOf(config.token) }
     var error by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
-    PojianDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("分析与取证网关") },
+    PojianDialog(onDismissRequest = { if (!saving) onDismiss() }, title = { Text("云端分析接口") },
         text = { Column(Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("填写已部署服务的地址与访问令牌。")
             MonitorSwitch("允许云端分析", "决定自动发送范围；关闭后只保留本地观察", enabled) { enabled = it }
-            PojianTextField(endpoint, { endpoint = it }, label = { Text("HTTPS 网关地址（不含 /monitor）") }, singleLine = true)
+            PojianTextField(endpoint, {
+                if (it.trim().trimEnd('/') != endpoint.trim().trimEnd('/')) token = ""
+                endpoint = it
+            }, label = { Text("HTTPS 服务地址") }, singleLine = true)
             PojianTextField(token, { token = it }, label = { Text("访问令牌（非模型密钥）") },
                 visualTransformation = PasswordVisualTransformation(), singleLine = true)
             error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         } }, confirmButton = { PojianTextButton(enabled = !saving, onClick = {
-            saving = true; onSave(TextServiceConfig(enabled, endpoint, token), onDismiss) { error = it; saving = false }
+            val validation = com.emerge.app.ui.connectionTestEndpointError(endpoint)
+            if (validation != null) error = validation
+            else {
+                saving = true
+                onSave(TextServiceConfig(enabled, endpoint, token), onDismiss) { error = it; saving = false }
+            }
         }) { Text(if (saving) "保存中" else "保存") } },
         dismissButton = { PojianTextButton(enabled = !saving, onClick = onDismiss) { Text("取消") } })
 }

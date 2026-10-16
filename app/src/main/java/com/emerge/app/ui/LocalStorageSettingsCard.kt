@@ -23,15 +23,22 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun LocalStorageSettingsCard(usage: LocalStorageUsage, canClear: Boolean, onClear: () -> Unit,
-    onSaveLimit: suspend (Long) -> Unit) {
+    onSaveLimit: suspend (Long) -> Unit, onClearThumbnails: (suspend () -> Unit)? = null) {
     var editing by rememberSaveable { mutableStateOf(false) }
+    var clearingThumbnails by remember { mutableStateOf(false) }
+    var thumbnailResult by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     WhiteCard(Modifier.testTag("local-storage")) {
-        SectionTitle("本地存储", help = "按容量上限保留记录，超出后删除最早记录。删除后分析同步更新，导出文件需自行删除。\n\n浏览目的会保留；浏览回顾重启后需重新生成。音频回顾随转写保存，修订后需重新分析。")
+        SectionTitle("本地存储空间")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Text("已用空间", Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodyMedium)
             Text(if (usage.loading) "—" else formatStorageBytes(usage.usedBytes), color = Ink,
-                style = MaterialTheme.typography.bodyMedium)
+                style = MaterialTheme.typography.bodyMedium, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
         }
+        LinearProgressIndicator(progress = { if (usage.loading || usage.limitBytes <= 0) 0f
+            else (usage.usedBytes.toDouble() / usage.limitBytes).toFloat().coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth().height(6.dp).testTag("storage-usage-progress"),
+            color = Ink, trackColor = MaterialTheme.colorScheme.outlineVariant)
         Row(Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("storage-limit")
             .clickable(role = Role.Button) { editing = true }, verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -39,7 +46,26 @@ internal fun LocalStorageSettingsCard(usage: LocalStorageUsage, canClear: Boolea
             Text("${storageLimitGbText(usage.limitBytes)} GB", color = Ink, style = MaterialTheme.typography.bodyMedium)
             Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, Modifier.size(18.dp), tint = Muted)
         }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Text("保留周期", Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.bodyMedium)
+            Text("按容量保留", color = Ink, style = MaterialTheme.typography.bodyMedium)
+        }
         usage.status?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        onClearThumbnails?.let { clear ->
+            PojianSecondaryButton(onClick = {
+                clearingThumbnails = true
+                scope.launch {
+                    try { clear(); thumbnailResult = "已清理并关闭缩略图" }
+                    catch (error: Exception) {
+                        if (error is CancellationException) throw error
+                        thumbnailResult = "清理失败，请重试"
+                    } finally { clearingThumbnails = false }
+                }
+            }, enabled = !clearingThumbnails, modifier = Modifier.fillMaxWidth().testTag("clear-thumbnails")) {
+                Text(if (clearingThumbnails) "清理中…" else "清理并关闭缩略图")
+            }
+            thumbnailResult?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
+        }
         PojianTextButton(onClick = onClear, enabled = canClear,
             modifier = Modifier.heightIn(min = 48.dp).align(Alignment.Start)) {
             Text("清空全部记录", color = if (canClear) MaterialTheme.colorScheme.error else Muted)
