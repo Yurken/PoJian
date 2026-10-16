@@ -198,13 +198,9 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     semantics = semantics, onPreviewReport = model::previewReport, onSupplement = ::requestSupplement,
                     onKeyword = { keyword = it; tab = 3 }, onTopic = { selectedTopic = it; tab = 1 },
                     onReports = { showReports = true })
-                tab == 1 -> Column(contentModifier) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.End) {
-                        PojianTextButton(onClick = { showFindings = true }) { Text("事实核查") }
-                    }
-                    SwissViewpointsScreen(all, semantics, currentReport, period, now, appNames,
-                        selectedTopic, { selectedTopic = it }, ::requestSupplement, Modifier.weight(1f))
-                }
+                tab == 1 -> SwissViewpointsScreen(all, semantics, currentReport, period, now, appNames,
+                    selectedTopic, { selectedTopic = it }, ::requestSupplement, contentModifier,
+                    onFactCheck = { showFindings = true }, findingCount = monitor.findings.size)
                 tab == 2 -> SwissRecordingScreen(permission, enabled, diagnostics, availableApps, allowed, all,
                     currentReport, audioState, audioSessions, ::setRecording, onOpenSettings, model::setAllowedPackages,
                     { showApps = true }, audioActions.onImport, audioActions.onCapture, audioModel::downloadModel,
