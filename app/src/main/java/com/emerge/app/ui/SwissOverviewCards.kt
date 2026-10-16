@@ -328,27 +328,23 @@ internal fun platformName(packageName: String): String = when (packageName) {
 }
 
 @Composable
-internal fun SwissEmotionCard(report: CognitiveReport?) {
+internal fun SwissEmotionSummary(report: CognitiveReport?) {
     val emotion = report?.emotionExposure
-    WhiteCard {
-        SwissOverviewSectionHeader(
-            index = "04",
-            title = "内容情绪",
-            trailing = {
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant
-                ) {
-                    Text(
-                        text = "连续时长 —",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = Muted
-                    )
-                }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Surface(
+                shape = RoundedCornerShape(6.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                Text(
+                    text = "连续时长 —",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = Muted
+                )
             }
-        )
+        }
         Surface(
             shape = DesignTokens.InnerShape,
             color = MaterialTheme.colorScheme.background,
@@ -474,7 +470,7 @@ internal fun SwissTopicList(
     val distribution = prepared?.takeIf { it.first === inputKey }?.second
     WhiteCard {
         SwissOverviewSectionHeader(
-            index = "06",
+            index = "05",
             title = "关注话题",
             subtitle = "TOP TOPICS"
         )

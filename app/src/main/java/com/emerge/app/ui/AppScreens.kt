@@ -61,9 +61,11 @@ fun OverviewScreen(
             CocoonCard(analysis, period, visible = true)
         }
 
-        // 02 / 按实际浏览时长展示内容情绪，并展开时段内的主题与原句。
+        // 02 / 内容情绪时间线、时段详情与情绪统计。
         item(key = "emotion-timeline") {
-            SwissEmotionTimeline(rawEvents, semantics, now, appNames)
+            SwissEmotionTimeline(rawEvents, semantics, now, appNames) {
+                SwissEmotionSummary(report)
+            }
         }
 
         // 03 / 应用时长分布
@@ -71,12 +73,7 @@ fun OverviewScreen(
             SwissAppDuration(stats, appNames)
         }
 
-        // 04 / 内容情绪
-        item(key = "emotion") {
-            SwissEmotionCard(report)
-        }
-
-        // 05 / 近期热词
+        // 04 / 近期热词
         item(key = "recent-content") {
             RecentContentCloud(
                 events = rawEvents,
@@ -88,7 +85,7 @@ fun OverviewScreen(
             )
         }
 
-        // 06 / 关注话题
+        // 05 / 关注话题
         item(key = "topics") {
             SwissTopicList(report, rawEvents, semantics, period, now, onTopic)
         }

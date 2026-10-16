@@ -116,7 +116,7 @@ internal fun RecentContentCloud(
                     contentColor = Color.White
                 ) {
                     Text(
-                        text = "05",
+                        text = "04",
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,

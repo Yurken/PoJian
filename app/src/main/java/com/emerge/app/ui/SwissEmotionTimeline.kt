@@ -56,7 +56,7 @@ private fun toneColor(tone: EmotionTone): Color = when (tone) {
 
 @Composable
 internal fun SwissEmotionTimeline(events: List<BrowseEvent>, semantics: List<EventSemantics>, now: Long,
-    appNames: Map<String, String>) {
+    appNames: Map<String, String>, summaryContent: (@Composable () -> Unit)? = null) {
     var selectedTime by rememberSaveable { mutableStateOf<Long?>(null) }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     val request = remember(events, semantics, now) { Any() }
@@ -75,8 +75,12 @@ internal fun SwissEmotionTimeline(events: List<BrowseEvent>, semantics: List<Eve
         WhiteCard {
             SwissOverviewSectionHeader(index = "02", title = "内容情绪")
             Text(if (failed) "分析暂不可用" else "加载中", style = MaterialTheme.typography.bodySmall, color = Muted)
+            summaryContent?.let {
+                HorizontalDivider(color = DesignTokens.Border)
+                it()
+            }
         }
-    } else SwissEmotionTimelineContent(hours, selectedTime, { selectedTime = it }, appNames) { detailId = it.id }
+    } else SwissEmotionTimelineContent(hours, selectedTime, { selectedTime = it }, appNames, summaryContent) { detailId = it.id }
     detailId?.let { id -> events.firstOrNull { it.id == id }?.let { event ->
         SwissWorkDetailSheet(event, events, semantics, null, appNames,
             onDismiss = { detailId = null }, onRelated = { detailId = it.id })
@@ -86,6 +90,7 @@ internal fun SwissEmotionTimeline(events: List<BrowseEvent>, semantics: List<Eve
 @Composable
 internal fun SwissEmotionTimelineContent(hours: List<EmotionHour>, selectedTime: Long?,
     onSelectedTime: (Long) -> Unit, appNames: Map<String, String> = emptyMap(),
+    summaryContent: (@Composable () -> Unit)? = null,
     onPost: (BrowseEvent) -> Unit = {}) {
     if (hours.isEmpty()) return
     val selectedIndex = hours.indexOfFirst {
@@ -98,11 +103,9 @@ internal fun SwissEmotionTimelineContent(hours: List<EmotionHour>, selectedTime:
     val maximum = hours.maxOf { it.durationMillis }.coerceAtLeast(60_000L)
     val palette = EmotionTone.entries.associateWith(::toneColor)
     val border = DesignTokens.Border
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        WhiteCard(Modifier.testTag("swiss-emotion-timeline")) {
-            SwissOverviewSectionHeader(index = "02", title = "内容情绪", trailing = {
-                Text("近24小时", color = Muted, style = MaterialTheme.typography.labelSmall)
-            })
+    WhiteCard(Modifier.testTag("swiss-emotion-timeline")) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SwissOverviewSectionHeader(index = "02", title = "内容情绪")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 EmotionTone.entries.filter { it in listOf(EmotionTone.NEGATIVE, EmotionTone.OBJECTIVE, EmotionTone.NEUTRAL) ||
                     hours.any { hour -> hour.posts.any { post -> post.tone == it } } }.forEach { tone ->
@@ -115,8 +118,11 @@ internal fun SwissEmotionTimelineContent(hours: List<EmotionHour>, selectedTime:
                     }
                 }
             }
-            Text(emotionDuration(maximum), color = Muted, style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(emotionDuration(maximum), color = Muted, style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace)
+                Text("近24小时", color = Muted, style = MaterialTheme.typography.labelSmall)
+            }
             Canvas(Modifier.fillMaxWidth().height(132.dp).testTag("swiss-emotion-plot")
                 .pointerInput(hours) { detectTapGestures { point ->
                     swissChartSelection(point.x, size.width.toFloat(), hours.size)?.let(::select)
@@ -162,7 +168,9 @@ internal fun SwissEmotionTimelineContent(hours: List<EmotionHour>, selectedTime:
                 Instant.ofEpochMilli(hour.start).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm")) to null
             }, selectedIndex)
         }
-        if (selected != null) WhiteCard(Modifier.testTag("swiss-emotion-details")) {
+        if (selected != null) Column(Modifier.testTag("swiss-emotion-details"),
+            verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            HorizontalDivider(color = border)
             SwissChartSelectionHeader(emotionInterval(selected), "上一小时", "下一小时",
                 selectedIndex > 0, selectedIndex < hours.lastIndex, { select(selectedIndex - 1) },
                 { select(selectedIndex + 1) }, "swiss-emotion")
@@ -193,6 +201,10 @@ internal fun SwissEmotionTimelineContent(hours: List<EmotionHour>, selectedTime:
                     }
                 }
             }
+        }
+        summaryContent?.let {
+            HorizontalDivider(color = border)
+            it()
         }
     }
 }
