@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -23,6 +24,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.sin
 
 /** The ring represents the existing concentration share, not a new diversity score. */
@@ -51,9 +54,33 @@ internal fun CocoonVisual(density: Float?, dark: Boolean, playing: Boolean, modi
         val origin = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
         val bounds = Size(diameter, diameter)
         val accent = if (dark) Color(0xFF2DD4BF) else Color(0xFF0D9488)
-        drawArc(if (dark) Color.White.copy(alpha = .14f) else Color(0xFFE2E8F0),
-            0f, 360f, false, origin, bounds, style = Stroke(stroke, cap = StrokeCap.Round))
+        // The open baseline keeps missing observations visible without inventing a measured value.
+        val openness = (1f - amount) * (1f - amount) * (1f - amount)
+        if (openness > .005f) {
+            val unit = size.minDimension
+            val gold = if (dark) Color(0xFFFBBF24) else Color(0xFFD97706)
+            val sky = if (dark) Color(0xFF7DD3FC) else Color(0xFF0284C7)
+            val halo = unit * .46f
+            drawCircle(Brush.radialGradient(
+                0f to gold.copy(alpha = openness * .18f),
+                .42f to accent.copy(alpha = openness * .24f),
+                1f to accent.copy(alpha = 0f), center = center, radius = halo), halo, center)
+            for (i in 0..2) {
+                val radius = unit * (.32f + i * .05f)
+                val color = when (i) { 0 -> accent; 1 -> sky; else -> gold }
+                val start = -145f + i * 115f + phase.floatValue * 3f
+                drawArc(color.copy(alpha = openness * .85f), start, 112f, false,
+                    center - Offset(radius, radius), Size(radius * 2, radius * 2),
+                    style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
+                val end = (start + 112f) * PI.toFloat() / 180f
+                drawCircle(color.copy(alpha = openness), unit * .014f,
+                    center + Offset(cos(end) * radius, sin(end) * radius))
+            }
+        }
         if (density != null) {
+            drawArc((if (dark) Color.White else Color(0xFFE2E8F0))
+                .copy(alpha = (if (dark) .14f else 1f) * (1f - openness)),
+                0f, 360f, false, origin, bounds, style = Stroke(stroke, cap = StrokeCap.Round))
             val glow = .08f + (sin(phase.floatValue * 1.5f) + 1f) * .035f
             drawArc(accent.copy(alpha = glow), -90f, amount * 360f, false, origin, bounds,
                 style = Stroke(stroke * 1.8f, cap = StrokeCap.Round))

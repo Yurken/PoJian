@@ -54,6 +54,7 @@ class CocoonUiTest {
         }
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("cocoon-card"))
         compose.onNodeWithText("观点集中度").assertIsDisplayed()
+        compose.onNodeWithText("信息视野 · 今天").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("60.0%")
         compose.onNodeWithText("30次接触 · 1天").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-density").assertDoesNotExist()
@@ -61,6 +62,7 @@ class CocoonUiTest {
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
         compose.onNodeWithText("待更新").assertIsDisplayed()
         compose.runOnIdle { analysis.value = state(3); period.value = StatisticsPeriod.WEEK }
+        compose.onNodeWithText("信息视野 · 最近 7 天").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
         compose.onNodeWithText("暂无分析").assertIsDisplayed()
     }
@@ -89,6 +91,12 @@ class CocoonUiTest {
             compose.runOnIdle { analysis.value = state(0, 0) }
             compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
             compose.onNodeWithContentDescription("观察不足").assertExists()
+            screenshot("cocoon-${if(dark) "dark-large" else "light"}-insufficient.png")
+            compose.runOnIdle { analysis.value = AnalysisState() }
+            compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
+            compose.onNodeWithText("暂无分析").assertIsDisplayed()
+            compose.onNodeWithTag("cocoon-play").assertDoesNotExist()
+            screenshot("cocoon-${if(dark) "dark-large" else "light"}-initial.png")
         }
     }
 
