@@ -77,6 +77,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val count by model.count.collectAsStateWithLifecycle()
     val storageUsage by app.localStorage.usage.collectAsStateWithLifecycle()
     val storageLimit by app.localStorageSettings.limitBytes.collectAsStateWithLifecycle()
+    val storageRetention by app.localStorageSettings.retentionDays.collectAsStateWithLifecycle()
     val enabled by model.captureEnabled.collectAsStateWithLifecycle()
     val allowed by model.allowedPackages.collectAsStateWithLifecycle()
     val availableApps by model.availableApps.collectAsStateWithLifecycle()
@@ -209,7 +210,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     audioModel::stopTask, { showAudioRecords = true }, contentModifier,
                     onCancelDownload = audioModel.runtime::cancelDownload, onPauseResume = pauseAudio,
                     isAudioPaused = audioRuntime.isPaused, message = message, onSettings = { tab = 4 })
-                else -> SwissSettingsScreen(storageUsage.copy(limitBytes = storageLimit), count > 0,
+                else -> SwissSettingsScreen(storageUsage.copy(limitBytes = storageLimit, retentionDays = storageRetention), count > 0,
                     { confirmClear = true }, { bytes -> withContext(Dispatchers.IO) { app.localStorageSettings.setLimitBytes(bytes) } },
                     audioConfig, audioModel::saveConfig, monitorConfig, app.monitor::saveConfig,
                     app.audioCoordinator.settings.requestsToday(), app.monitor.frameCount(), { tab = 3 },
@@ -222,7 +223,9 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                         AudioTranscriptSettings(audioSessions, onOpenRecords = { showAudioRecords = true },
                             onSession = { audioDetailId = it.id }, embedded = true)
                     }, updateContent = { com.emerge.app.update.UpdateSettingsSection(embedded = true) },
-                    captureSettingsContent = {
+                    onSaveStorageRetention = { days ->
+                        withContext(Dispatchers.IO) { app.localStorageSettings.setRetentionDays(days) }
+                    }, captureSettingsContent = {
                         SwissCaptureSettings(permission, enabled, diagnostics, allowed.size, audioState, audioRuntime.isPaused,
                             monitorConfig.bubble, onOpenSettings, ::setRecording, { showApps = true },
                             { app.monitor.saveConfig(monitorConfig.copy(bubble = it)) }, audioActions.onCapture, audioModel::stopTask, message)

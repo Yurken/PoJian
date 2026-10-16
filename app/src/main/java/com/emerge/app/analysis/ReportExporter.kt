@@ -35,7 +35,7 @@ object ReportExporter {
         appendLine("有效记录共 ${report.coverageSessions} 条；范围内停留时长合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条时长未统计。时长为零表示尚未采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")
         appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒结束一段浏览。每条记录只计一次，按统计范围、日期和小时分摊。停留时长不能代表实际阅读、理解或观看时间；旧版本记录不补算时长，音频转写和媒体长度不计入观看时长。")
-        appendLine("数据来自本机按存储容量上限保留的记录，包括可见页面文字、已保存的音频转写及视觉提取文字，后者可能有误。未获取的页面文字、未转写的音频、完整视频画面和已删除历史均不在范围内。记录为零可能源于未采集、权限或页面限制。")
+        appendLine("数据来自本机按存储容量上限与保留周期保留的记录，包括可见页面文字、已保存的音频转写及视觉提取文字，后者可能有误。未获取的页面文字、未转写的音频、完整视频画面和已删除历史均不在范围内。记录为零可能源于未采集、权限或页面限制。")
         appendLine("范围之前还保留 ${report.comparisonRecords} 条历史记录${report.comparisonStart?.let { "，最早一条是 ${time(it)}" } ?: ""}；对比按浏览先后顺序，仅使用这些记录。“首次出现”表示未匹配到可比历史。")
         appendLine()
         appendLine("## 2. 内容分布与观点主题")

@@ -198,10 +198,10 @@ class BrowseRepository(private val database: BrowseDatabase) {
     }
 
     /** One complete, unprotected unit per transaction; selection cannot race an audio append. */
-    internal suspend fun evictOldestStorageUnit(): Boolean = captureMutex.withLock {
+    internal suspend fun evictOldestStorageUnit(beforeTimestamp: Long? = null): Boolean = captureMutex.withLock {
         database.withTransaction {
-            val visit = dao.oldestStorageVisit()
-            val session = audio.oldestStorageSession()
+            val visit = dao.oldestStorageVisit(beforeTimestamp)
+            val session = audio.oldestStorageSession(beforeTimestamp)
             if (visit == null && session == null) return@withTransaction false
             // Do not revoke a new visit sampled concurrently with unrelated retention cleanup.
             // Existing capture/semantic writes check the row/parent and never upsert a deleted visit.

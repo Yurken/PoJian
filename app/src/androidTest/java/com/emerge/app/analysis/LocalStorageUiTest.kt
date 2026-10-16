@@ -63,7 +63,7 @@ class LocalStorageUiTest {
         compose.onNodeWithText("5 GB").assertIsDisplayed()
     }
 
-    @Test fun embeddedPresetsRequireCleanupConfirmationAndCancelPreservesCurrentLimit() {
+    @Test fun embeddedCapacityEditRequiresCleanupConfirmationAndCancelPreservesCurrentLimit() {
         var usage by mutableStateOf(LocalStorageUsage(usedBytes = 600_000_000L, loading = false))
         var saves = 0
         compose.activityRule.scenario.onActivity { activity -> activity.setContent {
@@ -74,8 +74,9 @@ class LocalStorageUiTest {
         compose.onNodeWithText("本地存储空间").assertDoesNotExist()
         compose.onNodeWithTag("local-storage").assertIsDisplayed()
         compose.onNodeWithText("5 GB").assertIsDisplayed()
-        compose.onNodeWithText("256 MB").performClick()
-        compose.onNodeWithTag("storage-limit-input").assertTextContains("0.256")
+        listOf("256 MB", "512 MB", "1 GB", "2 GB").forEach { compose.onNodeWithText(it).assertDoesNotExist() }
+        compose.onNodeWithTag("storage-limit").performClick()
+        compose.onNodeWithTag("storage-limit-input").performTextReplacement("0.256")
         compose.onNodeWithText("超出上限的最早记录将被删除。").assertIsDisplayed()
         compose.onNodeWithText("保存并清理").assertIsEnabled()
         compose.runOnIdle { assertEquals(0, saves) }
@@ -86,15 +87,13 @@ class LocalStorageUiTest {
         }
         compose.onNodeWithTag("storage-limit").performClick()
         compose.onNodeWithTag("storage-limit-input").assertTextContains("5")
-        compose.onNodeWithText("取消").performClick()
-        compose.onNodeWithText("512 MB").performClick()
-        compose.onNodeWithTag("storage-limit-input").assertTextContains("0.512")
+        compose.onNodeWithTag("storage-limit-input").performTextReplacement("0.512")
         compose.onNodeWithText("保存并清理").performClick()
         compose.waitUntil { saves == 1 }
         compose.runOnIdle { assertEquals(512_000_000L, usage.limitBytes) }
     }
 
-    @Test fun presetsSaveDecimalByteLimitsOnlyAfterExplicitSave() {
+    @Test fun manualCapacityLimitsSaveDecimalBytesOnlyAfterExplicitSave() {
         var usage by mutableStateOf(LocalStorageUsage(usedBytes = 128_000_000L, loading = false))
         var saves = 0
         compose.activityRule.scenario.onActivity { activity -> activity.setContent {
@@ -103,18 +102,73 @@ class LocalStorageUiTest {
             }, embedded = true) }
         } }
         listOf(
-            Triple("256 MB", "0.256", 256_000_000L),
-            Triple("512 MB", "0.512", 512_000_000L),
-            Triple("1 GB", "1", 1_000_000_000L),
-            Triple("2 GB", "2", 2_000_000_000L)
-        ).forEachIndexed { index, (label, draft, bytes) ->
-            compose.onNodeWithText(label).performClick()
-            compose.onNodeWithTag("storage-limit-input").assertTextContains(draft)
+            "0.256" to 256_000_000L,
+            "0.512" to 512_000_000L,
+            "1" to 1_000_000_000L,
+            "2" to 2_000_000_000L
+        ).forEachIndexed { index, (draft, bytes) ->
+            compose.onNodeWithTag("storage-limit").performClick()
+            compose.onNodeWithTag("storage-limit-input").performTextReplacement(draft)
             compose.runOnIdle { assertEquals(index, saves) }
             compose.onNodeWithText("保存").performClick()
             compose.waitUntil { saves == index + 1 }
             compose.runOnIdle { assertEquals(bytes, usage.limitBytes) }
         }
+    }
+
+    @Test fun retentionDraftNeedsConfirmationAndCancelPreservesSavedPeriod() {
+        var usage by mutableStateOf(LocalStorageUsage(loading = false))
+        var saves = 0
+        compose.activityRule.scenario.onActivity { activity -> activity.setContent {
+            MaterialTheme { LocalStorageSettingsCard(usage, true, {}, {}, onSaveRetention = {
+                usage = usage.copy(retentionDays = it); saves++
+            }) }
+        } }
+        compose.onNodeWithTag("storage-retention").performClick()
+        compose.onNodeWithTag("storage-retention-option-0").assertIsSelected()
+        compose.onNodeWithText("保存").assertIsNotEnabled()
+        compose.onNodeWithTag("storage-retention-option-7").performClick().assertIsSelected()
+        compose.onNodeWithText("超出保留周期的记录将被删除。").assertIsDisplayed()
+        compose.runOnIdle { assertEquals(0, saves) }
+        compose.onNodeWithText("取消").performClick()
+        compose.runOnIdle { assertEquals(0, usage.retentionDays) }
+        compose.onNodeWithTag("storage-retention").performClick()
+        compose.onNodeWithTag("storage-retention-option-0").assertIsSelected()
+        compose.onNodeWithTag("storage-retention-option-30").performClick()
+        compose.onNodeWithText("保存并清理").performClick()
+        compose.waitUntil { saves == 1 }
+        compose.onNodeWithTag("storage-retention").assertTextContains("30天")
+        compose.onNodeWithTag("storage-retention").performClick()
+        compose.onNodeWithTag("storage-retention-option-30").assertIsSelected()
+        compose.onNodeWithTag("storage-retention-option-90").performClick()
+        compose.onNodeWithText("超出保留周期的记录将被删除。").assertDoesNotExist()
+        compose.onNodeWithText("保存").performClick()
+        compose.waitUntil { saves == 2 }
+        compose.onNodeWithTag("storage-retention").performClick()
+        compose.onNodeWithTag("storage-retention-option-0").performClick()
+        compose.onNodeWithText("保存").performClick()
+        compose.waitUntil { saves == 3 }
+        compose.runOnIdle { assertEquals(0, usage.retentionDays) }
+    }
+
+    @Test fun failedRetentionSaveKeepsSelectionAndCanBeRetried() {
+        var usage by mutableStateOf(LocalStorageUsage(loading = false))
+        var attempts = 0
+        compose.activityRule.scenario.onActivity { activity -> activity.setContent {
+            MaterialTheme { LocalStorageSettingsCard(usage, true, {}, {}, onSaveRetention = {
+                attempts++
+                if (attempts == 1) error("storage")
+                usage = usage.copy(retentionDays = it)
+            }) }
+        } }
+        compose.onNodeWithTag("storage-retention").performClick()
+        compose.onNodeWithTag("storage-retention-option-7").performClick()
+        compose.onNodeWithText("保存并清理").performClick()
+        compose.waitUntil { compose.onAllNodesWithText("保存失败，请重试").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("storage-retention-option-7").assertIsSelected()
+        compose.onNodeWithText("保存并清理").performClick()
+        compose.waitUntil { attempts == 2 && compose.onAllNodesWithTag("storage-retention-option-7").fetchSemanticsNodes().isEmpty() }
+        compose.runOnIdle { assertEquals(7, usage.retentionDays) }
     }
 
     @Test fun embeddedUpdateShowsInstalledVersionAndOnlyConfiguredCheckAction() {

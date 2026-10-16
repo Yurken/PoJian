@@ -15,6 +15,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -26,7 +27,8 @@ data class LocalStorageUsage(
     val usedBytes: Long = 0,
     val limitBytes: Long = DEFAULT_STORAGE_LIMIT_BYTES,
     val status: String? = null,
-    val loading: Boolean = true
+    val loading: Boolean = true,
+    val retentionDays: Int = 0
 )
 
 /** Application-scoped retention. SQLite free pages and WAL duplicates never trigger more deletion. */
@@ -40,7 +42,8 @@ class LocalStorageManager(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val requests = Channel<Unit>(Channel.CONFLATED)
     private val thumbnailDirectory = File(context.noBackupFilesDir, "work-thumbnails")
-    private val state = MutableStateFlow(LocalStorageUsage(limitBytes = settings.limitBytes.value))
+    private val state = MutableStateFlow(LocalStorageUsage(limitBytes = settings.limitBytes.value,
+        retentionDays = settings.retentionDays.value))
     val usage: StateFlow<LocalStorageUsage> = state.asStateFlow()
     private var lastCompactionAttempt = Long.MIN_VALUE
     private var compactionStatus: String? = null
@@ -63,7 +66,7 @@ class LocalStorageManager(
                         maintain()
                     } catch (error: Exception) {
                         if (error is CancellationException) throw error
-                        state.update { it.copy(limitBytes = settings.limitBytes.value,
+                        state.update { it.copy(limitBytes = settings.limitBytes.value, retentionDays = settings.retentionDays.value,
                             status = "存储检查失败，请重试", loading = false) }
                     }
                 }
@@ -77,6 +80,18 @@ class LocalStorageManager(
                 refresh()
             }
         }
+        scope.launch {
+            settings.retentionDays.collect { days ->
+                state.update { it.copy(retentionDays = days) }
+                refresh()
+            }
+        }
+        scope.launch {
+            while (isActive) {
+                delay(RETENTION_CHECK_MILLIS)
+                if (settings.retentionDays.value > 0) refresh()
+            }
+        }
     }
 
     fun refresh() { requests.trySend(Unit) }
@@ -84,8 +99,15 @@ class LocalStorageManager(
     private suspend fun maintain() {
         // Do not hold a database transaction while acquiring the thumbnail store's mutex.
         workThumbnails.maintain()
-        var snapshot = snapshot()
         var removed = 0
+        while (removed < MAX_UNITS_PER_PASS) {
+            currentCoroutineContext().ensureActive()
+            val cutoff = storageRetentionCutoff(settings.retentionDays.value, System.currentTimeMillis()) ?: break
+            if (!repository.evictOldestStorageUnit(beforeTimestamp = cutoff)) break
+            removed++
+        }
+        if (removed > 0) workThumbnails.maintain()
+        var snapshot = snapshot()
         var protectedOnly = false
         while (snapshot.usedBytes > settings.limitBytes.value && removed < MAX_UNITS_PER_PASS) {
             currentCoroutineContext().ensureActive()
@@ -106,9 +128,9 @@ class LocalStorageManager(
             overLimit && protectedOnly -> "已超出上限，使用中的记录暂无法清理"
             overLimit -> "正在清理最早记录"
             else -> compactionStatus
-        }, loading = false)
+        }, loading = false, retentionDays = settings.retentionDays.value)
         // Yield between bounded batches; an active session larger than the quota exits above.
-        if (overLimit && !protectedOnly && removed == MAX_UNITS_PER_PASS) refresh()
+        if (!protectedOnly && removed == MAX_UNITS_PER_PASS) refresh()
     }
 
     private data class Snapshot(val usedBytes: Long, val pageCount: Long, val freePages: Long, val pageSize: Long) {
@@ -183,5 +205,6 @@ class LocalStorageManager(
         const val MAX_UNITS_PER_PASS = 128
         const val COMPACTION_THRESHOLD_BYTES = 32L * 1024 * 1024
         const val COMPACTION_RETRY_MILLIS = 60_000L
+        const val RETENTION_CHECK_MILLIS = 60 * 60_000L
     }
 }

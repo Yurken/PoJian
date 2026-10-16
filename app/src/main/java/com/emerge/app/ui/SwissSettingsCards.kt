@@ -43,7 +43,8 @@ fun SwissSettingsScreen(
     audioSettingsContent: (@Composable () -> Unit)? = null,
     transcriptContent: (@Composable () -> Unit)? = null,
     updateContent: (@Composable () -> Unit)? = null,
-    captureSettingsContent: (@Composable () -> Unit)? = null
+    captureSettingsContent: (@Composable () -> Unit)? = null,
+    onSaveStorageRetention: (suspend (Int) -> Unit)? = null
 ) {
     var cloudToggleError by remember { mutableStateOf<String?>(null) }
     val activeMonitors = listOf(
@@ -137,7 +138,8 @@ fun SwissSettingsScreen(
                     onClear = onClear,
                     onSaveLimit = onSaveStorageLimit,
                     onClearThumbnails = onClearThumbnails,
-                    embedded = true
+                    embedded = true,
+                    onSaveRetention = onSaveStorageRetention
                 )
                 SettingsHairline()
                 LocalThumbnailControl(embedded = true)

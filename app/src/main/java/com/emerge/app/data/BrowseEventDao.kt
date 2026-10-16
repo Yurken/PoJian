@@ -57,8 +57,14 @@ interface BrowseEventDao {
         AND e.id != COALESCE((SELECT id FROM browse_events
             WHERE sourceType='accessibility' AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1), -1)
         AND NOT EXISTS (SELECT 1 FROM browse_events child WHERE child.parentEventId=e.id AND child.audioSessionId IS NOT NULL)
+        AND (:beforeTimestamp IS NULL OR (
+            MAX(e.timestamp,e.endTimestamp) < :beforeTimestamp
+            AND NOT EXISTS (SELECT 1 FROM browse_events child WHERE child.parentEventId=e.id
+                AND MAX(child.timestamp,child.endTimestamp) >= :beforeTimestamp)
+            AND NOT EXISTS (SELECT 1 FROM browse_samples sample WHERE sample.visitId=e.id
+                AND sample.capturedAt >= :beforeTimestamp)))
         ORDER BY e.timestamp,e.id LIMIT 1""")
-    suspend fun oldestStorageVisit(): StorageVisitCandidate?
+    suspend fun oldestStorageVisit(beforeTimestamp: Long? = null): StorageVisitCandidate?
 }
 
 data class StorageVisitCandidate(val id: Long, val timestamp: Long)

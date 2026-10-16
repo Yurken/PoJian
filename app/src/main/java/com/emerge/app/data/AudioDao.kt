@@ -51,8 +51,14 @@ interface AudioDao {
         AND NOT EXISTS (SELECT 1 FROM browse_events e WHERE e.audioSessionId=s.id
             AND e.parentEventId=(SELECT id FROM browse_events WHERE sourceType='accessibility'
                 AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1))
+        AND (:beforeTimestamp IS NULL OR (
+            s.startedAt < :beforeTimestamp
+            AND NOT EXISTS (SELECT 1 FROM browse_events e WHERE e.audioSessionId=s.id
+                AND MAX(e.timestamp,e.endTimestamp) >= :beforeTimestamp)
+            AND NOT EXISTS (SELECT 1 FROM audio_transcripts t WHERE t.sessionId=s.id
+                AND t.createdAt >= :beforeTimestamp)))
         ORDER BY s.startedAt,s.id LIMIT 1""")
-    suspend fun oldestStorageSession(): StorageAudioCandidate?
+    suspend fun oldestStorageSession(beforeTimestamp: Long? = null): StorageAudioCandidate?
 
     @Query("DELETE FROM audio_sessions WHERE id = :id") suspend fun deleteSession(id: String)
     @Query("DELETE FROM audio_sessions WHERE packageName = :packageName") suspend fun deletePackage(packageName: String)

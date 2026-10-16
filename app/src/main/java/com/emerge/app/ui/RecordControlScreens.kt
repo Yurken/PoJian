@@ -243,7 +243,8 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
     audioContent: (@Composable () -> Unit)? = null, updateContent: (@Composable () -> Unit)? = null,
     transcriptContent: (@Composable () -> Unit)? = null,
     storageUsage: com.emerge.app.data.LocalStorageUsage = com.emerge.app.data.LocalStorageUsage(),
-    onSaveStorageLimit: suspend (Long) -> Unit = {}) {
+    onSaveStorageLimit: suspend (Long) -> Unit = {},
+    onSaveStorageRetention: (suspend (Int) -> Unit)? = null) {
     val captureState = when {
         selectedApps.isEmpty() -> "尚未选择要记录的应用"
         !enabled -> "采集已暂停"
@@ -354,7 +355,8 @@ fun SettingsScreen(permission: Boolean, enabled: Boolean, count: Int, onCapture:
         item(key = "local-thumbnails") { LocalThumbnailControl() }
         audioContent?.let { content -> item(key = "audio-settings") { content() } }
         item(key = "local-storage") {
-            LocalStorageSettingsCard(storageUsage, canClear = count > 0, onClear, onSaveStorageLimit)
+            LocalStorageSettingsCard(storageUsage, canClear = count > 0, onClear, onSaveStorageLimit,
+                onSaveRetention = onSaveStorageRetention)
         }
         updateContent?.let { content -> item(key = "update-settings") { content() } }
         item {

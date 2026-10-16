@@ -40,6 +40,26 @@ class LocalStorageRetentionTest {
         assertEquals(5001, repository.count.first())
     }
 
+    @Test fun periodCleanupRemovesOnlyExpiredUnitsAndKeepsBoundaryVisitsAndRecentMaterial() = runBlocking {
+        val expired = visit(1000)
+        val boundary = visit(20_000)
+        val longVisit = visit(2000)
+        val recentMaterial = db.browseEventDao().insert(BrowseEvent(packageName = "reader", timestamp = 30_000,
+            eventType = 0, visibleText = "新图像文字", sourceType = "visual_model", parentEventId = longVisit))
+        val latest = visit(40_000)
+        val oldSnapshot = requireNotNull(repository.getEvent(expired))
+        val generation = repository.captureGeneration
+
+        assertTrue(repository.evictOldestStorageUnit(beforeTimestamp = 20_000))
+        assertNull(repository.getEvent(expired))
+        assertFalse(repository.evictOldestStorageUnit(beforeTimestamp = 20_000))
+        assertNotNull(repository.getEvent(boundary))
+        assertNotNull(repository.getEvent(longVisit))
+        assertNotNull(repository.getEvent(recentMaterial))
+        assertNotNull(repository.getEvent(latest))
+        assertNull(repository.saveCapture(oldSnapshot, true, generation) { true })
+    }
+
     @Test fun evictingOldVisitRemovesItsMaterialButProtectsNewestVisitAndStaleWrites() = runBlocking {
         val old = visit(1000)
         val latest = visit(2000)

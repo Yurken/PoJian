@@ -2,11 +2,14 @@ package com.emerge.app.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.*
@@ -19,16 +22,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.emerge.app.data.LocalStorageUsage
+import com.emerge.app.data.STORAGE_RETENTION_DAYS
 import com.emerge.app.data.formatStorageBytes
 import com.emerge.app.data.parseStorageLimitGb
+import com.emerge.app.data.shortensStorageRetention
 import com.emerge.app.data.storageLimitGbText
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -40,9 +43,11 @@ internal fun LocalStorageSettingsCard(
     onClear: () -> Unit,
     onSaveLimit: suspend (Long) -> Unit,
     onClearThumbnails: (suspend () -> Unit)? = null,
-    embedded: Boolean = false
+    embedded: Boolean = false,
+    onSaveRetention: (suspend (Int) -> Unit)? = null
 ) {
     var editingLimit by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingRetention by rememberSaveable { mutableStateOf(false) }
     var clearingThumbnails by remember { mutableStateOf(false) }
     var thumbnailResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -102,60 +107,19 @@ internal fun LocalStorageSettingsCard(
                     trackColor = DesignTokens.Border
                 )
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(enabled = onSaveRetention != null, role = Role.Button) { editingRetention = true }
+                        .heightIn(min = 48.dp)
+                        .testTag("storage-retention"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("保留周期", color = Muted, style = MaterialTheme.typography.labelMedium)
-                    Text("按容量保留", color = Ink, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
-                }
-            }
-        }
-
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val columns = if (maxWidth / LocalDensity.current.fontScale < 280.dp) 2 else 4
-            val presets = listOf(
-                "256 MB" to 256_000_000L,
-                "512 MB" to 512_000_000L,
-                "1 GB" to 1_000_000_000L,
-                "2 GB" to 2_000_000_000L
-            )
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(DesignTokens.InnerShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
-                    .border(1.dp, DesignTokens.Border, DesignTokens.InnerShape)
-                    .padding(3.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                presets.chunked(columns).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        row.forEach { (label, bytes) ->
-                            val isSelected = usage.limitBytes == bytes
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .heightIn(min = 40.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isSelected) DesignTokens.Ink else Color.Transparent)
-                                    .semantics { selected = isSelected }
-                                    .clickable(role = Role.Button) { editingLimit = storageLimitGbText(bytes) }
-                                    .padding(horizontal = 4.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = label,
-                                    color = if (isSelected) DesignTokens.Surface else DesignTokens.SecondaryText,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium
-                                )
-                            }
-                        }
+                    Text("保留周期", Modifier.weight(1f), color = Muted, style = MaterialTheme.typography.labelMedium)
+                    Text(storageRetentionLabel(usage.retentionDays), color = Ink,
+                        style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Medium)
+                    if (onSaveRetention != null) {
+                        Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, null, Modifier.size(18.dp), tint = Muted)
                     }
                 }
             }
@@ -236,6 +200,9 @@ internal fun LocalStorageSettingsCard(
     editingLimit?.let { draft ->
         StorageLimitDialog(usage, initialDraft = draft, onDismiss = { editingLimit = null }, onSave = onSaveLimit)
     }
+    if (editingRetention && onSaveRetention != null) {
+        StorageRetentionDialog(usage, onDismiss = { editingRetention = false }, onSave = onSaveRetention)
+    }
 }
 
 @Composable
@@ -278,10 +245,10 @@ private fun StorageLimitDialog(
     val scope = rememberCoroutineScope()
     PojianDialog(
         onDismissRequest = { if (!saving) onDismiss() },
-        title = { Text("容量上限") },
+        title = { Text("容量上限", fontWeight = FontWeight.SemiBold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                PojianTextField(
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it; saveError = null },
                     modifier = Modifier.fillMaxWidth().testTag("storage-limit-input"),
@@ -290,17 +257,27 @@ private fun StorageLimitDialog(
                     enabled = !saving,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     isError = bytes == null,
+                    textStyle = MaterialTheme.typography.headlineMedium.copy(fontFamily = FontFamily.Monospace),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant),
                     supportingText = if (bytes == null) ({ Text("请输入不小于 0.1 的 GB 数值") }) else null
                 )
-                if (needsCleanup) Text("超出上限的最早记录将被删除。", style = MaterialTheme.typography.bodyMedium)
+                if (needsCleanup) StorageCleanupWarning("超出上限的最早记录将被删除。")
                 saveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
-            PojianButton(
+            StorageDialogActions(
                 enabled = bytes != null && !saving && !usage.loading,
-                onClick = {
-                    val limit = bytes ?: return@PojianButton
+                saving = saving,
+                needsCleanup = needsCleanup,
+                onDismiss = onDismiss,
+                onSave = save@{
+                    val limit = bytes ?: return@save
                     saving = true
                     scope.launch {
                         try {
@@ -314,12 +291,86 @@ private fun StorageLimitDialog(
                         }
                     }
                 }
-            ) {
-                Text(if (saving) "保存中…" else if (needsCleanup) "保存并清理" else "保存")
-            }
-        },
-        dismissButton = {
-            PojianTextButton(onClick = onDismiss, enabled = !saving) { Text("取消") }
+            )
         }
     )
+}
+
+private fun storageRetentionLabel(days: Int): String = if (days == 0) "按容量保留" else "${days}天"
+
+@Composable
+private fun StorageRetentionDialog(usage: LocalStorageUsage, onDismiss: () -> Unit, onSave: suspend (Int) -> Unit) {
+    var draft by rememberSaveable { mutableIntStateOf(usage.retentionDays) }
+    var saving by remember { mutableStateOf(false) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+    val needsCleanup = shortensStorageRetention(usage.retentionDays, draft)
+    val scope = rememberCoroutineScope()
+    PojianDialog(
+        onDismissRequest = { if (!saving) onDismiss() },
+        title = { Text("保留周期", fontWeight = FontWeight.SemiBold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(Modifier.selectableGroup(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    STORAGE_RETENTION_DAYS.forEach { days ->
+                        val selected = draft == days
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                            .background(if (selected) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent)
+                            .selectable(selected, enabled = !saving, role = Role.RadioButton,
+                                onClick = { draft = days; saveError = null })
+                            .heightIn(min = 48.dp).padding(horizontal = 12.dp, vertical = 10.dp)
+                            .testTag("storage-retention-option-$days"),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected, onClick = null, enabled = !saving)
+                            Text(storageRetentionLabel(days), style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                        }
+                    }
+                }
+                if (needsCleanup) StorageCleanupWarning("超出保留周期的记录将被删除。")
+                saveError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            }
+        },
+        confirmButton = {
+            StorageDialogActions(enabled = !saving && !usage.loading && draft != usage.retentionDays,
+                saving = saving, needsCleanup = needsCleanup, onDismiss = onDismiss,
+                onSave = {
+                    saving = true
+                    scope.launch {
+                        try {
+                            onSave(draft)
+                            onDismiss()
+                        } catch (error: Exception) {
+                            if (error is CancellationException) throw error
+                            saveError = "保存失败，请重试"
+                        } finally {
+                            saving = false
+                        }
+                    }
+                })
+        }
+    )
+}
+
+@Composable
+private fun StorageCleanupWarning(text: String) {
+    Surface(color = MaterialTheme.colorScheme.errorContainer, shape = RoundedCornerShape(10.dp)) {
+        Text(text, Modifier.fillMaxWidth().padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun StorageDialogActions(enabled: Boolean, saving: Boolean, needsCleanup: Boolean,
+    onDismiss: () -> Unit, onSave: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        PojianSecondaryButton(onClick = onDismiss, enabled = !saving,
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp)) { Text("取消") }
+        PojianButton(onClick = onSave, enabled = enabled,
+            modifier = Modifier.weight(1f).heightIn(min = 48.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (needsCleanup) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                contentColor = if (needsCleanup) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onPrimary)) {
+            Text(if (saving) "保存中…" else if (needsCleanup) "保存并清理" else "保存")
+        }
+    }
 }
