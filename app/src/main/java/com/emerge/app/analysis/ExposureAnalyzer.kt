@@ -27,7 +27,7 @@ data class ViewpointExposure(val key: String, val topic: String, val subject: St
         concentrated && alignedApps >= 2 -> "跨应用同向集中"
         concentrated && (previousShare ?: 0.0) >= .75 -> "同向观点持续集中"
         concentrated -> "同向观点高度集中"
-        else -> "暂未发现明显集中线索"
+        else -> "暂未发现明显集中"
     }
 }
 

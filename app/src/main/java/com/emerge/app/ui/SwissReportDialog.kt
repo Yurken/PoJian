@@ -58,7 +58,7 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
         exportModel.updateRequest(request)
         if (!exportState.prepare(request, snapshot, pdf)) return
         val date = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss").withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(snapshot.generatedAt))
-        save.launch("破茧-${listOf("小时报告", "每日报告", "长期分析")[level]}-$date.${if (pdf) "pdf" else "json"}")
+        save.launch("破茧-${listOf("小时报告", "每日报告", "月度报告")[level]}-$date.${if (pdf) "pdf" else "json"}")
     }
     val dismiss = { exportModel.close(); onDismiss() }
     Dialog(onDismissRequest = dismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -66,12 +66,12 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
             shape = DesignTokens.CardShape, tonalElevation = 0.dp) {
             Column(Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("体检报告", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                    Text("浏览报告", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                     PojianIconButton(dismiss) { Icon(Icons.Outlined.Close, "关闭") }
                 }
                 PojianTextField(purpose, { onPurposeChange(it.take(120)) }, label = { Text("浏览目的") },
                     modifier = Modifier.fillMaxWidth().testTag("purpose-input"), maxLines = 3)
-                PojianSegmentedTabs(listOf("小时报告", "每日报告", "长期分析"), level, { level = it }, modifier = Modifier.testTag("report-levels"))
+                PojianSegmentedTabs(listOf("小时报告", "每日报告", "月度报告"), level, { level = it }, modifier = Modifier.testTag("report-levels"))
                 LazyColumn(Modifier.weight(1f).padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     when {
                         loadError -> item { Text("报告生成失败"); PojianTextButton({ retry++ }) { Text("重试") } }

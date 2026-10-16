@@ -500,8 +500,8 @@ fun AudioSessionDetailSheet(
                                 Text(claim.claim, color = Ink, style = MaterialTheme.typography.titleSmall)
                                 if (!claim.evidence.isNullOrBlank()) {
                                     MetadataText(if (claim.startMillis != null && claim.endMillis != null)
-                                        "依据出处 · 音频 ${audioTimestamp(claim.startMillis)} — ${audioTimestamp(claim.endMillis)}"
-                                        else "来自转写的依据")
+                                        "依据 · 音频 ${audioTimestamp(claim.startMillis)} — ${audioTimestamp(claim.endMillis)}"
+                                        else "来自语音转写的依据")
                                     QuoteBlock(claim.evidence, fromAudio = true)
                                 } else MetadataText("未识别到依据")
                                 val comparison = listOf(claim.relation, claim.novelty).filter { it.isNotBlank() }.joinToString(" · ")

@@ -56,12 +56,12 @@ fun OverviewScreen(
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 01 / 信息视野（茧房集中度环与核心三元组指标）
+        // 01 / 内容集中度（茧房集中度环与核心三元组指标）
         item(key = "cocoon") {
             CocoonCard(analysis, period, visible = true)
         }
 
-        // 02 / 24小时新旧论据趋势
+        // 02 / 24小时浏览新鲜度（近24小时每小时新增依据与重复依据的构成）
         item(key = "evidence-trend") {
             SwissEvidenceTrend(rawEvents, semantics, now)
         }
@@ -71,12 +71,12 @@ fun OverviewScreen(
             SwissAppDuration(stats, appNames)
         }
 
-        // 04 / 情绪表达与语境
+        // 04 / 内容情绪
         item(key = "emotion") {
             SwissEmotionCard(report)
         }
 
-        // 05 / 近期高频热词
+        // 05 / 近期热词
         item(key = "recent-content") {
             RecentContentCloud(
                 events = rawEvents,
@@ -88,7 +88,7 @@ fun OverviewScreen(
             )
         }
 
-        // 06 / 高频关注话题
+        // 06 / 关注话题
         item(key = "topics") {
             SwissTopicList(report, rawEvents, semantics, period, now, onTopic)
         }
@@ -106,13 +106,13 @@ fun OverviewScreen(
                         verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         Text(
-                            text = "完整认知回顾与数据导出",
+                            text = "浏览报告与数据导出",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = Ink
                         )
                         Text(
-                            text = "按小时/天/月生成结构化体检报告（支持 PDF 与 JSON）",
+                            text = "按小时 / 天 / 月生成，可导出 PDF 与 JSON",
                             style = MaterialTheme.typography.labelSmall,
                             color = Muted
                         )
@@ -125,7 +125,7 @@ fun OverviewScreen(
                         letterSpacing = 1.sp
                     )
                 }
-                PojianPrimaryButton("体检报告", onReports)
+                PojianPrimaryButton("浏览报告", onReports)
                 if (rawEvents.isEmpty()) {
                     PojianSecondaryButton(
                         onClick = onSettings,

@@ -85,9 +85,9 @@ class EvidenceCoveragePersistenceTest {
     private fun assertCitations(text: String, saved: Saved, fromPdf: Boolean = false) {
         fun compact(value: String) = value.replace(Regex("\\s+"), "")
         val flattened = compact(text)
-        val firstBlock = "同一记录原文：$firstEvidence" + "原材料线索：报告松岚" +
+        val firstBlock = "同一记录原文：$firstEvidence" + "材料来源：报告松岚" +
             "历史依据记录 #${saved.first.id} · 原句：$firstEvidence"
-        val secondBlock = "同一记录原文：$secondEvidence" + "原材料线索：报告海峰" +
+        val secondBlock = "同一记录原文：$secondEvidence" + "材料来源：报告海峰" +
             "历史依据记录 #${saved.second.id} · 原句：$secondEvidence"
         fun diagnostic(expected: String): String {
             if (!fromPdf) return ""

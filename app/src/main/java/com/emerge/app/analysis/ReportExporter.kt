@@ -14,7 +14,7 @@ object ReportExporter {
         val zone = ZoneId.of(report.zone)
         fun time(value: Long) = Instant.ofEpochMilli(value).atZone(zone).format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
         fun duration(value: Long) = String.format(java.util.Locale.CHINA, "%.1f 秒", value / 1000.0)
-        appendLine("# 破茧 · 信息环境回顾报告")
+        appendLine("# 破茧 · 浏览回顾报告")
         appendLine("基于保留的浏览记录，回顾内容与依据。")
         appendLine("生成时间：${time(report.generatedAt)}（${report.zone}）")
         appendLine("统计范围：${time(report.start)} 至 ${time(report.end)}（${report.period}）")
@@ -22,7 +22,7 @@ object ReportExporter {
         appendLine("分析方法：${report.method}")
         appendLine("浏览目的：${report.purpose}")
         appendLine()
-        appendLine("## 1. 覆盖范围与数据质量")
+        appendLine("## 1. 记录范围与数据情况")
         report.workStatistics?.let { stats ->
             appendLine("浏览作品（估算）：${stats.total} 个；观看 ${stats.visitCount} 次；停留时长 ${duration(stats.observedDurationMillis)}。${stats.unidentifiedWorks} 个作品未识别。")
             stats.apps.forEach { app -> appendLine("平台 ${app.packageName}：${app.count} 个作品，${app.visitCount} 次观看，停留时长 ${duration(app.durationMillis)}；${app.unidentifiedWorks} 个作品未识别，${app.unknownDurationRecords} 次时长未统计。") }
@@ -50,11 +50,11 @@ object ReportExporter {
         if (report.claims.isEmpty()) appendLine("未识别到可回查的观点，无法据此判断是否存在信息同质化。")
         appendLine("观点比例的统计范围为识别出的 ${report.claims.size} 个观点，不代表全部内容或停留时间。云端分析的主题和立场需核对；本地识别只覆盖预设词表，立场未经语义模型确认。")
         appendLine()
-        appendLine("## 3. 长期观察（近7天）与表达特征")
+        appendLine("## 3. 近7天观察与措辞特征")
         report.findings.forEach {
             appendLine("${it.topic}：${it.title}")
             appendLine(it.explanation)
-            appendLine("核查事件：${it.eventIds.joinToString().ifBlank { "无" }}")
+            appendLine("相关记录：${it.eventIds.joinToString().ifBlank { "无" }}")
             val ids = it.eventIds.toSet()
             report.exposure?.claims.orEmpty().filter { claim -> claim.eventId in ids }.forEach { claim ->
                 appendLine("记录 #${claim.eventId} | ${time(claim.timestamp)} | ${claim.packageName} | 原句：${claim.quote}")
@@ -64,11 +64,11 @@ object ReportExporter {
         appendLine("不满足上述规则不代表没有信息同质化；应用数量、主题集中、情绪倾向和观点一致都不能单独得出结论。时长不足或缺失时，也不能凭次数判断主要精力花在了哪里。")
         val signalLimit = if (appendixLimit == Int.MAX_VALUE) Int.MAX_VALUE else 20
         report.contentSignals.take(signalLimit).forEach {
-            appendLine("事件 #${it.eventId} · ${it.label}：${it.quote}")
+            appendLine("记录 #${it.eventId} · ${it.label}：${it.quote}")
         }
         if (report.contentSignals.isEmpty()) appendLine("没有匹配到预设的焦虑或紧迫表达词。")
         if (report.contentSignals.size > signalLimit) appendLine("PDF 只列出前 $signalLimit 条，完整内容见文本报告。")
-        appendLine("表达特征只描述原文措辞，不推断你的情绪、心理状态、立场或认知状况。内容价值需结合原文和依据判断。")
+        appendLine("措辞特征只描述原文措辞，不推断你的情绪、心理状态、立场或认知状况。内容价值需结合原文和依据判断。")
         appendLine()
         appendLine("## 4. 主题观点")
         var digestRemaining = appendixLimit.coerceAtLeast(0)
@@ -133,10 +133,10 @@ object ReportExporter {
         appendLine("一条记录如果跨越多个小时（或跨天），会在每个接触到的小时里分别列出，所以各时段的条数不能直接相加；停留时长已切分，总时长不会重复。观点可通过记录编号到附录中回看原文。")
         appendLine()
         appendLine("## 7. 建议与核查")
-        appendLine("先确认引用的文字来自正文、评论还是转述，核对讨论对象、时间和适用条件，再比较原始数据、反例和行动建议。主题是否集中，请结合你这一阶段的浏览目的来看。")
+        appendLine("先确认引用的文字来自正文、评论还是转述，核对对象、时间和适用条件，再比较原始数据、反例和行动建议。主题是否集中，请结合你这一阶段的浏览目的来看。")
         appendLine("如果同一个判断反复出现，先核实它是否引用的是同一份材料；出现了新数字、新条件或新建议，不代表材料真实，也不代表你真的学到了新东西。")
         appendLine()
-        appendLine("## 8. 观点、条件与依据明细")
+        appendLine("## 8. 观点、条件与依据")
         var remaining = appendixLimit.coerceAtLeast(0)
         if (report.claims.size > remaining) appendLine("PDF 附录最多列出前 $remaining 个观点以控制文件大小；完整列表请导出文本报告。统计和结论仍基于全部分析结果。")
         report.groups.forEachIndexed { index, group ->
@@ -150,14 +150,14 @@ object ReportExporter {
                 appendLine("该记录在本次范围内的停留时长：${observation.durationMillis?.let { duration(it) } ?: "时长未统计"}（同一记录里的多个观点共用时长，不能相加）")
                 appendLine("观点原文：${observation.quote}")
                 appendLine("观点来源：${if (observation.analysisSource == "structured_model") "云端分析（需核对）" else "本地识别"}")
-                appendLine("讨论对象：${observation.subject.ifBlank { "未识别，暂不与历史对比" }}")
-                if (observation.analysisSource == "structured_model") appendLine("判断维度：${observation.dimension.ifBlank { "未识别" }}；立场：${observation.stance.ifBlank { "未识别" }}")
+                appendLine("对象：${observation.subject.ifBlank { "未识别，暂不与历史对比" }}")
+                if (observation.analysisSource == "structured_model") appendLine("角度：${observation.dimension.ifBlank { "未识别" }}；立场：${observation.stance.ifBlank { "未识别" }}")
                 appendLine("适用条件：${observation.conditions.ifBlank { "未识别" }}；出处：${if (observation.uncertainAttribution) "可能引用了他人内容，待确认" else "待核实，不代表作者或你的看法"}")
-                appendLine("观点对比：${observation.increment.label}；用于对比的早期记录：${observation.previousEventId ?: "无"}")
+                appendLine("观点对比：${observation.increment.label}；较早的对比记录：${observation.previousEventId ?: "无"}")
                 if (observation.evidenceDetails.isNotEmpty()) observation.evidenceDetails.forEach {
                     appendLine("${it.type.label}${if (it.isNew) "（对比历史为新增）" else ""} · 同一记录原文：${it.text}")
-                    if (it.identity.actors.isNotEmpty()) appendLine("案例当事对象：${it.identity.actors.joinToString("、")}")
-                    if (it.identity.origins.isNotEmpty()) appendLine("原材料线索：${it.identity.origins.joinToString("、")}")
+                    if (it.identity.actors.isNotEmpty()) appendLine("涉及对象：${it.identity.actors.joinToString("、")}")
+                    if (it.identity.origins.isNotEmpty()) appendLine("材料来源：${it.identity.origins.joinToString("、")}")
                     it.historyMatches.forEach { match -> appendLine("历史依据记录 #${match.eventId} · 原句：${match.quote}") }
                     if (it.identityUnresolved) appendLine("案例身份或材料关系不清楚，暂不确认新增或重复。")
                 } else observation.evidence.forEach { appendLine("同一记录的依据/条件片段：$it") }
@@ -166,7 +166,7 @@ object ReportExporter {
             }
         }
         appendLine("## 9. 方法与局限")
-        appendLine("方法：通过事件编号、完整原文和引用片段校验的云端分析优先用于主题、观点、讨论对象、判断维度、立场、条件与依据；无有效结果时使用本地识别，包括文字过滤、词表主题和判断句规则。历史比较与时序汇总在本机完成。")
+        appendLine("方法：通过事件编号、完整原文和引用片段校验的云端分析优先用于主题、观点、对象、角度、立场、条件与依据；无有效结果时使用本地识别，包括文字过滤、词表主题和判断句规则。历史比较与时序汇总在本机完成。")
         appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。本地相似观点阈值为 0.65；论据先核对当事对象、材料、数量单位、否定及已识别范围，再使用有限同义规范化与 0.85 字符相似度。明确独立的数量事实至多拆成 8 个原文片段，逐项检索历史并要求规范化内容一致；未拆出的条件、引用或未知语法仍按整段保留。相对月、季、年按观察时间对齐。每次最多对比最近 120 个同范围候选，未确认身份或超出比较预算的未覆盖片段保留待定。以上规则及阈值未经独立人工标注数据校准。")
         appendLine("同一记录出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")
         appendLine("云端分析仍可能有误，原文校验不能确认观点归属或推理正确。历史依据比较使用本地识别规则，尚未实现语义编码、时序图学习、阅读投入估计或可信执行环境。音频转写和视觉提取文字可参与分析，不单独增加作品接触数或观看时长。")
@@ -186,7 +186,7 @@ object ReportExporter {
             page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, number).create())
             paint.color = Color.rgb(20, 88, 78)
             paint.textSize = 10f
-            page!!.canvas.drawText("破茧 | 信息环境回顾", 44f, 30f, paint)
+            page!!.canvas.drawText("破茧 | 浏览回顾", 44f, 30f, paint)
             page!!.canvas.drawText("$number", 540f, 817f, paint)
             y = 60f
         }

@@ -23,7 +23,7 @@ class RecordsGroupingUiTest {
             RecordsScreen(rows, 2, mapOf("com.reader" to "阅读器"))
         } } }
         compose.onNodeWithText("搜索原文或应用").performTextInput("招聘岗位")
-        compose.onNodeWithText("画面文字识别 · 关联事件 #10").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("画面文字识别 · 关联记录 #10").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("招聘岗位正在减少，因为岗位同比减少20%").assertIsDisplayed()
         compose.onNodeWithText("页面标题").assertDoesNotExist()
     }

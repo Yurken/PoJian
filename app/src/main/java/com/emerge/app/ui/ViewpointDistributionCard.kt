@@ -314,7 +314,7 @@ private fun StructuredViewpointCard(share: ViewpointShare, start: Long, end: Lon
                 Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                     color = scheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    DistributionBadge("影响提示${level.label}", accent)
+                    DistributionBadge("影响程度：${level.label}", accent)
                     if (uncertain) DistributionBadge("待确认", scheme.tertiary)
                     Text("${share.items.size} 个 · ${percentage(share.percent)}%", Modifier.align(Alignment.CenterVertically),
                         style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)

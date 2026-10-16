@@ -256,7 +256,7 @@ internal fun SwissViewpointsScreen(
                         )
                         VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                         SwissViewpointMetric(
-                            label = "独立新闻源",
+                            label = "独立来源",
                             value = "未核实",
                             modifier = Modifier.weight(1f)
                         )
@@ -270,14 +270,14 @@ internal fun SwissViewpointsScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     SwissRepresentative(
-                        label = "高频接收观点",
+                        label = "常见观点",
                         share = candidates.firstOrNull(),
                         accent = DesignTokens.Rose,
                         repeated = candidates.firstOrNull()?.let { data?.repeatedWorks?.get(it.key) } ?: 0,
                         modifier = Modifier.weight(1f).fillMaxHeight()
                     ) { detailId = it.record.id }
                     SwissRepresentative(
-                        label = "较少接触观点",
+                        label = "少见观点",
                         share = candidates.lastOrNull()?.takeIf { candidates.size > 1 },
                         accent = DesignTokens.Blue,
                         repeated = candidates.lastOrNull()?.let { data?.repeatedWorks?.get(it.key) } ?: 0,
@@ -287,12 +287,12 @@ internal fun SwissViewpointsScreen(
             }
         }
 
-        // 02 / 7日观点倾向变化曲线
+        // 02 / 近7天观点倾向曲线
         item("stance-timeline") {
             SwissStanceTimeline(trend)
         }
 
-        // 03 / 核查与认知补全中枢（整合「信息盲区与缺失事实补全」+「事实核查与重复线索」快捷入口）
+        // 03 / 核查与认知补全中枢（整合「补充资料」+「事实核查与重复线索」快捷入口）
         item("verification-hub") {
             SwissCard {
                 Row(
@@ -318,7 +318,7 @@ internal fun SwissViewpointsScreen(
                             )
                         }
                         Text(
-                            text = "信息盲区与缺失事实补全",
+                            text = "补充资料",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -368,7 +368,7 @@ internal fun SwissViewpointsScreen(
                         ) {
                             if (requests.isEmpty()) {
                                 Text(
-                                    text = "暂无可核查观点",
+                                    text = "暂无可补充话题",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Muted
                                 )
@@ -393,7 +393,7 @@ internal fun SwissViewpointsScreen(
                                     )
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                                        contentDescription = "补全缺失事实",
+                                        contentDescription = "补充资料",
                                         modifier = Modifier.size(18.dp),
                                         tint = Muted
                                     )
@@ -405,7 +405,7 @@ internal fun SwissViewpointsScreen(
             }
         }
 
-        // 04 / 核心观点明细列表眉头
+        // 04 / 观点列表眉头
         if (candidates.isNotEmpty()) {
             item("claims-section-header") {
                 Row(
@@ -430,7 +430,7 @@ internal fun SwissViewpointsScreen(
                         )
                     }
                     Text(
-                        text = "核心观点明细",
+                        text = "观点列表",
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
@@ -794,7 +794,7 @@ internal fun SwissStanceTimeline(days: List<SwissStanceDay>) {
                     )
                 }
                 Text(
-                    text = "7日观点倾向变化",
+                    text = "近7天观点倾向",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )

@@ -107,7 +107,7 @@ class CognitiveAnalyzerTest {
         val text = ReportExporter.text(report)
         assertTrue(text.contains("分析进度：1/1"))
         assertTrue(text.contains("云端分析（需核对）"))
-        assertTrue(text.contains("判断维度：数量；立场：减少"))
+        assertTrue(text.contains("角度：数量；立场：减少"))
         assertTrue(text.contains("岗位同比减少20%"))
         assertFalse(text.contains("当前没有通过校验的云端分析"))
     }
@@ -250,7 +250,7 @@ class CognitiveAnalyzerTest {
         assertEquals(2L, report.contentSignals.single().eventId)
         assertTrue(report.contentSignals.single().quote.contains("焦虑"))
         val text = ReportExporter.text(report)
-        assertTrue(text.contains("破茧 · 信息环境回顾报告"))
+        assertTrue(text.contains("破茧 · 浏览回顾报告"))
         assertTrue(text.contains("00:00–01:00"))
         assertTrue(text.contains("23:00–00:00"))
         assertTrue(text.contains("不推断你的情绪"))

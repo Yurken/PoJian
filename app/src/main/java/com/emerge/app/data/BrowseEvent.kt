@@ -39,4 +39,4 @@ val BrowseEvent.visualSourceLabel: String?
         "screen_ocr" -> "画面文字识别"
         "visual_model" -> "视觉模型提取"
         else -> null
-    }?.let { label -> parentEventId?.let { "$label · 关联事件 #$it" } ?: label }
+    }?.let { label -> parentEventId?.let { "$label · 关联记录 #$it" } ?: label }

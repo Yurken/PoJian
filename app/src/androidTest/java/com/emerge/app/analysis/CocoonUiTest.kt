@@ -54,7 +54,7 @@ class CocoonUiTest {
         }
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("cocoon-card"))
         compose.onNodeWithText("观点集中度 · 近7天").assertIsDisplayed()
-        compose.onNodeWithText("信息视野").assertIsDisplayed()
+        compose.onNodeWithText("内容集中度").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("60%")
         compose.onNodeWithText("3 / 5 条观点引用重复论据").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-density").assertDoesNotExist()
@@ -62,7 +62,7 @@ class CocoonUiTest {
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
         compose.onNodeWithText("待更新").assertIsDisplayed()
         compose.runOnIdle { analysis.value = state(3); period.value = StatisticsPeriod.WEEK }
-        compose.onNodeWithText("信息视野").assertIsDisplayed()
+        compose.onNodeWithText("内容集中度").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
         compose.onNodeWithText("暂无分析").assertIsDisplayed()
     }

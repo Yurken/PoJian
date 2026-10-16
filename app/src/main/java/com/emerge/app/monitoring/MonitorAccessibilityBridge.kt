@@ -476,8 +476,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         field("当前应用")
         field("观点集中度 · 近7天", prominent = true)
         field("当前话题")
-        field("重复材料")
-        field("情绪特征")
+        field("重复依据")
+        field("内容情绪")
         box.addView(View(service).apply { setBackgroundColor(borderColor) },
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(1)).apply {
                 topMargin = dp(8); bottomMargin = dp(8)
@@ -512,7 +512,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         button("核查当前内容", primary = true) {
             monitor.checkCurrent()
         }
-        button("查看信息盲区 →") {
+        button("查看核查记录 →") {
             service.startActivity(Intent(service, MainActivity::class.java).putExtra("monitor_discover", true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)); collapsePanel()
         }
@@ -588,8 +588,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         detailValues["当前应用"]?.text = appLabel(state.currentPackage)
         detailValues["观点集中度 · 近7天"]?.text = value
         detailValues["当前话题"]?.text = topic
-        detailValues["重复材料"]?.text = current?.repeatedMaterials?.let { "$it 条" } ?: "—"
-        detailValues["情绪特征"]?.text = current?.emotions?.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: "—"
+        detailValues["重复依据"]?.text = current?.repeatedMaterials?.let { "$it 条" } ?: "—"
+        detailValues["内容情绪"]?.text = current?.emotions?.takeIf { it.isNotEmpty() }?.joinToString(" · ") ?: "—"
         detail?.visibility = if (finding == null) View.GONE else View.VISIBLE
         detail?.text = buildString {
             finding?.let {

@@ -64,7 +64,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                     )
                 }
                 Text(
-                    text = "信息视野",
+                    text = "内容集中度",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -188,7 +188,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                     Text(
                         text = buildAnnotatedString {
                             withStyle(countStyle) { append("${counts.repeated}") }
-                            append(" / ${counts.total} 条观点引用重复论据")
+                            append(" / ${counts.total} 条观点引用重复依据")
                         },
                         modifier = Modifier.weight(1f).testTag("cocoon-repeat-summary"),
                         color = Muted,
@@ -220,13 +220,13 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                 )
                 VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                 SwissCount(
-                    label = "新增独立事实",
+                    label = "新增事实",
                     value = "未核实",
                     modifier = Modifier.weight(1f)
                 )
                 VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                 SwissCount(
-                    label = "提炼核心论据",
+                    label = "核心论据",
                     value = report?.claims?.flatMap { it.evidenceDetails }?.distinctBy { it.text }?.size?.toString() ?: "—",
                     modifier = Modifier.weight(1f),
                     emphasized = true

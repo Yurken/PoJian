@@ -123,8 +123,8 @@ internal fun SwissEvidenceTrend(
     WhiteCard(Modifier.testTag("swiss-evidence-trend")) {
         SwissOverviewSectionHeader(
             index = "02",
-            title = "24小时新旧论据",
-            subtitle = "EVIDENCE 24H"
+            title = "24小时浏览新鲜度",
+            subtitle = "FRESHNESS 24H"
         )
         if (error) {
             Text("分析暂不可用", color = Muted, style = MaterialTheme.typography.bodySmall)
@@ -166,7 +166,7 @@ internal fun SwissEvidenceChart(
                 }
             }
             .semantics {
-                contentDescription = "$interval 新增论据 ${selected.fresh} 重复材料 ${selected.repeated} 未判断 ${selected.unknown}"
+                contentDescription = "$interval 新增依据 ${selected.fresh} 重复依据 ${selected.repeated} 待判断 ${selected.unknown}"
                 customActions = buildList {
                     if (selectedIndex > 0) add(CustomAccessibilityAction("上一小时") { select(selectedIndex - 1); true })
                     if (selectedIndex < buckets.lastIndex) add(CustomAccessibilityAction("下一小时") { select(selectedIndex + 1); true })
@@ -220,9 +220,9 @@ internal fun SwissEvidenceChart(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        SwissLegend("新增论据 ${selected.fresh}", DesignTokens.Ink)
-        SwissLegend("重复材料 ${selected.repeated}", DesignTokens.Rose)
-        SwissLegend("未判断 ${selected.unknown}", Color(0xFFD4D4D8))
+        SwissLegend("新增依据 ${selected.fresh}", DesignTokens.Ink)
+        SwissLegend("重复依据 ${selected.repeated}", DesignTokens.Rose)
+        SwissLegend("待判断 ${selected.unknown}", Color(0xFFD4D4D8))
     }
 }
 
@@ -331,7 +331,7 @@ internal fun SwissEmotionCard(report: CognitiveReport?) {
     WhiteCard {
         SwissOverviewSectionHeader(
             index = "04",
-            title = "情绪表达与语境",
+            title = "内容情绪",
             trailing = {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
@@ -357,8 +357,8 @@ internal fun SwissEmotionCard(report: CognitiveReport?) {
                 modifier = Modifier.padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SwissMetricBar("事实性风险提醒", null, DesignTokens.Blue, Modifier.weight(1f))
-                SwissMetricBar("夸张情绪表达", null, DesignTokens.Rose, Modifier.weight(1f))
+                SwissMetricBar("事实性表述", null, DesignTokens.Blue, Modifier.weight(1f))
+                SwissMetricBar("情绪化表达", null, DesignTokens.Rose, Modifier.weight(1f))
             }
         }
         emotion?.let {
@@ -386,7 +386,7 @@ internal fun SwissEmotionCard(report: CognitiveReport?) {
             .sortedByDescending { it.value }
             .take(4)
         if (phrases.isEmpty()) {
-            Text("暂无情绪分析", style = MaterialTheme.typography.bodySmall, color = Muted)
+            Text("暂无数据", style = MaterialTheme.typography.bodySmall, color = Muted)
         } else {
             Surface(
                 shape = DesignTokens.InnerShape,
@@ -473,7 +473,7 @@ internal fun SwissTopicList(
     WhiteCard {
         SwissOverviewSectionHeader(
             index = "06",
-            title = "高频关注话题",
+            title = "关注话题",
             subtitle = "TOP TOPICS"
         )
         if (topics.isEmpty()) {
@@ -508,7 +508,7 @@ internal fun SwissTopicList(
                                     color = Ink
                                 )
                                 Text(
-                                    text = "$workCount 篇 · 独立来源未核实",
+                                    text = "$workCount 篇 · 来源未核实",
                                     color = Muted,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace

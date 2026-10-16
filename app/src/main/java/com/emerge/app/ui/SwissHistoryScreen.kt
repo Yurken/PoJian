@@ -146,9 +146,9 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
                 Text("${format.format(Instant.ofEpochMilli(event.timestamp))} · ${swissDuration(event)}",
                     style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(claims.map { it.stance }.filter(String::isNotBlank).distinct().joinToString(" · ").ifBlank { "观点未识别" },
+                    Text(claims.map { it.stance }.filter(String::isNotBlank).distinct().joinToString(" · ").ifBlank { "未识别到观点" },
                         style = MaterialTheme.typography.labelSmall, color = DesignTokens.Blue)
-                    Text(if (model[event.id]?.validFor(event) == true) "${claims.map { it.evidence }.filter(String::isNotBlank).distinct().size} 条论据" else "论据未提取",
+                    Text(if (model[event.id]?.validFor(event) == true) "${claims.map { it.evidence }.filter(String::isNotBlank).distinct().size} 条论据" else "未提取到论据",
                         style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
                     Text(swissRecordSource(event), style = MaterialTheme.typography.labelSmall, color = Muted)
                 }
@@ -250,7 +250,7 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
                     if (quotes.isEmpty()) Text("未识别", color = Muted, style = MaterialTheme.typography.bodyMedium)
                     else quotes.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
                     HorizontalDivider(color = DesignTokens.Border)
-                    Text("情绪与语境", style = MaterialTheme.typography.titleSmall)
+                    Text("内容情绪", style = MaterialTheme.typography.titleSmall)
                     if (emotions.isEmpty()) Text("未识别", color = Muted, style = MaterialTheme.typography.bodyMedium)
                     emotions.forEach { emotion ->
                         Text("${emotion.category.label} · ${emotion.level.label}", color = DesignTokens.Amber, style = MaterialTheme.typography.labelMedium)

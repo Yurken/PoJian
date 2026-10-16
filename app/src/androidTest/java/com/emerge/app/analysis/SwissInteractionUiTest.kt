@@ -22,7 +22,7 @@ class SwissInteractionUiTest {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
             Column {
                 SwissCard(Modifier.testTag("interactive-card"), onClick = { opens++ }) { Text("浏览历史") }
-                SwissCard(Modifier.testTag("static-card")) { Text("信息视野") }
+                SwissCard(Modifier.testTag("static-card")) { Text("内容集中度") }
             }
         } } }
         compose.onNodeWithTag("static-card").assertHasNoClickAction()

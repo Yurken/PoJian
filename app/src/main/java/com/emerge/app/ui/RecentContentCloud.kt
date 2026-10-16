@@ -124,7 +124,7 @@ internal fun RecentContentCloud(
                     )
                 }
                 Text(
-                    text = "近期高频热词",
+                    text = "近期热词",
                     color = Ink,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,

@@ -101,7 +101,7 @@ class MonitorControlsAccessibilityTest {
             }, 0, 0, {}, {})
         }
 
-        val settings = listOf("提醒间隔", "每日提醒上限", "自动提示停留")
+        val settings = listOf("提醒间隔", "每日提醒上限", "提示停留时长")
         settings.forEach { compose.onNodeWithContentDescription(it).assertDoesNotExist() }
         compose.onNodeWithContentDescription("画面采样间隔").assertExists()
         val more = compose.onNodeWithTag("monitor-more")

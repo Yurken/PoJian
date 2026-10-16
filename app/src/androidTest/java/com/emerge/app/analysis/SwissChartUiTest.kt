@@ -65,7 +65,7 @@ class SwissChartUiTest {
         }
         compose.onNodeWithTag("swiss-evidence-previous").performClick()
         compose.onNodeWithTag("swiss-evidence-date").assertTextEquals(swissEvidenceInterval(hour(2)))
-        compose.onNode(hasText("未判断 1") and hasAnyAncestor(hasTestTag("swiss-evidence-readout"))).assertExists()
+        compose.onNode(hasText("待判断 1") and hasAnyAncestor(hasTestTag("swiss-evidence-readout"))).assertExists()
 
         // Changing the parent request replaces the chart with its loading state while real analysis runs.
         compose.runOnIdle {
@@ -73,7 +73,7 @@ class SwissChartUiTest {
             now += 31 * 60_000L
         }
         compose.waitUntil(5_000) {
-            compose.onAllNodes(hasText("重复材料 1") and hasAnyAncestor(hasTestTag("swiss-evidence-readout")))
+            compose.onAllNodes(hasText("重复依据 1") and hasAnyAncestor(hasTestTag("swiss-evidence-readout")))
                 .fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithTag("swiss-evidence-date").assertTextEquals(swissEvidenceInterval(hour(2)))

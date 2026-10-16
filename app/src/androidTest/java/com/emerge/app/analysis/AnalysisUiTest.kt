@@ -54,8 +54,8 @@ class AnalysisUiTest {
             hasAnyAncestor(hasTestTag("hourly-review-details"))).assertIsDisplayed()
         compose.onAllNodesWithText("本条采集原文：", substring = true).onFirst().assertExists()
         compose.onNodeWithTag("hourly-review-details")
-            .performScrollToNode(hasText("用于对比的早期记录 #1"))
-        compose.onNodeWithText("用于对比的早期记录 #1").assertIsDisplayed()
+            .performScrollToNode(hasText("较早的对比记录 #1"))
+        compose.onNodeWithText("较早的对比记录 #1").assertIsDisplayed()
         saveScreenshot("pojian-hourly-qa.png")
     }
 

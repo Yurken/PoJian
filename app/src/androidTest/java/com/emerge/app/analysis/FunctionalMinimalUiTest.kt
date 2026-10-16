@@ -43,7 +43,7 @@ class FunctionalMinimalUiTest {
     @Test fun mainActivityConnectsFiveTabsFactChecksAndRecordingSettings() {
         tab("概览").assertIsSelected()
         compose.onNodeWithTag("overview-list").assertIsDisplayed()
-        listOf("概览", "观点", "记录", "历史", "设置").forEach { tab(it).assertExists() }
+        listOf("观点", "历史", "概览", "记录", "设置").forEach { tab(it).assertExists() }
         tab("发现").assertDoesNotExist()
         compose.onNodeWithTag("audio-entry").assertDoesNotExist()
         saveScreenshot("pojian-monitor-overview.png")
@@ -61,7 +61,7 @@ class FunctionalMinimalUiTest {
         tab("设置").performClick().assertIsSelected()
         compose.onNodeWithTag("swiss-settings-screen").assertIsDisplayed()
         compose.onNodeWithTag("capture-toggle").assertDoesNotExist()
-        compose.onNodeWithTag("swiss-settings-screen").performScrollToNode(hasText("提醒频率与隐私安全"))
+        compose.onNodeWithTag("swiss-settings-screen").performScrollToNode(hasText("提醒与隐私"))
         compose.onNodeWithTag("settings-monitor-options").performClick()
         saveScreenshot("pojian-monitor-settings-analysis.png")
         compose.onNodeWithText("专题研究模式").performScrollTo()
@@ -223,7 +223,7 @@ class FunctionalMinimalUiTest {
         val scrollingChanges = mutableListOf<Boolean>()
         render {
             Scaffold(bottomBar = {
-                PojianNavigationBar(listOf("概览", "观点", "记录", "历史", "设置"), 1, {}) { Text("•") }
+                PojianNavigationBar(listOf("观点", "历史", "概览", "记录", "设置"), 0, {}) { Text("•") }
             }) { padding ->
                 TimelineHarness(records, StatisticsPeriod.WEEK, now, mapOf("reader" to "测试阅读器"),
                     modifier = Modifier.padding(padding), onWorkScrolling = { scrolling.value = it; scrollingChanges += it })

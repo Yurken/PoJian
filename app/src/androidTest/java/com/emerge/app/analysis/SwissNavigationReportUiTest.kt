@@ -33,7 +33,7 @@ class SwissNavigationReportUiTest {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme { SwissReportDialog(emptyList(), emptyList(), 1_792_000_000_000L, {}) } } }
         compose.onNodeWithText("小时报告").performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithText("过去 1 小时").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("长期分析").performClick()
+        compose.onNodeWithText("月度报告").performClick()
         compose.waitUntil(10000) { compose.onAllNodesWithText("最近 30 天").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("保存 PDF").assertIsEnabled()
         compose.onNodeWithText("导出 JSON").assertIsEnabled()

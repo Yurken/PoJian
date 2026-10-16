@@ -236,10 +236,10 @@ private fun RecordingMaterials(events: List<BrowseEvent>, report: CognitiveRepor
     }
     val claims = report?.claims.orEmpty().filter { it.eventId in related }.distinctBy { it.quote }
     WhiteCard(Modifier.testTag("recording-materials")) {
-        SectionTitle("观点与论据提炼")
+        SectionTitle("观点与论据")
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.background) {
             Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("原始屏幕文字", color = Muted, style = MaterialTheme.typography.labelMedium)
+                Text("屏幕文字", color = Muted, style = MaterialTheme.typography.labelMedium)
                 val raw = latest?.visibleText?.takeIf { it.isNotBlank() } ?: "暂无记录"
                 val original = remember(raw) { buildAnnotatedString {
                     raw.lineSequence().forEachIndexed { index, line ->
@@ -252,20 +252,20 @@ private fun RecordingMaterials(events: List<BrowseEvent>, report: CognitiveRepor
                     style = MaterialTheme.typography.bodySmall, maxLines = 5, overflow = TextOverflow.Ellipsis)
             }
         }
-        if (claims.isEmpty()) Text("暂无提炼结果", color = Muted, style = MaterialTheme.typography.bodySmall)
+        if (claims.isEmpty()) Text("暂无分析结果", color = Muted, style = MaterialTheme.typography.bodySmall)
         else claims.take(3).forEach { claim ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(claim.quote, style = MaterialTheme.typography.bodyMedium)
                 claim.evidenceDetails.take(2).forEach { evidence ->
                     Text(evidence.text, color = Muted, style = MaterialTheme.typography.bodySmall)
-                    if (evidence.historyMatches.isNotEmpty()) Text("同源线索 ${evidence.historyMatches.size}",
+                    if (evidence.historyMatches.isNotEmpty()) Text("重复线索 ${evidence.historyMatches.size}",
                         color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
         val speech = events.filter { it.id in related && it.sourceType.startsWith("audio_") }
         if (speech.isNotEmpty()) {
-            Text("关联口播", color = Muted, style = MaterialTheme.typography.labelMedium)
+            Text("关联语音", color = Muted, style = MaterialTheme.typography.labelMedium)
             Text(speech.joinToString("\n") { it.contentText }, style = MaterialTheme.typography.bodySmall,
                 maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
@@ -278,7 +278,7 @@ private fun RecordingTranscriptStream(state: AudioUiState, sessions: List<AudioS
     val recent = remember(sessions) { sessions.sortedByDescending { it.createdAt }.take(3) }
     WhiteCard(Modifier.testTag("recording-transcript-stream")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("视频语音实时转写", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text("实时语音转写", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
             RecordingActivity(active)
         }
         state.task?.partialText?.takeIf { it.isNotBlank() }?.let {

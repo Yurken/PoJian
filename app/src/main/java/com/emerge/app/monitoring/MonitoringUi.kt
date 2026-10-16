@@ -54,7 +54,7 @@ fun MonitorSettingsSection(
 ) {
     var showMore by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (!embedded) SectionTitle("提醒频率与隐私安全")
+        if (!embedded) SectionTitle("提醒与隐私")
         if (includeCloudControls) {
             MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
         }
@@ -67,14 +67,14 @@ fun MonitorSettingsSection(
         if (includeBubbleControl) {
             MonitorSwitch("悬浮球", "", config.bubble) { onChange(config.copy(bubble = it)) }
         }
-        MonitorSwitch("观点重复观察", "", config.cocoon) { onChange(config.copy(cocoon = it)) }
+        MonitorSwitch("重复观点提醒", "", config.cocoon) { onChange(config.copy(cocoon = it)) }
         MonitorSwitch("内容情绪提醒", "", config.emotion) { onChange(config.copy(emotion = it)) }
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("情绪提醒观察窗口", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Muted)
+            Text("情绪提醒时段", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Muted)
             Text(
                 text = "30 分钟 · 固定",
                 style = MaterialTheme.typography.bodySmall,
@@ -111,7 +111,7 @@ fun MonitorSettingsSection(
                 MonitorSlider("每日提醒上限", config.dailyAlerts, 0..30, "次") {
                     onChange(config.copy(dailyAlerts = it))
                 }
-                MonitorSlider("自动提示停留", config.displaySeconds, 2..8, "秒") {
+                MonitorSlider("提示停留时长", config.displaySeconds, 2..8, "秒") {
                     onChange(config.copy(displaySeconds = it))
                 }
             }

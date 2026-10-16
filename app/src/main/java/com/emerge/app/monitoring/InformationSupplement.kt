@@ -52,7 +52,7 @@ object InformationSupplementProtocol {
             bounded(request.subject, 100) && bounded(request.dimension, 80) && bounded(request.conditions, 200) &&
             listOf(request.scopeKey, request.topic, request.subject, request.dimension, request.conditions)
                 .all { value -> value.none { it.code < 32 } } && request.known.size <= 6 &&
-            request.known.all { bounded(it.quote, 500, true) && bounded(it.evidence, 500) }) { "补全材料超出范围" }
+            request.known.all { bounded(it.quote, 500, true) && bounded(it.evidence, 500) }) { "补充材料超出范围" }
         return JSONObject().put("version", 1).put("scope_key", request.scopeKey).put("topic", request.topic)
             .put("subject", request.subject).put("dimension", request.dimension).put("conditions", request.conditions)
             .put("known", JSONArray().apply { request.known.forEach { put(JSONObject().put("quote", it.quote)
@@ -81,22 +81,22 @@ object InformationSupplementProtocol {
 
     fun decode(payload: JSONObject, request: SupplementRequest): SupplementResult {
         require(payload.opt("version") == 1 && payload.opt("scope_key") == request.scopeKey &&
-            payload.opt("topic") == request.topic && payload.opt("source_kind") == "external") { "补全响应范围不匹配" }
-        val rows = payload.optJSONArray("sources") ?: throw IllegalArgumentException("补全响应无效")
-        require(rows.length() <= 4) { "补全响应超限" }
+            payload.opt("topic") == request.topic && payload.opt("source_kind") == "external") { "补充资料范围不匹配" }
+        val rows = payload.optJSONArray("sources") ?: throw IllegalArgumentException("补充资料无效")
+        require(rows.length() <= 4) { "补充资料超限" }
         val urls = mutableSetOf<String>()
         val bodies = mutableSetOf<String>()
         val sources = (0 until rows.length()).map { index ->
             val row = rows.getJSONObject(index)
-            fun field(key: String): String = row.opt(key) as? String ?: throw IllegalArgumentException("补全响应无效")
+            fun field(key: String): String = row.opt(key) as? String ?: throw IllegalArgumentException("补充资料无效")
             val source = WebEvidence(field("url"), field("title"), field("quote"), field("excerpt"))
             val key = sourceKey(source.url)
             require(key != null && urls.add(key) && bodies.add(source.excerpt) && source.valid() &&
                 bounded(source.title, 200, true) && bounded(source.quote, 1000, true) &&
-                bounded(source.excerpt, 6000, true)) { "补全来源校验失败" }
+                bounded(source.excerpt, 6000, true)) { "来源校验失败" }
             source
         }
-        require(payload.opt("status") == if (sources.isEmpty()) "empty" else "ready") { "补全响应无效" }
+        require(payload.opt("status") == if (sources.isEmpty()) "empty" else "ready") { "补充资料无效" }
         return SupplementResult(sources)
     }
 }
@@ -115,7 +115,7 @@ object InformationSupplementClient {
             "访问令牌无效"
         }
         val bytes = InformationSupplementProtocol.encode(request).toString().toByteArray(Charsets.UTF_8)
-        require(bytes.size <= 32 * 1024) { "补全材料超出范围" }
+        require(bytes.size <= 32 * 1024) { "补充材料超出范围" }
         return withTimeout(55_000) {
             val json = post("$endpoint/information-supplement", config.token, bytes, isCurrent, onRequest, openConnection)
             currentCoroutineContext().ensureActive()
@@ -127,7 +127,7 @@ object InformationSupplementClient {
     fun errorMessage(error: Exception): String = when (error) {
         is ServiceFailure -> error.message ?: "补充资料失败"
         is SocketTimeoutException, is TimeoutCancellationException -> "补充资料超时"
-        is IllegalArgumentException -> error.message ?: "补全响应无效"
+        is IllegalArgumentException -> error.message ?: "补充资料无效"
         is IOException -> "网络连接失败"
         else -> "补充资料失败"
     }
@@ -165,7 +165,7 @@ object InformationSupplementClient {
                     408, 504 -> "补充资料超时"
                     else -> "补充资料失败"
                 })
-                if (connection.contentLengthLong > MAX_RESPONSE_BYTES) throw ServiceFailure("补全响应超限")
+                if (connection.contentLengthLong > MAX_RESPONSE_BYTES) throw ServiceFailure("补充资料超限")
                 val output = connection.inputStream.use { input ->
                     val result = ByteArrayOutputStream()
                     val buffer = ByteArray(8192)
@@ -174,7 +174,7 @@ object InformationSupplementClient {
                         if (!isCurrent()) throw CancellationException("Supplement scope changed")
                         val count = input.read(buffer)
                         if (count < 0) break
-                        if (result.size() + count > MAX_RESPONSE_BYTES) throw ServiceFailure("补全响应超限")
+                        if (result.size() + count > MAX_RESPONSE_BYTES) throw ServiceFailure("补充资料超限")
                         result.write(buffer, 0, count)
                     }
                     result.toByteArray()

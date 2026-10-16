@@ -69,7 +69,7 @@ fun SwissSettingsScreen(
                 captureSettingsContent?.invoke() ?: SettingsActionRow("实时记录", onClick = onCaptureTools)
                 SettingsHairline()
                 SettingsDisclosure(
-                    title = "提醒频率与隐私安全",
+                    title = "提醒与隐私",
                     value = "已启用 $activeMonitors 项",
                     tag = "settings-monitor-options"
                 ) {
