@@ -21,8 +21,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 
-internal val swissPeriods = listOf(StatisticsPeriod.HOUR, StatisticsPeriod.HOURS24, StatisticsPeriod.MONTH)
-private val periodLabels = listOf("1H", "24H", "30D")
+internal val swissPeriods = listOf(StatisticsPeriod.HOURS24, StatisticsPeriod.WEEK, StatisticsPeriod.MONTH)
+private val periodLabels = listOf("24H", "7D", "30D")
 
 @Composable
 internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit,

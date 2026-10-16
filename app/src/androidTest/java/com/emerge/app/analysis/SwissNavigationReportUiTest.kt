@@ -24,8 +24,13 @@ class SwissNavigationReportUiTest {
             var period by remember { mutableStateOf(selected) }
             EmergeTheme { SwissAppHeader("信息概览", period, { selected = it; period = it }, false, "已暂停", { clicks++ }) }
         } }
-        compose.onNodeWithTag("header-period-HOUR").performClick().assertIsSelected()
-        compose.runOnIdle { assertEquals(StatisticsPeriod.HOUR, selected) }
+        compose.onNodeWithTag("header-period-HOURS24").assertTextEquals("24H").assertIsSelected()
+        compose.onNodeWithTag("header-period-WEEK").assertTextEquals("7D").performClick().assertIsSelected()
+        compose.runOnIdle { assertEquals(StatisticsPeriod.WEEK, selected) }
+        compose.onNodeWithTag("header-period-MONTH").assertTextEquals("30D").performClick().assertIsSelected()
+        compose.runOnIdle { assertEquals(StatisticsPeriod.MONTH, selected) }
+        compose.onNodeWithTag("header-period-HOURS24").performClick().assertIsSelected()
+        compose.runOnIdle { assertEquals(StatisticsPeriod.HOURS24, selected) }
         compose.onNodeWithText("已暂停").performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
     }
