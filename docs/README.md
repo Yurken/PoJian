@@ -14,7 +14,7 @@
 | [后端部署](DEPLOYMENT.md) | 部署脚本、服务配置、更新验证和 HTTPS |
 | [Android 固定签名](ANDROID_SIGNING.md) | 本地与 CI 共用密钥、证书校验、备份和旧版升级限制 |
 | [音频组件来源](THIRD_PARTY_AUDIO.md) | 上游版本、许可证和实现归属 |
-| [Logo v1](brand/pojian-logo-v1.md) · [方案探索](brand/pojian-logo-alternatives.md) | 品牌配图及设计来源 |
+| [应用图标](brand/pojian-logo-v1.md) | 启动图标资源及设计来源 |
 | [作品报告 LaTeX 工程](作品报告-LaTeX/README.md) | 第一至第四章源码、书目、13 张必要配图及编译方法 |
 
 0.4.0、0.4.1 及更早阶段的构建记录见仓库根目录的[既有构建验证](../BUILD_VALIDATION.md)。更新日志中的验收数字来自各次历史记录，文档整理不会重新执行或扩展那些验证。

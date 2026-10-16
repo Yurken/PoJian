@@ -1,12 +1,12 @@
 # 破茧 Logo · v1
 
-![破茧 Logo](pojian-logo-v1.png)
+![破茧 Logo](../../app/src/main/res/mipmap-xxxhdpi/ic_launcher_artwork.png)
 
 层叠的弧带代表反复包裹的信息，向外打开的翼形代表视野展开，暖金色代表突破边界后遇见的新信息。
 
 生成方式：内置 image_gen（imagegen 技能），全新生成，非透明背景。
 
-此版本已用作 App 启动图标。原图保留于本目录；安装包内提供五种屏幕密度的图标资源，并为自适应图标预留裁切空间，保留右上方的金色翼尖。Android 13 及以上的主题图标使用从同一原图提取的单色轮廓。
+此版本已用作 App 启动图标。仓库保留五种屏幕密度的图标资源，并为自适应图标预留裁切空间，保留右上方的金色翼尖。Android 13 及以上的主题图标使用从同一原图提取的单色轮廓。原始大图可从 [v0.5.43 历史版本](https://github.com/Yurken/PoJian/blob/v0.5.43/docs/brand/pojian-logo-v1.png) 获取。
 
 ## 生成提示词
 
