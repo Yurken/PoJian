@@ -115,8 +115,22 @@ jobs:
           R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
         run: |
           python3 -c 'import os, sys; sys.exit(0 if os.environ.get("ORG_GRADLE_PROJECT_pojian.serviceToken") else "POJIAN_SERVICE_TOKEN is missing")'
-          bash ./gradlew :app:assembleRelease --no-daemon --console=plain \
+          bash ./gradlew :app:assembleRelease --no-daemon --console=plain -PemergeAbi=arm64-v8a \
             "-Ppojian.r2PublicBaseUrl=${R2_PUBLIC_BASE_URL}"
+
+      - name: Verify APK architecture
+        run: |
+          python3 - <<'PY'
+          import sys
+          import zipfile
+
+          with zipfile.ZipFile("app/build/outputs/apk/release/app-release.apk") as apk:
+              abis = {name.split("/")[1] for name in apk.namelist()
+                      if name.startswith("lib/") and name.endswith(".so")}
+          if abis != {"arm64-v8a"}:
+              sys.exit(f"Expected arm64-v8a only, found: {sorted(abis)}")
+          print("APK architecture verified: arm64-v8a")
+          PY
 
       - name: Verify APK signature
         run: |

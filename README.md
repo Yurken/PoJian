@@ -82,13 +82,13 @@ python -m unittest discover -s server/tests -v
 bash scripts/check-monitor-core.sh
 ```
 
-构建前请先按[固定签名配置](docs/ANDROID_SIGNING.md)恢复项目密钥与本地 `keystore.properties`——Debug 与 Release 共用同一签名，配置缺失时构建直接失败。首次构建会下载并校验固定版本的 sherpa-onnx 推理库；构建特定设备包可加 `-PemergeAbi=arm64-v8a`。
+构建前请先按[固定签名配置](docs/ANDROID_SIGNING.md)恢复项目密钥与本地 `keystore.properties`——Debug 与 Release 共用同一签名，配置缺失时构建直接失败。首次构建会下载并校验固定版本的 sherpa-onnx 推理库；正式发布使用 `./gradlew :app:assembleRelease -PemergeAbi=arm64-v8a`。本地调试不指定 `emergeAbi` 时保留全部上游架构，也可按设备指定，例如 `-PemergeAbi=x86_64`。
 
 **覆盖安装**：应用 ID（`com.zhiheng.app`）与数据库文件名保持不变，当前 Room 为 v7。请使用相同签名的安装包覆盖安装，不要先卸载。
 
 ## 发布与分发
 
-- **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出通用 Release APK；主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），同时在本仓库 GitHub Release 备份同一份 APK 与版本元数据，GitHub Release 不参与 R2 的三版本清理。
+- **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出仅含 `arm64-v8a` 的 Release APK，并在上传前校验架构与固定签名；该安装包要求 64 位 ARM Android 系统。主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），同时在本仓库 GitHub Release 备份同一份 APK 与版本元数据，GitHub Release 不参与 R2 的三版本清理。
 - **版本与 Tag 规则**：每次已授权的推送递增 `versionName` 补丁位与 `versionCode`，并创建同名附注 Tag 一并推送。
 - **下载渠道**：从 [R2 更新清单](https://pub-6ad0b56b335240c696618fb628a56ef5.r2.dev/updates/latest.json) 的 `apkUrl` 下载最新 APK；也可在 **Actions → 成功运行 → Artifacts** 下载（保留 14 天）。R2 上传并校验成功后只保留最近 3 个版本。旧版需手动安装首个 R2 版本一次。
 - **历史签名说明**：本地与 CI 自 0.5.4 起共用固定签名，可连续覆盖升级；更早版本使用已丢失的临时签名，无法保证直接覆盖，请在验证数据备份前保留旧应用。

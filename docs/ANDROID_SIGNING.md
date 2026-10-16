@@ -17,7 +17,8 @@ keyPassword=<私钥密码>
 目录权限设为 `700`，密钥及配置文件设为 `600`。用 Java Properties 格式转义特殊字符。使用 JDK 17 构建：
 
 ```sh
-./gradlew :app:assembleDebug :app:assembleRelease
+./gradlew :app:assembleDebug
+./gradlew :app:assembleRelease -PemergeAbi=arm64-v8a
 python3 scripts/verify-apk-signing.py "$ANDROID_HOME/build-tools/34.0.0/apksigner" \
   app/build/outputs/apk/release/app-release.apk app/signing-certificate.sha256
 ```
