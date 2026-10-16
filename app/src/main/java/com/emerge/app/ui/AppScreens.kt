@@ -2,6 +2,8 @@ package com.emerge.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -14,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
@@ -38,15 +41,16 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
     onPurposeChange: (String) -> Unit = {}, selectedAppCount: Int = 0,
     now: Long = System.currentTimeMillis(), audioContent: (@Composable () -> Unit)? = null,
     semantics: List<EventSemantics> = emptyList(), onViewpointScrolling: (Boolean) -> Unit = {},
-    onPreviewReport: (CognitiveReport) -> Unit = {}) {
+    onPreviewReport: (CognitiveReport) -> Unit = {},
+    onSupplement: (com.emerge.app.monitoring.SupplementRequest) -> Unit = {}) {
     val zone = ZoneId.systemDefault()
     val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     val browsingCount = stats.visitCount
     val browsingUnknown = stats.unknownDurationRecords
-    val date = when (period) {
-        StatisticsPeriod.DAY -> today.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
-        StatisticsPeriod.HOURS24 -> "截至 " + Instant.ofEpochMilli(now).atZone(zone).format(DateTimeFormatter.ofPattern("M/d HH:mm"))
-        StatisticsPeriod.WEEK -> "${today.minusDays(6).format(DateTimeFormatter.ofPattern("M月d日"))} — ${today.format(DateTimeFormatter.ofPattern("M月d日"))}"
+    val date = when {
+        period == StatisticsPeriod.DAY -> today.format(DateTimeFormatter.ofPattern("M月d日", Locale.CHINA))
+        period.rollingHours > 0 -> "截至 " + Instant.ofEpochMilli(now).atZone(zone).format(DateTimeFormatter.ofPattern("M/d HH:mm"))
+        else -> "${today.minusDays(period.calendarDays - 1L).format(DateTimeFormatter.ofPattern("M月d日"))} — ${today.format(DateTimeFormatter.ofPattern("M月d日"))}"
     }
     var showSources by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -75,7 +79,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
             Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                 FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
                     verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(when(period) { StatisticsPeriod.DAY -> "今日观察"; StatisticsPeriod.HOURS24 -> "24 小时观察"; StatisticsPeriod.WEEK -> "七日观察" },
+                    Text(when(period) { StatisticsPeriod.DAY -> "今日观察"; StatisticsPeriod.HOURS24 -> "24 小时观察"; StatisticsPeriod.WEEK -> "七日观察"; StatisticsPeriod.HOUR -> "小时观察"; StatisticsPeriod.MONTH -> "30 天观察" },
                         style = MaterialTheme.typography.titleLarge, color = Ink)
                     MetadataText(date)
                     HelpButton("浏览统计", "作品按采集记录估算，重复打开只增加观看次数。当前有 ${stats.unidentifiedWorks} 个作品未识别。\n\n停留时长按可见区间估算，${stats.unknownDurationRecords} 条时长未统计；音频与画面文字不单独计入作品数和停留。")
@@ -116,7 +120,7 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
         timeline?.let { viewpointTimeline(it, appNames, plotHeight, onWorkScrolling = { workScrolling = it }) }
         if (rawEvents.isNotEmpty()) item(key = "analysis") {
             AnalysisCards(analysis, period, rawEvents, onAnalyze, onExport, onPurposeChange, appNames,
-                onPreviewReport = onPreviewReport)
+                onPreviewReport = onPreviewReport, onSupplement = onSupplement)
         }
         if (stats.total > 0) item(key = "source-distribution") {
             WhiteCard {
@@ -149,14 +153,15 @@ fun OverviewScreen(stats: BrowseStatistics, period: StatisticsPeriod, onPeriod: 
 
 @Composable
 private fun PeriodSelector(period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit) {
-    PojianSegmentedTabs(StatisticsPeriod.entries.map { option ->
-        when (option) {
-            StatisticsPeriod.DAY -> "今天"
-            StatisticsPeriod.HOURS24 -> "24 小时"
-            StatisticsPeriod.WEEK -> "7 天"
+    val options = listOf(StatisticsPeriod.HOUR, StatisticsPeriod.DAY, StatisticsPeriod.HOURS24,
+        StatisticsPeriod.WEEK, StatisticsPeriod.MONTH)
+    BoxWithConstraints {
+        val tabsWidth = maxOf(maxWidth, 400.dp * LocalDensity.current.fontScale.coerceAtLeast(1f))
+        Row(Modifier.horizontalScroll(rememberScrollState())) {
+            PojianSegmentedTabs(options.map { it.shortLabel }, selectedIndex = options.indexOf(period),
+                onSelect = { onPeriod(options[it]) }, modifier = Modifier.width(tabsWidth))
         }
-    }, selectedIndex = StatisticsPeriod.entries.indexOf(period),
-        onSelect = { onPeriod(StatisticsPeriod.entries[it]) })
+    }
 }
 
 @Composable

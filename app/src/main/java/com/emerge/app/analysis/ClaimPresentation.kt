@@ -17,11 +17,13 @@ data class ImpactSignal(val level: ImpactLevel, val reason: String, val evidence
 
 data class ClaimPresentation(val category: String, val viewpoint: String,
     val anxiety: ImpactSignal, val cocoon: ImpactSignal, val cognition: ImpactSignal,
-    val suggestions: List<String>) {
+    val suggestions: List<String>, val emotions: List<ContentEmotion>? = null) {
     val signals get() = listOf(anxiety, cocoon, cognition)
     fun validFor(text: String) = category in CATEGORIES && viewpoint.isNotBlank() &&
         viewpoint.length <= 48 && viewpoint !in CATEGORIES && signals.all { it.validFor(text) } &&
-        suggestions.size in 1..3 && suggestions.all { it.isNotBlank() && it.length <= 120 }
+        suggestions.size in 1..3 && suggestions.all { it.isNotBlank() && it.length <= 120 } &&
+        (emotions == null || emotions.size in 1..3 && emotions.map { it.category }.distinct().size == emotions.size &&
+            (emotions.size == 1 || emotions.none { it.category == EmotionCategory.NEUTRAL }) && emotions.all { it.validFor(text) })
     companion object {
         val CATEGORIES = setOf("教育", "生活", "求职", "就业", "体育", "健康", "消费", "科技", "家庭", "公共议题", "其他")
     }
@@ -35,6 +37,12 @@ object ClaimPresentationCodec {
             .put("reason", value.reason).put("evidence", value.evidence)
         put("anxiety", signal(value.anxiety)); put("cocoon", signal(value.cocoon)); put("cognition", signal(value.cognition))
         put("suggestions", JSONArray(value.suggestions))
+        value.emotions?.let { emotions -> put("emotions", JSONArray().apply {
+            emotions.forEach { emotion -> put(JSONObject().apply {
+                put("category", emotion.category.wire); put("level", emotion.level.wire); put("evidence", emotion.evidence)
+                emotion.trigger?.let { put("trigger", it) }
+            }) }
+        }) }
     }
     fun decode(value: JSONObject): ClaimPresentation {
         fun JSONObject.string(key: String) = get(key) as? String ?: error("Invalid presentation field")
@@ -44,9 +52,16 @@ object ClaimPresentationCodec {
         }
         val suggestions = value.getJSONArray("suggestions")
         require(suggestions.length() in 1..3)
+        val emotions = if (!value.has("emotions")) null else value.getJSONArray("emotions").let { rows ->
+            require(rows.length() in 1..3)
+            (0 until rows.length()).map { index -> rows.getJSONObject(index).let { row ->
+                ContentEmotion(EmotionCategory.parse(row.string("category")), ImpactLevel.parse(row.string("level")),
+                    row.string("evidence"), if (row.has("trigger")) row.string("trigger") else null)
+            } }
+        }
         return ClaimPresentation(value.string("category"), value.string("viewpoint"), signal("anxiety"),
             signal("cocoon"), signal("cognition"), (0 until suggestions.length()).map {
                 suggestions.get(it) as? String ?: error("Invalid suggestion")
-            })
+            }, emotions)
     }
 }

@@ -8,7 +8,15 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 
-enum class StatisticsPeriod(val label: String) { DAY("今天"), HOURS24("过去 24 小时"), WEEK("最近 7 天") }
+enum class StatisticsPeriod(val label: String, val shortLabel: String, val reviewTitle: String,
+    val calendarDays: Int = 1, val rollingHours: Int = 0) {
+    DAY("今天", "今天", "今日回顾"),
+    HOURS24("过去 24 小时", "24 小时", "24 小时回顾", rollingHours = 24),
+    WEEK("最近 7 天", "7 天", "七日回顾", calendarDays = 7),
+    HOUR("过去 1 小时", "1 小时", "小时回顾", rollingHours = 1),
+    MONTH("最近 30 天", "30 天", "30 天回顾", calendarDays = 30);
+    val dailyBuckets: Boolean get() = calendarDays > 1
+}
 data class TrendBucket(val label: String, val count: Int, val durationMillis: Long = 0,
     val unknownDurationRecords: Int = 0)
 data class AppShare(val packageName: String, val count: Int, val durationMillis: Long = 0,
@@ -26,10 +34,10 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
     val selected = events.filter { it.sourceType == "accessibility" && window.contains(it) }
     val keys = selected.zip(BrowseWorkKey.resolve(selected))
     val firstHour = Instant.ofEpochMilli(window.start).atZone(zone).truncatedTo(ChronoUnit.HOURS)
-    val count = when (period) {
-        StatisticsPeriod.DAY -> 24
-        StatisticsPeriod.WEEK -> 7
-        StatisticsPeriod.HOURS24 -> ChronoUnit.HOURS.between(firstHour,
+    val count = when {
+        period.dailyBuckets -> period.calendarDays
+        period == StatisticsPeriod.DAY -> 24
+        else -> ChronoUnit.HOURS.between(firstHour,
             Instant.ofEpochMilli(now).atZone(zone).truncatedTo(ChronoUnit.HOURS)).toInt() + 1
     }
     val bucketKeys = List(count) { mutableSetOf<String>() }
@@ -38,10 +46,10 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
     val bucketUnknown = IntArray(count)
     keys.forEach { (event, workKey) ->
         val slices = window.slices(event)
-        fun index(timestamp: Long, hour: Int) = when (period) {
-            StatisticsPeriod.DAY -> hour
-            StatisticsPeriod.WEEK -> ChronoUnit.DAYS.between(today.minusDays(6), Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()).toInt()
-            StatisticsPeriod.HOURS24 -> ChronoUnit.HOURS.between(firstHour,
+        fun index(timestamp: Long, hour: Int) = when {
+            period == StatisticsPeriod.DAY -> hour
+            period.dailyBuckets -> ChronoUnit.DAYS.between(today.minusDays(period.calendarDays - 1L), Instant.ofEpochMilli(timestamp).atZone(zone).toLocalDate()).toInt()
+            else -> ChronoUnit.HOURS.between(firstHour,
                 Instant.ofEpochMilli(timestamp).atZone(zone).truncatedTo(ChronoUnit.HOURS)).toInt()
         }
         val touched = mutableSetOf<Int>()
@@ -59,10 +67,10 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
     }
     val trend = bucketKeys.mapIndexed { index, works ->
         bucketDurations[index] = window.unionSlices(bucketSlices[index])
-        val label = when (period) {
-            StatisticsPeriod.DAY -> "${index.toString().padStart(2, '0')}:00"
-            StatisticsPeriod.WEEK -> if (index == 6) "今天" else today.minusDays(6 - index.toLong()).format(DateTimeFormatter.ofPattern("M/d"))
-            StatisticsPeriod.HOURS24 -> firstHour.plusHours(index.toLong()).format(DateTimeFormatter.ofPattern("M/d HH:mm"))
+        val label = when {
+            period == StatisticsPeriod.DAY -> "${index.toString().padStart(2, '0')}:00"
+            period.dailyBuckets -> if (index == count - 1) "今天" else today.minusDays(count - 1L - index).format(DateTimeFormatter.ofPattern("M/d"))
+            else -> firstHour.plusHours(index.toLong()).format(DateTimeFormatter.ofPattern("M/d HH:mm"))
         }
         TrendBucket(label, works.size, bucketDurations[index], bucketUnknown[index])
     }

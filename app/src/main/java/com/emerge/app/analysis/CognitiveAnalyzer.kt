@@ -50,7 +50,9 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val workStatistics: com.emerge.app.ui.BrowseStatistics? = null,
     val structuredAnalyzedRecords: Int = 0, val localFallbackRecords: Int = 0,
     val rejectedSemanticsRecords: Int = 0, val pendingAnalysisRecords: Int = 0,
-    val failedAnalysisRecords: Int = 0, val exposure: ExposureAssessment? = null)
+    val failedAnalysisRecords: Int = 0, val exposure: ExposureAssessment? = null,
+    val emotionExposure: EmotionExposureSummary = EmotionExposureSummary(),
+    val topicDigests: List<TopicDigest> = emptyList())
 
 class CognitiveAnalyzer {
     private companion object {
@@ -263,7 +265,9 @@ class CognitiveAnalyzer {
             structuredAnalyzedRecords = structuredAnalyzed, localFallbackRecords = localFallback,
             rejectedSemanticsRecords = rejectedSemantics,
             pendingAnalysisRecords = selected.count { analysisStatuses[it.id] in setOf("queued", "running") },
-            failedAnalysisRecords = selected.count { analysisStatuses[it.id] == "failed" }, exposure = exposure)
+            failedAnalysisRecords = selected.count { analysisStatuses[it.id] == "failed" }, exposure = exposure,
+            emotionExposure = EmotionExposure.analyze(events, semantics, window.start, now, zone),
+            topicDigests = TopicDigests.build(current, ordered, zone))
     }
 
     private fun clean(event: BrowseEvent): List<String> {

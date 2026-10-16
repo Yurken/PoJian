@@ -18,7 +18,7 @@ object ReportExporter {
         appendLine("基于保留的浏览记录，回顾内容与依据。")
         appendLine("生成时间：${time(report.generatedAt)}（${report.zone}）")
         appendLine("统计范围：${time(report.start)} 至 ${time(report.end)}（${report.period}）")
-        appendLine("“今天”从当天 00:00 开始，“过去24小时”为生成时刻向前24小时，“最近 7 天”从六天前 00:00 开始。")
+        appendLine("“今天”从当天 00:00 开始；“过去 1 小时”“过去 24 小时”按生成时刻回溯；“最近 7 天”“最近 30 天”分别从六天前、二十九天前 00:00 开始。")
         appendLine("分析方法：${report.method}")
         appendLine("浏览目的：${report.purpose}")
         appendLine()
@@ -60,7 +60,7 @@ object ReportExporter {
                 appendLine("记录 #${claim.eventId} | ${time(claim.timestamp)} | ${claim.packageName} | 原句：${claim.quote}")
             }
         }
-        appendLine("判定规则：回查近7天，同一议题、对象、评价维度和条件至少30次已识别接触，总体及比较范围内的明确立场识别覆盖率均至少60%，同一立场占比至少75%。不设最低天数，一天内样本充足也可判断集中。同次接触的多种立场平分权重，不要求依据重复。与前7天比较时，两期均须满足样本门槛、应用集合相同，识别覆盖率及各应用份额变化不超过20个百分点；同向占比上升至少15个百分点且多样性指数下降至少0.1才标为收窄线索。多样性为1减各立场份额平方和。跨应用要求至少2个应用各有10次已识别接触、覆盖率至少60%、同向占比至少75%。这些是未经校准的工程阈值，不是科学诊断或认知风险评分。")
+        appendLine("判定规则：回查近7天，同一议题、对象、评价维度和条件至少30次已识别接触，总体及比较范围内的明确立场识别覆盖率均至少60%，同一立场占比至少75%。一天内样本充足也可判断集中；重复提醒另须覆盖至少3天、8个已知论据作品、论据已知覆盖至少60%、重复论据作品占比至少60%，当前内容亦须有可回查的重复依据。同次接触的多种立场平分权重。与前7天比较时，两期均须满足样本门槛、应用集合相同，识别覆盖率及各应用份额变化不超过20个百分点；同向占比上升至少15个百分点且多样性指数下降至少0.1才标为收窄线索。多样性为1减各立场份额平方和。跨应用要求至少2个应用各有10次已识别接触、覆盖率至少60%、同向占比至少75%。这些是未经校准的工程阈值，不是科学诊断或认知风险评分。")
         appendLine("不满足上述规则不代表没有信息同质化；应用数量、主题集中、情绪倾向和观点一致都不能单独得出结论。时长不足或缺失时，也不能凭次数判断主要精力花在了哪里。")
         val signalLimit = if (appendixLimit == Int.MAX_VALUE) Int.MAX_VALUE else 20
         report.contentSignals.take(signalLimit).forEach {
@@ -70,10 +70,57 @@ object ReportExporter {
         if (report.contentSignals.size > signalLimit) appendLine("PDF 只列出前 $signalLimit 条，完整内容见文本报告。")
         appendLine("表达特征只描述原文措辞，不推断你的情绪、心理状态、立场或认知状况。内容价值需结合原文和依据判断。")
         appendLine()
-        appendLine("## 4. 记录来源与 24 小时分布")
+        appendLine("## 4. 主题观点")
+        var digestRemaining = appendixLimit.coerceAtLeast(0)
+        var evidenceRemaining = appendixLimit.coerceAtLeast(0)
+        if (report.topicDigests.sumOf { it.viewpoints.size } > digestRemaining)
+            appendLine("主题观点仅列出前 $digestRemaining 项，完整内容见文本报告。")
+        if (report.topicDigests.sumOf { it.viewpoints.sumOf { view -> view.evidence.size } } > evidenceRemaining)
+            appendLine("主题论据仅列出前 $evidenceRemaining 项，完整内容见文本报告。")
+        report.topicDigests.forEach { topic ->
+            if (digestRemaining <= 0) return@forEach
+            appendLine("${topic.topic} · ${topic.subject} · ${topic.workCount} 个作品")
+            val shown = topic.viewpoints.take(digestRemaining)
+            digestRemaining -= shown.size
+            shown.forEach { viewpoint ->
+                appendLine("${viewpoint.dimension} · ${viewpoint.stance} · ${viewpoint.workCount} 个作品")
+                appendLine("观点原文：${viewpoint.quote}")
+                if (viewpoint.conditions.isNotBlank()) appendLine("适用条件：${viewpoint.conditions}")
+                appendLine("对应记录：${viewpoint.observations.map { it.eventId }.distinct().joinToString { "#$it" }}")
+                val shownEvidence = viewpoint.evidence.take(evidenceRemaining)
+                evidenceRemaining -= shownEvidence.size
+                shownEvidence.forEach { evidence ->
+                    appendLine("${evidence.type.label}：${evidence.text}")
+                    appendLine("对应记录：${evidence.eventIds.joinToString { "#$it" }}")
+                    evidence.historyMatches.forEach { appendLine("历史依据 #${it.eventId}：${it.quote}") }
+                }
+            }
+        }
+        appendLine()
+        appendLine("## 5. 内容情绪")
+        val emotion = report.emotionExposure
+        appendLine("已分析 ${emotion.knownWorks} 个作品；未分析 ${emotion.unknownWorks} 个作品")
+        emotion.counts.forEach { appendLine("${it.category.label}：${it.works}/${emotion.knownWorks} 个作品") }
+        emotion.byTopic.forEach { topic ->
+            appendLine("${topic.topic}：已分析 ${topic.knownWorks}；未分析 ${topic.unknownWorks}；" +
+                topic.counts.joinToString("，") { "${it.category.label} ${it.works}" })
+        }
+        emotion.byDate.forEach { day ->
+            appendLine("${day.date}：已分析 ${day.knownWorks}；未分析 ${day.unknownWorks}；" +
+                day.counts.joinToString("，") { "${it.category.label} ${it.works}" })
+        }
+        val emotionEvidence = emotion.works.flatMap { it.emotions }.distinct()
+        if (emotionEvidence.size > appendixLimit.coerceAtLeast(0))
+            appendLine("情绪原文仅列出前 ${appendixLimit.coerceAtLeast(0)} 项，完整内容见文本报告。")
+        emotionEvidence.take(appendixLimit.coerceAtLeast(0)).forEach {
+            appendLine("记录 #${it.eventId} · ${it.category.label} · ${it.level.label}：${it.evidence}")
+            it.trigger?.let { trigger -> appendLine("诱因：$trigger") }
+        }
+        appendLine()
+        appendLine("## 6. 记录来源与 24 小时分布")
         report.sourceCounts.entries.sortedByDescending { it.value }.forEach { appendLine("${it.key}：${it.value} 条原始记录") }
         appendLine("记录来源可以是应用页面或音频转写，不等于作者、媒体或原始材料出处，不同应用和音频里的内容可能来自同一源头；上述计数包含未清洗的记录。")
-        appendLine(if (report.period.contains("7")) "以下为 7 天内同一小时的合计。" else "以下为当天 00:00 到 23:00，共 24 个小时段。")
+        appendLine("以下为${report.period}范围内同一小时的合计。")
         (0..23).forEach { hour ->
             val review = report.hourlyReviews.firstOrNull { it.hour == hour }
             val label = "${hour.toString().padStart(2, '0')}:00–${((hour + 1) % 24).toString().padStart(2, '0')}:00"
@@ -85,11 +132,11 @@ object ReportExporter {
         }
         appendLine("一条记录如果跨越多个小时（或跨天），会在每个接触到的小时里分别列出，所以各时段的条数不能直接相加；停留时长已切分，总时长不会重复。观点可通过记录编号到附录中回看原文。")
         appendLine()
-        appendLine("## 5. 建议与核查")
+        appendLine("## 7. 建议与核查")
         appendLine("先确认引用的文字来自正文、评论还是转述，核对讨论对象、时间和适用条件，再比较原始数据、反例和行动建议。主题是否集中，请结合你这一阶段的浏览目的来看。")
         appendLine("如果同一个判断反复出现，先核实它是否引用的是同一份材料；出现了新数字、新条件或新建议，不代表材料真实，也不代表你真的学到了新东西。")
         appendLine()
-        appendLine("## 6. 观点、条件与依据明细")
+        appendLine("## 8. 观点、条件与依据明细")
         var remaining = appendixLimit.coerceAtLeast(0)
         if (report.claims.size > remaining) appendLine("PDF 附录最多列出前 $remaining 个观点以控制文件大小；完整列表请导出文本报告。统计和结论仍基于全部分析结果。")
         report.groups.forEachIndexed { index, group ->
@@ -118,7 +165,7 @@ object ReportExporter {
                 appendLine()
             }
         }
-        appendLine("## 7. 方法与局限")
+        appendLine("## 9. 方法与局限")
         appendLine("方法：通过事件编号、完整原文和引用片段校验的云端分析优先用于主题、观点、讨论对象、判断维度、立场、条件与依据；无有效结果时使用本地识别，包括文字过滤、词表主题和判断句规则。历史比较与时序汇总在本机完成。")
         appendLine("新版本按连续可见的内容记录浏览；旧版本只合并同一应用 30 秒内内容相同的页面记录，音频转写片段不参与页面去重。本地相似观点阈值为 0.65；论据先核对当事对象、材料、数量单位、否定及已识别范围，再使用有限同义规范化与 0.85 字符相似度。明确独立的数量事实至多拆成 8 个原文片段，逐项检索历史并要求规范化内容一致；未拆出的条件、引用或未知语法仍按整段保留。相对月、季、年按观察时间对齐。每次最多对比最近 120 个同范围候选，未确认身份或超出比较预算的未覆盖片段保留待定。以上规则及阈值未经独立人工标注数据校准。")
         appendLine("同一记录出现的片段尚不能证明是对该观点的支撑；本方法没有判断支持或反驳的真实语义、信息真实性、来源是否独立，以及你是否认同。新增片段也不等同于实质的信息增量。")

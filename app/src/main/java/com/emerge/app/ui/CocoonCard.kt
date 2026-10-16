@@ -47,7 +47,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                 }
                 val evidence: @Composable () -> Unit = {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("观点集中度", style = MaterialTheme.typography.bodyMedium)
+                        Text("观点集中度 · 近7天", style = MaterialTheme.typography.bodyMedium)
                         if (share != null) Text("${share.subject} · ${share.dimension}", style = MaterialTheme.typography.bodySmall)
                         Text(share?.let { "${it.distribution.contacts}次接触 · ${it.distribution.days}天" } ?: unavailable,
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

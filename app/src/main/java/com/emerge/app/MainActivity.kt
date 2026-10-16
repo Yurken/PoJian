@@ -23,12 +23,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.analysis.CognitiveReport
 import com.emerge.app.monitoring.*
 import com.emerge.app.ui.*
 import com.emerge.app.ui.theme.EmergeTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private data class SupplementSelection(val request: SupplementRequest, val report: CognitiveReport,
+    val authorization: String)
 
 class MainActivity : ComponentActivity() {
     private var discoveryRequest by mutableIntStateOf(0)
@@ -61,6 +66,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val audioRuntime by audioModel.runtime.state.collectAsStateWithLifecycle()
     val audioAlert by audioModel.alert.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
+    val screenScope = rememberCoroutineScope()
     LaunchedEffect(audioAlert) { audioAlert?.let { snackbar.showSnackbar(it) } }
     val all by model.allEvents.collectAsStateWithLifecycle()
     val semantics by model.semantics.collectAsStateWithLifecycle()
@@ -98,6 +104,10 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val showCloud = false
     var deleteEvent by remember { mutableStateOf<BrowseEvent?>(null) }
     var deletePackage by remember { mutableStateOf<CaptureApp?>(null) }
+    var supplement by remember { mutableStateOf<SupplementSelection?>(null) }
+    fun supplementAuthorization(): String = MonitorPolicy.hash(
+        "${app.repository.captureGeneration}|${app.captureSettings.authorizationRevision}|" +
+            "${app.audioCoordinator.settings.authorizationRevision}")
     LaunchedEffect(discoveryRequest) {
         if (discoveryRequest > 0) { tab = 1; showRecords = false; showCaptureTools = false; showAudioRecords = false }
     }
@@ -172,9 +182,14 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.CHINA).format(java.util.Date(report.generatedAt))
                         if (pdf) pdfSaver.launch("破茧-信息环境回顾-$stamp.pdf") else textSaver.launch("破茧-信息环境回顾-$stamp.txt")
                     } }, semantics = semantics, onViewpointScrolling = { viewpointScrolling = it },
-                    onPreviewReport = model::previewReport)
+                    onPreviewReport = model::previewReport, onSupplement = { request ->
+                        if (!audioConfig.enabled) screenScope.launch { snackbar.showSnackbar("请先开启云端分析") }
+                        else analysis.report?.takeIf { !analysis.stale && !analysis.running }?.let { report ->
+                            supplement = SupplementSelection(request, report, supplementAuthorization())
+                        }
+                    })
                 tab == 1 -> MonitorDiscoverScreen(monitor, appNames, contentModifier,
-                    onRecords = { showRecords = true }, events = all)
+                    onRecords = { showRecords = true }, events = all, semantics = semantics)
                 else -> SettingsScreen(permission, enabled, count, { value ->
                     if (!value) app.audioCoordinator.stopAll()
                     model.setCapture(value)
@@ -197,6 +212,16 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
         }
     }
     reportPreview?.let { ReportFilePreview(it, model::dismissReportPreview) }
+    supplement?.let { selection ->
+        InformationSupplementPanel(selection.request, audioConfig,
+            authorizationKey = supplementAuthorization() + "|${analysis.stale}|${analysis.report?.generatedAt}|${period.name}",
+            allowLocalHttp = BuildConfig.DEBUG, isCurrent = {
+                val current = model.analysis.value
+                current.report === selection.report && !current.stale && !current.running &&
+                    current.report?.period == period.label && selection.authorization == supplementAuthorization() &&
+                    app.audioCoordinator.settings.config.value.enabled
+            }, onRequest = { app.audioCoordinator.settings.recordRequest() }, onDismiss = { supplement = null })
+    }
     audioDetailId?.let { id -> audioSessions.firstOrNull { it.id == id }?.let { session ->
         AudioSessionDetailSheet(session, onDismiss = { audioDetailId = null }, onSaveSegment = audioModel::editSegment,
             onDelete = { app.monitor.invalidate(); audioModel.deleteSession(id); audioDetailId = null },

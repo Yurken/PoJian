@@ -100,11 +100,11 @@ object ViewpointTimeline {
         report: CognitiveReport? = null, semantics: List<EventSemantics> = emptyList()): List<ViewpointBucket> {
         val window = ObservationWindow.forPeriod(period, now, zone)
         val day = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
-        val first = if (period == StatisticsPeriod.WEEK) day.minusDays(6).atStartOfDay(zone)
+        val first = if (period.dailyBuckets) day.minusDays(period.calendarDays - 1L).atStartOfDay(zone)
             else Instant.ofEpochMilli(window.start).atZone(zone).truncatedTo(ChronoUnit.HOURS)
-        val count = when (period) {
-            StatisticsPeriod.WEEK -> 7
-            StatisticsPeriod.DAY -> 24
+        val count = when {
+            period.dailyBuckets -> period.calendarDays
+            period == StatisticsPeriod.DAY -> 24
             else -> ChronoUnit.HOURS.between(first, Instant.ofEpochMilli(now).atZone(zone).truncatedTo(ChronoUnit.HOURS)).toInt() + 1
         }
         val selected = events.filter { it.sourceType == "accessibility" && window.contains(it) }
@@ -144,8 +144,8 @@ object ViewpointTimeline {
         }
         val slices = selected.associateWith(window::slices)
         return List(count) { index ->
-            val localStart = if (period == StatisticsPeriod.WEEK) first.plusDays(index.toLong()) else first.plusHours(index.toLong())
-            val localEnd = if (period == StatisticsPeriod.WEEK) localStart.plusDays(1) else localStart.plusHours(1)
+            val localStart = if (period.dailyBuckets) first.plusDays(index.toLong()) else first.plusHours(index.toLong())
+            val localEnd = if (period.dailyBuckets) localStart.plusDays(1) else localStart.plusHours(1)
             val start = maxOf(window.start, localStart.toInstant().toEpochMilli())
             val end = minOf(now, localEnd.toInstant().toEpochMilli()).coerceAtLeast(start)
             val items = if (start > end) emptyList() else works(selected.filter { event -> slices.getValue(event).any {
@@ -160,8 +160,8 @@ object ViewpointTimeline {
             val emotional = recognized.count { it.emotional }
             val score = if (recognized.size < 3) null else
                 ((60.0 * repeated + 40.0 * emotional) / recognized.size).toInt().coerceIn(0, 100)
-            val caption = if (period == StatisticsPeriod.WEEK) {
-                if (index == 6) "今天" else "${localStart.monthValue}/${localStart.dayOfMonth}"
+            val caption = if (period.dailyBuckets) {
+                if (index == count - 1) "今天" else "${localStart.monthValue}/${localStart.dayOfMonth}"
             } else localStart.hour.toString().padStart(2, '0')
             ViewpointBucket(caption, start, end, items, score, repeated, emotional)
         }

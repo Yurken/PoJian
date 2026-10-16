@@ -127,7 +127,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
         val zone = ZoneId.systemDefault()
         val day = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
         val minute = now / 60_000
-        if (day != reportDay || zone.id != reportZone || (period == StatisticsPeriod.HOURS24 && minute != reportMinute)) {
+        if (day != reportDay || zone.id != reportZone || (period.rollingHours > 0 && minute != reportMinute)) {
             reportMinute = minute
             reportDay = day
             reportZone = zone.id
@@ -145,6 +145,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun invalidate(status: String, cancelAnalysis: Boolean = true, clearReport: Boolean = true) {
         generation++
+        if (reportPreviewState.value is ReportPreviewSource.Generated) reportPreviewState.value = null
         if (cancelAnalysis) {
             analysisJob?.cancel()
             analysisJob = null
@@ -225,7 +226,11 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 // Finish generation before opening the target; invalidation can stop a pending export.
                 val bytes = withContext(Dispatchers.Default) {
-                    if (pdf) ByteArrayOutputStream().use { output -> ReportExporter.writePdf(report, output); output.toByteArray() }
+                    val computationContext = currentCoroutineContext()
+                    if (pdf) ByteArrayOutputStream().use { output ->
+                        ReportExporter.writePdf(report, output) { computationContext.ensureActive() }
+                        output.toByteArray()
+                    }
                     else ReportExporter.text(report).toByteArray(Charsets.UTF_8)
                 }
                 ensureActive()
@@ -312,7 +317,6 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun mutateHistory(success: String, removed: (List<BrowseEvent>) -> Boolean, action: suspend () -> Unit) {
         pendingMutations++
-        if (reportPreviewState.value is ReportPreviewSource.Generated) reportPreviewState.value = null
         invalidate("记录正在删除")
         viewModelScope.launch {
             try {

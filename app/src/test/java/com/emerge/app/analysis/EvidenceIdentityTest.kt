@@ -128,7 +128,8 @@ class EvidenceIdentityTest {
         val evidence = (0 until 36).map { story("当事对象$it") }
         val result = report(evidence)
         assertEquals(35, result.claims.count { it.increment == Increment.NEW })
-        assertTrue(result.exposure!!.signals.isNotEmpty())
+        assertTrue(result.exposure!!.primary!!.concentrated)
+        assertTrue(result.exposure!!.signals.isEmpty())
         assertNull(MonitorPolicy.repetition(live(evidence), now, zone))
     }
 

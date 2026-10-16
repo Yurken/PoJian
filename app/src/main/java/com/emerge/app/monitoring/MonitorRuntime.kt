@@ -37,6 +37,8 @@ private data class MonitorInput(val id: String, val packageName: String, val tex
 }
 
 private data class MonitorFrameWork(val input: MonitorInput, val completed: (Boolean) -> Unit)
+private data class ExposureSettings(val config: MonitorConfig, val enabled: Boolean,
+    val packages: Set<String>, val service: TextServiceConfig)
 
 /** Revoking one input leaves the consumer available for later authorized inputs. */
 internal class MonitorInputInvalidated : Exception("Monitoring input invalidated")
@@ -152,8 +154,13 @@ class MonitorRuntime(private val app: EmergeApplication) {
             }
         }
         scope.launch {
-            combine(app.repository.allEvents, app.repository.semantics) { rows, semantics -> rows to semantics }
-                .collect { (rows, semantics) ->
+            val settings = combine(config, app.captureSettings.enabled, app.captureSettings.allowedPackages,
+                app.audioCoordinator.settings.config) { configuration, enabled, packages, service ->
+                ExposureSettings(configuration, enabled, packages, service)
+            }
+            combine(app.repository.allEvents, app.repository.semantics, settings) { rows, semantics, configuration ->
+                Triple(rows, semantics, configuration)
+            }.collect { (rows, semantics, configuration) ->
                 val events = rows.associateBy { it.id }
                 val previous = previousEvents
                 previousEvents = events
@@ -164,34 +171,40 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 }) invalidate(clearSemantics = false)
                 textWake.trySend(Unit)
                 exposureJob?.cancel()
-                if (config.value.cocoon && app.captureSettings.enabled.value && rows.isNotEmpty()) {
+                mutableState.update { state -> state.copy(findings = state.findings.filter {
+                    when (it.kind) {
+                        "cocoon" -> configuration.enabled && configuration.service.enabled && configuration.config.cocoon
+                        "emotion" -> configuration.enabled && configuration.service.enabled && configuration.config.emotion
+                        else -> true
+                    }
+                }) }
+                val permittedRows = rows.filter { it.packageName in configuration.packages }
+                if ((configuration.config.cocoon || configuration.config.emotion) && configuration.enabled &&
+                    configuration.service.enabled && permittedRows.isNotEmpty()) {
                     exposureJob = scope.launch {
                         delay(500)
                         val analysisGeneration = app.repository.captureGeneration
                         val analysisEpoch = epoch.get()
-                        val report = CognitiveAnalyzer().analyze(rows, StatisticsPeriod.WEEK, System.currentTimeMillis(),
+                        val report = CognitiveAnalyzer().analyze(permittedRows, StatisticsPeriod.WEEK, System.currentTimeMillis(),
                             checkCancellation = { coroutineContext.ensureActive() }, semantics = semantics)
                         coroutineContext.ensureActive()
-                        if (analysisEpoch == epoch.get() && analysisGeneration == app.repository.captureGeneration && config.value.cocoon && app.captureSettings.enabled.value) {
-                            val exposure = report.exposure ?: return@launch
-                            val findings = exposure.viewpoints.zip(exposure.findings()).toMap()
-                            val signals = exposure.signals
-                            val ids = signals.map { "exposure:" + MonitorPolicy.hash(it.key) }.toSet()
+                        if (analysisEpoch == epoch.get() && analysisGeneration == app.repository.captureGeneration &&
+                            app.captureSettings.enabled.value && app.audioCoordinator.settings.config.value.enabled &&
+                            config.value == configuration.config && app.captureSettings.allowedPackages.value == configuration.packages) {
+                            val screen = state.value
+                            val findings = DerivedMonitorFindings.build(report, permittedRows, config.value,
+                                screen.currentPackage, screen.screenText, screen.contextToken)
+                            val ids = findings.map { it.id }.toSet()
                             mutableState.update { state -> state.copy(findings = state.findings.filter {
-                                it.kind != "cocoon" || it.id in ids
+                                it.kind !in setOf("cocoon", "emotion") || it.id in ids
                             }) }
-                            signals.forEach { signal ->
-                                val latest = signal.latest
-                                publish(MonitorFinding("exposure:" + MonitorPolicy.hash(signal.key), "event:${latest.eventId}",
-                                    latest.packageName, latest.timestamp, "cocoon", "concentration", latest.quote,
-                                    findings.getValue(signal).explanation, topic = "${signal.topic} · ${signal.subject} · ${signal.dimension}", contextToken =
-                                    state.value.contextToken.takeIf { state.value.currentPackage == latest.packageName &&
-                                        state.value.screenText.contains(latest.quote) }.orEmpty()))
-                            }
+                            findings.forEach(::publish)
                             prefs.edit().putString("findings", JSONArray().apply { state.value.findings.forEach { put(encode(it)) } }.toString()).apply()
                         }
                     }
-                }
+                } else mutableState.update { state -> state.copy(findings = state.findings.filter {
+                    it.kind !in setOf("cocoon", "emotion")
+                }) }
             }
         }
     }
@@ -555,6 +568,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
             put("cooldown", clean.cooldownMinutes); put("alerts", clean.dailyAlerts); put("seconds", clean.displaySeconds)
             put("interval", clean.frameIntervalSeconds); put("quiet", clean.quiet)
             put("start", clean.quietStart); put("end", clean.quietEnd); put("research", clean.researchMode)
+            put("emotion", clean.emotion)
         }.toString()).commit())
         authorizationRevision = next
         mutableConfig.value = clean
@@ -563,10 +577,12 @@ class MonitorRuntime(private val app: EmergeApplication) {
         val j = JSONObject(prefs.getString("config", "{}").orEmpty())
         MonitorConfig(j.optBoolean("bubble"), j.optBoolean("cocoon", true), j.optBoolean("realtime"), j.optBoolean("visual"),
             j.optInt("cooldown", 30), j.optInt("alerts", 6), j.optInt("seconds", 3), j.optInt("interval", 30),
-            j.optBoolean("quiet"), j.optInt("start", 22), j.optInt("end", 8), j.optBoolean("research")).bounded()
+            j.optBoolean("quiet"), j.optInt("start", 22), j.optInt("end", 8), j.optBoolean("research"),
+            j.optBoolean("emotion")).bounded()
     }.getOrDefault(MonitorConfig())
     @Synchronized fun consumeAlert(finding: MonitorFinding): Boolean {
         if (!app.captureSettings.enabled.value || finding.packageName !in app.captureSettings.allowedPackages.value) return false
+        if (finding.kind in setOf("cocoon", "emotion") && !app.audioCoordinator.settings.config.value.enabled) return false
         val today = LocalDate.now().toString(); val count = if (prefs.getString("alert_day", "") == today) prefs.getInt("alerts_used", 0) else 0
         val key = "last:" + MonitorPolicy.alertKey(finding)
         val last = prefs.getLong(key, -1).takeIf { it >= 0 }
@@ -590,5 +606,5 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 (0 until minOf(s.length(), 4)).map { n -> s.getJSONObject(n).let { WebEvidence(it.getString("url"), it.getString("title"), it.getString("quote"), it.getString("excerpt")) } },
                 topic = j.optString("topic", ""), inputKind = j.optString("input", "text"))
         } }
-    }.getOrDefault(emptyList()).filter { it.kind != "cocoon" }.let(MonitorFactResults::restore)
+    }.getOrDefault(emptyList()).filter { it.kind !in setOf("cocoon", "emotion") }.let(MonitorFactResults::restore)
 }

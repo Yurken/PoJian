@@ -164,6 +164,39 @@ class DiscoveryUiTest {
         compose.onNodeWithText("暂无核查结果").assertIsDisplayed()
     }
 
+    @Test fun contentEmotionTabKeepsFindingsSeparateAndShowsOnlyAnchoredTrigger() {
+        val quote = "岗位减少让我很担心。"
+        val emotion = repeated.copy(id = "emotion-1", kind = "emotion", verdict = "emotional_exposure",
+            claim = quote, topic = "就业 · 焦虑", explanation = "高强度 6 / 已分析 8；未知 2")
+        val event = BrowseEvent(41, "reader", emotion.capturedAt, 32, quote)
+        val unknown = ImpactSignal(ImpactLevel.UNKNOWN, "未评估", "")
+        val presentation = ClaimPresentation("就业", "岗位减少引发担忧", unknown, unknown, unknown,
+            listOf("核对原文"), listOf(ContentEmotion(EmotionCategory.ANXIETY, ImpactLevel.HIGH, quote, "岗位减少")))
+        val semantic = EventSemantics(event.id, event.visibleText, emotion.capturedAt,
+            listOf(ArgumentUnit(quote, "就业", "岗位", "数量", "减少", presentation = presentation)))
+        render(MonitorState(findings = listOf(repeated, unchecked, emotion)), events = listOf(event),
+            semantics = listOf(semantic))
+        compose.onNodeWithText("内容情绪").performClick()
+        compose.onNodeWithText("“${emotion.claim}”").assertIsDisplayed()
+        compose.onNodeWithText("“${repeated.claim}”").assertDoesNotExist()
+        compose.onNodeWithText("“${unchecked.claim}”").assertDoesNotExist()
+        compose.onNodeWithText("查看核查依据").assertDoesNotExist()
+        compose.onNodeWithText("查看原文").performClick()
+        compose.onNodeWithTag("discovery-detail").performScrollToNode(hasText("诱因"))
+        compose.onNodeWithText("诱因").assertIsDisplayed()
+        compose.onNodeWithText("岗位减少").assertIsDisplayed()
+        compose.onNodeWithTag("discovery-original-41").assertIsDisplayed()
+        compose.onNodeWithContentDescription("关闭").performClick()
+        compose.onNodeWithTag("discovery-detail").assertDoesNotExist()
+    }
+
+    @Test fun emptyContentEmotionTabHasItsOwnState() {
+        render(MonitorState(findings = listOf(repeated, unchecked)))
+        compose.onNodeWithText("内容情绪").performClick()
+        compose.onNodeWithText("暂无情绪提醒").assertIsDisplayed()
+        compose.onNodeWithText("暂无核查结果").assertDoesNotExist()
+    }
+
     private fun assertDetailClosesWithIcon(finding: MonitorFinding) {
         render(MonitorState(findings = listOf(finding)))
         openDetail(finding)
@@ -233,11 +266,12 @@ class DiscoveryUiTest {
         bitmap.recycle()
     }
 
-    private fun render(state: MonitorState, events: List<BrowseEvent> = emptyList(), uriHandler: UriHandler? = null) {
+    private fun render(state: MonitorState, events: List<BrowseEvent> = emptyList(), uriHandler: UriHandler? = null,
+        semantics: List<EventSemantics> = emptyList()) {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
             CompositionLocalProvider(LocalUriHandler provides (uriHandler ?: LocalUriHandler.current)) {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    MonitorDiscoverScreen(state, mapOf("reader" to "阅读器"), onRecords = {}, events = events)
+                    MonitorDiscoverScreen(state, mapOf("reader" to "阅读器"), onRecords = {}, events = events, semantics = semantics)
                 }
             }
         } } }

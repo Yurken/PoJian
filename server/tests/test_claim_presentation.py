@@ -16,6 +16,26 @@ def presentation():
 
 
 class PresentationContractTest(unittest.TestCase):
+    def test_emotions_are_optional_but_explicit_labels_preserve_verbatim_evidence(self):
+        value = presentation()
+        value["emotions"] = [dict(category="anxiety", level="medium", evidence=TEXT,
+                                  trigger="岗位要求相近")]
+        self.assertEqual(value, validate_presentation(value, TEXT))
+        value["emotions"][0] = dict(category="neutral", level="unknown", evidence=TEXT)
+        self.assertEqual(value, validate_presentation(value, TEXT))
+
+    def test_emotions_reject_invalid_categories_cardinality_and_foreign_anchors(self):
+        base = dict(category="anxiety", level="high", evidence=TEXT)
+        invalid = [[], [base] * 4, [base, base],
+                   [base, dict(base, category="neutral")],
+                   [dict(base, category="depression")], [dict(base, level="certain")],
+                   [dict(base, evidence="")], [dict(base, evidence="别的作品")],
+                   [dict(base, trigger="不可见的诱因")], [dict(base, trigger="")],
+                   "anxiety", None]
+        for emotions in invalid:
+            with self.subTest(emotions=emotions), self.assertRaises(ValueError):
+                validate_presentation(dict(presentation(), emotions=emotions), TEXT)
+
     def test_new_annotation_survives_monitor_protocol_and_legacy_remains_optional(self):
         claim = dict(quote=TEXT, factual=False, uncertain=False)
         source = dict(text=TEXT, kind="text")

@@ -46,7 +46,8 @@ internal fun AnalysisCards(
     onExport: (CognitiveReport, Boolean) -> Unit,
     onPurposeChange: (String) -> Unit = {},
     appNames: Map<String, String> = emptyMap(),
-    onPreviewReport: (CognitiveReport) -> Unit = {}
+    onPreviewReport: (CognitiveReport) -> Unit = {},
+    onSupplement: (com.emerge.app.monitoring.SupplementRequest) -> Unit = {}
 ) {
     var showReport by rememberSaveable(period) { mutableStateOf(false) }
     val reportScroll = rememberScrollState()
@@ -57,11 +58,7 @@ internal fun AnalysisCards(
     var editingPurpose by remember { mutableStateOf(false) }
     var purposeDraft by remember { mutableStateOf("") }
     val report = state.report?.takeIf { it.period == period.label }
-    val reviewTitle = when (period) {
-        StatisticsPeriod.WEEK -> "七日回顾"
-        StatisticsPeriod.HOURS24 -> "24 小时回顾"
-        StatisticsPeriod.DAY -> "今日回顾"
-    }
+    val reviewTitle = period.reviewTitle
     LaunchedEffect(report) {
         selectedClaims = null
         detailHour = null
@@ -186,6 +183,9 @@ internal fun AnalysisCards(
                             }
                         }
                     }
+
+                    CognitiveReportSections(report, events, onClaims = { selectedClaims = it },
+                        supplementEnabled = !state.stale && !state.running, onSupplement = onSupplement)
 
                     if (report.topicExposure.isNotEmpty() || report.topics.isNotEmpty()) {
                         WhiteCard {
@@ -315,7 +315,7 @@ internal fun AnalysisCards(
                     item {
                         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                             SheetHeading(hourRange(value),
-                                if (period == StatisticsPeriod.WEEK) "最近 7 天同一小时合计" else if (period == StatisticsPeriod.HOURS24) "过去 24 小时该小时合计" else "今天该时段") {
+                                if (period.dailyBuckets) "${period.label}同一小时合计" else if (period.rollingHours > 0) "${period.label}该小时合计" else "今天该时段") {
                                 detailHour = null
                             }
                             Text("${review?.recordCount ?: 0} 条有效记录 · ${hourDuration(review)}",

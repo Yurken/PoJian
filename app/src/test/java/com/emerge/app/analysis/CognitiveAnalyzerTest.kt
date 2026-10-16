@@ -79,7 +79,8 @@ class CognitiveAnalyzerTest {
         val report = CognitiveAnalyzer().analyze(events, StatisticsPeriod.WEEK, now, zone, semantics = semantics)
         assertEquals(1, report.observedDays)
         assertTrue(report.claims.none { it.increment == Increment.REPEATED })
-        assertTrue(report.exposure!!.signals.isNotEmpty())
+        assertTrue(report.exposure!!.primary!!.concentrated)
+        assertTrue(report.exposure!!.signals.isEmpty())
         assertTrue(report.findings.first().eventIds.isNotEmpty())
     }
     @Test fun sameDayConcentrationIsNotCalledACocoon() {

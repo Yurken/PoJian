@@ -17,7 +17,8 @@ data class ViewpointExposure(val key: String, val topic: String, val subject: St
     val stance: String, val distribution: ExposureDistribution, val share: Double,
     val previousShare: Double?, val diversityChange: Double?, val alignedApps: Int,
     val concentrated: Boolean, val latest: ClaimObservation, val eventIds: List<Long>,
-    val sufficient: Boolean = distribution.sufficient) {
+    val sufficient: Boolean = distribution.sufficient,
+    val longitudinal: LongitudinalEvidenceAssessment = LongitudinalEvidenceAssessment()) {
     val shareChange: Double? get() = previousShare?.let { share - it }
     val narrowing: Boolean get() = concentrated && (shareChange ?: 0.0) >= .15 && (diversityChange ?: 0.0) <= -.1
     val title: String get() = when {
@@ -36,7 +37,7 @@ data class ExposureAssessment(val start: Long, val end: Long, val topics: Exposu
     val primary: ViewpointExposure? get() = viewpoints.filter { topics.sufficient && it.sufficient }
         .sortedWith(compareByDescending<ViewpointExposure> { it.concentrated }
             .thenByDescending { it.distribution.contacts }.thenBy { it.key }).firstOrNull()
-    val signals: List<ViewpointExposure> get() = viewpoints.filter { it.concentrated }
+    val signals: List<ViewpointExposure> get() = viewpoints.filter { it.concentrated && it.longitudinal.eligible }
     fun findings(): List<ObservationFinding> = viewpoints.map { view ->
         val change = view.shareChange?.let { "；较前7天${signedPoints(it)}个百分点" }.orEmpty()
         val diversity = view.diversityChange?.let {
@@ -55,7 +56,7 @@ private fun signedPoints(value: Double) = String.format(Locale.CHINA, "%+.1f", v
 
 /** Sample size gates concentration; elapsed days are descriptive and only windows gate trends. */
 object ExposureAnalyzer {
-    private data class Contact(val key: String, val at: Long, val packageName: String,
+    private data class Contact(val key: String, val workKey: String, val at: Long, val packageName: String,
         val claims: MutableList<ClaimObservation> = mutableListOf(), val topics: MutableSet<String> = linkedSetOf())
     private data class Vote(val contact: Contact, val values: Set<String>)
     private data class Scope(val topic: String, val subject: String, val dimension: String, val conditions: String)
@@ -82,7 +83,7 @@ object ExposureAnalyzer {
             // scrolling through many distinct works in one sitting must still count those works.
             val key = "${date(event.timestamp)}|${resolved[index]}"
             eventKeys[event.id] = key
-            contacts.getOrPut(key) { Contact(key, event.timestamp, event.packageName) }
+            contacts.getOrPut(key) { Contact(key, resolved[index], event.timestamp, event.packageName) }
         }
         // Multimodal samples inherit an explicitly bound work; an audio session is not a platform work.
         events.filter { it.sourceType in setOf("screen_ocr", "visual_model", "audio_playback") }.forEach { event ->
@@ -154,6 +155,7 @@ object ExposureAnalyzer {
         }
         val currentScopes = indexedVotes(current)
         val previousScopes = indexedVotes(previous)
+        val workByEvent = eventKeys.mapValues { (_, key) -> contacts.getValue(key).workKey }
         val viewpoints = currentScopes.mapNotNull { (key, votes) ->
             checkCancellation()
             val dist = distribution(votes)
@@ -170,12 +172,15 @@ object ExposureAnalyzer {
                 SemanticFieldKeys.stance(it.stance, it.subject, it.dimension) == dominant.key }
             val latest = members.maxByOrNull { it.timestamp } ?: return@mapNotNull null
             val identity = listOf(key.topic, key.subject, key.dimension, key.conditions).joinToString("") { "${it.length}:$it" }
+            val longitudinal = LongitudinalEvidence.assess(
+                votes.flatMap { it.contact.claims }.filter { scope(it) == key },
+                claims.filter { scope(it) == key }, workByEvent, dominant.key, zone, checkCancellation)
             ViewpointExposure(identity, latest.topic, latest.subject, latest.dimension, latest.stance, dist, dominant.value,
                 if (historyComparable) old.shares[dominant.key] ?: 0.0 else null,
                 if (historyComparable) dist.diversity - old.diversity else null, alignedApps,
                 classified.sufficient && topics.sufficient && dist.sufficient && dominant.value >= .75,
                 latest, members.sortedByDescending { it.timestamp }.map { it.eventId }.distinct().take(8),
-                classified.sufficient && topics.sufficient && dist.sufficient)
+                classified.sufficient && topics.sufficient && dist.sufficient, longitudinal)
         }.sortedWith(compareByDescending<ViewpointExposure> { it.concentrated }
             .thenByDescending { it.distribution.contacts }.thenBy { it.key })
         return ExposureAssessment(start, now, topics, leadingTopic, topicChange, viewpoints,

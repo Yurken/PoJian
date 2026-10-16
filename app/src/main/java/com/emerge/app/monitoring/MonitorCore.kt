@@ -30,7 +30,8 @@ data class MonitorConfig(
     val quiet: Boolean = false,
     val quietStart: Int = 22,
     val quietEnd: Int = 8,
-    val researchMode: Boolean = false
+    val researchMode: Boolean = false,
+    val emotion: Boolean = false
 ) {
     fun bounded() = copy(cooldownMinutes = cooldownMinutes.coerceIn(5, 180),
         dailyAlerts = dailyAlerts.coerceIn(0, 30), displaySeconds = displaySeconds.coerceIn(2, 8),
@@ -61,6 +62,7 @@ data class MonitorFinding(
         "not_checked" -> "未完成核查"
         "repetition" -> "观点与依据重复线索"
         "concentration" -> "观点集中线索"
+        "emotional_exposure" -> "内容情绪集中"
         else -> "待核查"
     }
 }
@@ -81,7 +83,7 @@ object MonitorPolicy {
         else -> hour >= config.quietStart || hour < config.quietEnd
     }
     fun alertKey(finding: MonitorFinding) = hash(finding.kind + "|" +
-        if (finding.kind == "cocoon") finding.topic else normalized(finding.claim))
+        if (finding.kind in setOf("cocoon", "emotion")) finding.topic else normalized(finding.claim))
 
     /** A completed result for an earlier screen must never appear as a verdict on the next screen. */
     fun mayAlert(finding: MonitorFinding, config: MonitorConfig, currentToken: String,
@@ -92,6 +94,7 @@ object MonitorPolicy {
         if (lastAlertAt != null && (now < lastAlertAt || now - lastAlertAt < config.cooldownMinutes * 60_000L)) return false
         return when (finding.kind) {
             "cocoon" -> config.cocoon && !config.researchMode && finding.verdict == "concentration"
+            "emotion" -> config.emotion && !config.researchMode && finding.verdict == "emotional_exposure"
             "fact" -> config.realtime && finding.verdict == "contradicted" &&
                 finding.sources.isNotEmpty() && finding.sources.all { it.valid() }
             else -> false

@@ -53,7 +53,7 @@ class CocoonUiTest {
             }
         }
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("cocoon-card"))
-        compose.onNodeWithText("观点集中度").assertIsDisplayed()
+        compose.onNodeWithText("观点集中度 · 近7天").assertIsDisplayed()
         compose.onNodeWithText("信息视野 · 今天").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("60.0%")
         compose.onNodeWithText("30次接触 · 1天").assertIsDisplayed()

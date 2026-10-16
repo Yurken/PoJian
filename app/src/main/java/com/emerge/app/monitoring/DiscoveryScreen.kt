@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.LayoutDirection
 import com.emerge.app.R
+import com.emerge.app.analysis.EmotionEvidence
+import com.emerge.app.analysis.EventSemantics
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.ui.MetadataText
 import com.emerge.app.ui.QuoteBlock
@@ -52,25 +54,26 @@ import java.util.Locale
 
 @Composable
 fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, modifier: Modifier = Modifier,
-    onRecords: () -> Unit, events: List<BrowseEvent> = emptyList()) {
+    onRecords: () -> Unit, events: List<BrowseEvent> = emptyList(), semantics: List<EventSemantics> = emptyList()) {
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableIntStateOf(0) }
     val repetitions = state.findings.filter { it.kind == "cocoon" }
     val facts = state.findings.filter { it.kind == "fact" }
-    val displayed = if (filter == 0) repetitions else facts
+    val emotions = state.findings.filter { it.kind == "emotion" }
+    val displayed = when (filter) { 0 -> repetitions; 1 -> facts; else -> emotions }
     // Resolve by identity on every update: revised results and deleted entries never leave stale sheets.
     val selected = state.findings.firstOrNull { it.id == selectedId }
     LaunchedEffect(selected) { if (selected == null) selectedId = null }
     Column(modifier.fillMaxSize()) {
-        PojianSegmentedTabs(listOf("重复观点", "事实核查"), filter, onSelect = { filter = it },
-            counts = listOf(repetitions.size, facts.size),
+        PojianSegmentedTabs(listOf("重复观点", "事实核查", "内容情绪"), filter, onSelect = { filter = it },
+            counts = listOf(repetitions.size, facts.size, emotions.size),
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("monitor-discovery-list"),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (state.pending > 0) item { MetadataText("正在处理 ${state.pending} 项") }
             if (displayed.isEmpty()) item {
-                Text(if (filter == 0) "暂未发现重复观点" else "暂无核查结果",
+                Text(when (filter) { 0 -> "暂未发现重复观点"; 1 -> "暂无核查结果"; else -> "暂无情绪提醒" },
                     style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(vertical = 24.dp))
             }
             items(displayed.sortedByDescending { it.capturedAt }, key = { it.id }) { finding ->
@@ -80,7 +83,7 @@ fun MonitorDiscoverScreen(state: MonitorState, appNames: Map<String, String>, mo
         }
     }
     selected?.let { finding ->
-        DiscoveryDetail(finding, events, appNames, onDismiss = { selectedId = null },
+        DiscoveryDetail(finding, events, appNames, semantics, onDismiss = { selectedId = null },
             onRecords = { selectedId = null; onRecords() })
     }
 }
@@ -147,7 +150,7 @@ private fun DiscoveryCard(finding: MonitorFinding, appNames: Map<String, String>
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(if (repetition) "查看原文与对比" else "查看核查依据",
+                Text(when (finding.kind) { "cocoon" -> "查看原文与对比"; "emotion" -> "查看原文"; else -> "查看核查依据" },
                     modifier = Modifier.weight(1f), color = scheme.primary,
                     style = MaterialTheme.typography.labelLarge)
                 Spacer(Modifier.width(12.dp))
@@ -163,8 +166,9 @@ private fun DiscoveryCard(finding: MonitorFinding, appNames: Map<String, String>
 private fun DiscoveryCardMetadata(finding: MonitorFinding, appNames: Map<String, String>) {
     FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween,
         verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (finding.kind == "cocoon") {
-            Text(finding.topic.ifBlank { "重复观点" }, style = MaterialTheme.typography.labelMedium,
+        if (finding.kind in setOf("cocoon", "emotion")) {
+            Text(finding.topic.ifBlank { if (finding.kind == "emotion") discoveryVerdict(finding.verdict) else "重复观点" },
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.CenterVertically))
         } else {
@@ -183,24 +187,33 @@ private fun discoveryVerdict(verdict: String): String = when (verdict) {
     "insufficient" -> "证据不足"
     "opinion" -> "个人观点"
     "not_checked" -> "尚未核查"
+    "emotional_exposure" -> "内容情绪"
     else -> "待核查"
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, appNames: Map<String, String>,
-    onDismiss: () -> Unit, onRecords: () -> Unit) {
+    semantics: List<EventSemantics>, onDismiss: () -> Unit, onRecords: () -> Unit) {
     val repetition = finding.kind == "cocoon"
     val originals = remember(finding, events) {
         events.filter { it.packageName == finding.packageName || repetition }.filter {
-            finding.claim.isNotBlank() && it.visibleText.contains(finding.claim)
+            finding.claim.isNotBlank() && it.visibleText.contains(finding.claim) &&
+                (finding.kind != "emotion" || it.timestamp <= finding.capturedAt)
         }.sortedByDescending { it.timestamp }
     }
     val uri = LocalUriHandler.current
+    val emotionEvidence = remember(finding, events, semantics) {
+        DiscoveryEmotionEvidence.resolve(finding, events, semantics)
+    }
     var linkError by remember(finding.id) { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss,
         containerColor = if (repetition) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.background,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        if (finding.kind == "emotion") {
+            EmotionDetailContent(finding, originals, emotionEvidence, appNames, onDismiss, onRecords)
+            return@ModalBottomSheet
+        }
         if (!repetition) {
             FactCheckDetailContent(finding, originals, appNames, linkError,
                 onDismiss = onDismiss, onRecords = onRecords,
@@ -252,6 +265,37 @@ private fun DiscoveryDetail(finding: MonitorFinding, events: List<BrowseEvent>, 
                 if (linkError) item { Text("无法打开链接，请稍后重试", color = MaterialTheme.colorScheme.error) }
                 item { PojianTextButton(onClick = onRecords) { Text("全部记录") } }
             }
+        }
+    }
+}
+
+@Composable
+private fun EmotionDetailContent(finding: MonitorFinding, originals: List<BrowseEvent>,
+    evidence: List<EmotionEvidence>, appNames: Map<String, String>, onDismiss: () -> Unit, onRecords: () -> Unit) {
+    Column(Modifier.fillMaxWidth().fillMaxHeight(.9f)) {
+        DiscoverySheetHeader(discoveryVerdict(finding.verdict), onDismiss)
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("discovery-detail"),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            item {
+                FactDetailCard {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (finding.topic.isNotBlank()) Text(finding.topic, style = MaterialTheme.typography.titleMedium)
+                        SelectionContainer { Text(finding.claim, style = MaterialTheme.typography.bodyLarge) }
+                        if (finding.explanation.isNotBlank()) Text(finding.explanation,
+                            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            item {
+                Text(if (originals.isEmpty()) "对应原文暂不可用" else "包含这句话的记录 · ${originals.size} 条",
+                    style = MaterialTheme.typography.titleMedium, modifier = Modifier.semantics { heading() })
+            }
+            items(originals, key = { it.id }) { event ->
+                DiscoveryOriginalRecord(finding, event, appNames, repetition = false,
+                    emotions = evidence.filter { it.eventId == event.id })
+            }
+            item { PojianTextButton(onClick = onRecords) { Text("全部记录") } }
         }
     }
 }
@@ -363,7 +407,8 @@ private fun DiscoverySourceCard(source: WebEvidence, onOpen: () -> Unit) {
 
 @Composable
 private fun DiscoveryOriginalRecord(finding: MonitorFinding, event: BrowseEvent, appNames: Map<String, String>,
-    repetition: Boolean, first: Boolean = true, last: Boolean = true) {
+    repetition: Boolean, first: Boolean = true, last: Boolean = true,
+    emotions: List<EmotionEvidence> = emptyList()) {
     var expanded by rememberSaveable(finding.id, event.id) { mutableStateOf(false) }
     val scheme = MaterialTheme.colorScheme
     val lineColor = scheme.outlineVariant
@@ -387,7 +432,14 @@ private fun DiscoveryOriginalRecord(finding: MonitorFinding, event: BrowseEvent,
             "${appNames[event.packageName] ?: event.packageName} · ${discoveryTime(event.timestamp)}")
     }
     val original: @Composable () -> Unit = {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(if (emotions.isEmpty()) 0.dp else 8.dp)) {
+            emotions.forEach { emotion ->
+                MetadataText("${emotion.category.label} · ${emotion.level.label}")
+                emotion.trigger?.let { trigger ->
+                    MetadataText("诱因")
+                    SelectionContainer { Text(trigger, style = MaterialTheme.typography.bodyMedium) }
+                }
+            }
             AudioSourceContent(event.sourceType.startsWith("audio_")) {
                 SelectionContainer {
                     Text(highlighted, style = MaterialTheme.typography.bodyMedium,
