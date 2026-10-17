@@ -184,7 +184,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                         else -> setRecording(!enabled)
                     }
                 }, onFactCheck = if (tab == 0) ({ showFindings = true }) else null,
-                findingCount = monitor.findings.size)
+                findingCount = monitor.findings.size, showRecording = tab != 0)
         }, bottomBar = {
         PojianNavigationBar(titles, selectedIndex = tab, onSelect = { index ->
             tab = index; showRecords = false; showCaptureTools = false; showAudioRecords = false

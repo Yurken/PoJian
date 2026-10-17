@@ -32,7 +32,7 @@ private val periodLabels = listOf("24H", "7D", "30D")
 @Composable
 internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit,
     active: Boolean, status: String, onRecording: () -> Unit, modifier: Modifier = Modifier,
-    onFactCheck: (() -> Unit)? = null, findingCount: Int = 0) {
+    onFactCheck: (() -> Unit)? = null, findingCount: Int = 0, showRecording: Boolean = true) {
     val scheme = MaterialTheme.colorScheme
     val titleStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
     val controlStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
@@ -43,7 +43,7 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
     }
     val titleWidth = textWidth(title, true) + 42.dp
     val periodsWidth = periodLabels.map { textWidth(it) + 16.dp }.reduce { a, b -> a + b } + 8.dp
-    val statusWidth = textWidth(status) + 38.dp
+    val statusWidth = if (showRecording) textWidth(status) + 38.dp else 0.dp
     val factCheckWidth = if (onFactCheck == null) 0.dp else textWidth("事实核查") + 34.dp +
         if (findingCount > 0) textWidth("$findingCount") + 12.dp else 0.dp
     val brand: @Composable () -> Unit = {
@@ -78,7 +78,7 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
     val actions: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             onFactCheck?.let { SwissFactCheckPill(findingCount, it) }
-            recording()
+            if (showRecording) recording()
         }
     }
     Surface(modifier, color = scheme.surface, tonalElevation = 0.dp) {
