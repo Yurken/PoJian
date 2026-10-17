@@ -2,6 +2,9 @@ package com.emerge.app.monitoring
 
 import com.emerge.app.analysis.*
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.capture.VisibilityInterval
+import com.emerge.app.capture.VisibilityIntervals
+import com.emerge.app.capture.VisibilityRegion
 import com.emerge.app.ui.StatisticsPeriod
 import java.time.Instant
 import java.time.ZoneId
@@ -19,8 +22,11 @@ class DerivedMonitorFindingsTest {
     private fun fixture(newLatest: Boolean = false, lowLatest: Boolean = false): Fixture {
         val events = List(30) { index ->
             val value = if (newLatest && index == 29) proof.replace("24%", "25%") else proof
-            BrowseEvent(index + 1L, "reader", now - (2 - index / 10) * 86_400_000L - (9 - index % 10) * 60_000L - 30_000,
-                32, "$quote，因为$value。$emotionalQuote。", sampleCount = 1, workKey = "post-$index")
+            val at = now - (2 - index / 10) * 86_400_000L - (10 - index % 10) * 4 * 60_000L
+            BrowseEvent(index + 1L, "reader", at, 32, "$quote，因为$value。$emotionalQuote。", sampleCount = 2,
+                workKey = "post-$index", endTimestamp = at + 4 * 60_000L, durationMillis = 4 * 60_000L,
+                visibilityIntervals = VisibilityIntervals.encode(listOf(VisibilityInterval(at, at + 4 * 60_000L,
+                    4 * 60_000L, VisibilityRegion.MAIN))))
         }
         val semantics = events.map { event ->
             val presentation = ClaimPresentation("求职", "岗位变化", unknown, unknown, unknown, listOf("核对岗位要求"),

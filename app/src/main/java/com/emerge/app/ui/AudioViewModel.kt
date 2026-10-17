@@ -61,7 +61,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
             if (state.isDownloading) "中文语音模型约 31 MB，下载后离线转写" else state.error ?: "中文语音模型约 31 MB，下载后离线转写")
         val task = when {
             preparing -> AudioTaskUiState(AudioTaskPhase.PREPARING, "正在准备")
-            state.isCapturing -> AudioTaskUiState(AudioTaskPhase.CAPTURING, state.status, partialText = text, elapsedMillis = state.elapsedMillis)
+            state.isCapturing -> AudioTaskUiState(AudioTaskPhase.CAPTURING, state.status, partialText = text,
+                elapsedMillis = state.elapsedMillis, audioLevels = state.audioLevels)
             state.isImporting -> AudioTaskUiState(AudioTaskPhase.TRANSCRIBING, state.status, partialText = text, elapsedMillis = state.elapsedMillis)
             else -> null
         }

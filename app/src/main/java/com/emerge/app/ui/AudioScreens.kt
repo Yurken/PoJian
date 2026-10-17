@@ -63,7 +63,8 @@ data class AudioTaskUiState(
     val title: String = "",
     val progress: Float? = null,
     val partialText: String = "",
-    val elapsedMillis: Long = 0
+    val elapsedMillis: Long = 0,
+    val audioLevels: List<Float> = emptyList()
 )
 
 data class AudioUiState(

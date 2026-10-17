@@ -27,6 +27,7 @@ class FixedProvider:
             "excerpt": "研究调查2025年职业培训毕业生。结果仅适用于被调查地区，不能推广到全国。"}]
         self.available = available
         self.calls = []
+        self.model_calls = []
 
     def retrieval_available(self):
         return self.available
@@ -35,8 +36,54 @@ class FixedProvider:
         self.calls.append((query, deadline))
         return self.rows
 
+    def model(self, system, payload, deadline):
+        self.model_calls.append((system, payload, deadline))
+        return {"selections": [{"candidate": row["id"], "paragraph": 0, "kind": "condition",
+            "novel_evidence": row["paragraphs"][0][:200]} for row in payload["candidates"][:4]]}
+
 
 class SupplementTests(unittest.TestCase):
+    def test_semantic_selection_excludes_paraphrase_and_selects_missing_conditions(self):
+        repeated = "学习职业技能有助于找到工作。"
+        condition = "研究仅纳入本地制造业岗位，未覆盖服务业和外地毕业生。"
+        provider = FixedProvider([{"url": "https://example.org/repeated", "title": "报道", "excerpt": repeated},
+            {"url": "https://example.org/methods", "title": "方法", "excerpt": repeated + "\n\n" + condition}])
+        with patch.object(provider, "model", return_value={"selections": [{"candidate": 1, "paragraph": 1,
+                "kind": "condition", "novel_evidence": condition}]}) as model:
+            result = supplement.retrieve(supplement.validate_request(request_data()), provider)
+        self.assertEqual([condition], [row["quote"] for row in result["sources"]])
+        self.assertEqual(request_data()["known"], model.call_args.args[1]["known"])
+        self.assertEqual(provider.calls[0][1], model.call_args.args[2])
+
+    def test_no_semantic_novelty_returns_no_sources(self):
+        provider = FixedProvider()
+        with patch.object(provider, "model", return_value={"selections": []}):
+            result = supplement.retrieve(supplement.validate_request(request_data()), provider)
+        self.assertEqual("empty", result["status"])
+        self.assertEqual([], result["sources"])
+
+    def test_new_evidence_cannot_be_a_verbatim_known_claim_inside_a_longer_paragraph(self):
+        known = request_data()["known"][0]["quote"]
+        provider = FixedProvider([{"url": "https://example.org/a", "title": "资料", "excerpt": known + "。仅限本地岗位。"}])
+        with patch.object(provider, "model", return_value={"selections": [{"candidate": 0, "paragraph": 0,
+                "kind": "fact", "novel_evidence": known}]}):
+            with self.assertRaises(legacy.UpstreamError):
+                supplement.retrieve(supplement.validate_request(request_data()), provider)
+
+    def test_unverifiable_model_output_fails_without_keyword_fallback(self):
+        provider = FixedProvider()
+        invalid = [None, {}, {"selections": [{"candidate": 99, "paragraph": 0, "kind": "fact", "novel_evidence": "x"}]},
+            {"selections": [{"candidate": True, "paragraph": 0, "kind": "fact", "novel_evidence": "x"}]},
+            {"selections": [{"candidate": 0, "paragraph": 0, "kind": "opinion", "novel_evidence": "x"}]},
+            {"selections": [{"candidate": 0, "paragraph": 0, "kind": "fact", "novel_evidence": "编造的事实"}]}]
+        for response in invalid:
+            with self.subTest(response=response), patch.object(provider, "model", return_value=response):
+                with self.assertRaises(legacy.UpstreamError):
+                    supplement.retrieve(supplement.validate_request(request_data()), provider)
+        with patch.object(provider, "model", side_effect=legacy.UpstreamError("model unavailable")):
+            with self.assertRaises(legacy.UpstreamError):
+                supplement.retrieve(supplement.validate_request(request_data()), provider)
+
     def test_validates_bounded_input_and_retains_complete_conditions(self):
         request = supplement.validate_request(request_data())
         self.assertEqual("2025年毕业生", request["conditions"])
@@ -97,7 +144,7 @@ class SupplementTests(unittest.TestCase):
         parser.feed("<article>" + ("<p>" + paragraph + "</p>") * 50 + "</article>")
         body = parser.text()
         self.assertEqual(50, len(body.split("\n\n")))
-        self.assertEqual(paragraph, supplement._quote(body, supplement.validate_request(request_data())))
+        self.assertEqual([paragraph], supplement._paragraphs(body, supplement.validate_request(request_data())))
 
 
 class ExternalPageSafetyTests(unittest.TestCase):

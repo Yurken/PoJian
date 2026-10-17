@@ -150,6 +150,13 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 return
             }
             // Check the active package before traversing any visible text or descriptions.
+            val privacy = PagePrivacyGuard.inspect(root, Rect().also(root::getBoundsInScreen))
+            if (privacy.blockText) {
+                sessions.reset()
+                monitorBridge?.blockPrivatePage()
+                app.captureDiagnostics.update { it.copy(lastCheck = now, result = "隐私页面，已跳过") }
+                return
+            }
             val identityNodes = mutableListOf<IdentityNode>()
             val text = extractText(root, identityNodes)
             // Page structure and identity still need gallery/follow controls, even when prose excludes them.

@@ -209,7 +209,7 @@ internal fun LocalPrivacyStatusCard(embedded: Boolean = false) {
     val details: @Composable ColumnScope.() -> Unit = {
         SettingsDataRow("密码与输入框", "自动跳过")
         SettingsHairline()
-        SettingsDataRow("支付页面识别", "未接入")
+        SettingsDataRow("支付页面识别", "自动跳过")
         SettingsHairline()
         SettingsDataRow("保存的令牌与任务队列", "AES-GCM")
         SettingsHairline()

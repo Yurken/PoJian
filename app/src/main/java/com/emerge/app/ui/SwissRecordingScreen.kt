@@ -1,6 +1,5 @@
 package com.emerge.app.ui
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -42,8 +41,6 @@ import com.emerge.app.capture.CaptureStatus
 import com.emerge.app.capture.PlatformTextCleaner
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.data.contentText
-import kotlin.math.abs
-import kotlin.math.sin
 
 /** Controls observe the existing recorder and capture scope; no separate recording state is stored. */
 @Composable
@@ -359,7 +356,7 @@ private fun RecordingTranscriptStream(state: AudioUiState, sessions: List<AudioS
     WhiteCard(Modifier.testTag("recording-transcript-stream")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("实时语音转写", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            RecordingActivity(active)
+            RecordingActivity(active, state.task?.audioLevels.orEmpty())
         }
         state.task?.partialText?.takeIf { it.isNotBlank() }?.let {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -392,22 +389,15 @@ private fun RecordingTranscriptStream(state: AudioUiState, sessions: List<AudioS
 
 private fun appsLabel(packageName: String): String = platformName(packageName)
 
-/** Decorative recording activity, deliberately unrelated to measured sound amplitude. */
+/** PCM measurements only; silence and inactive capture have zero height. */
 @Composable
-private fun RecordingActivity(active: Boolean) {
-    val motionEnabled = rememberSystemMotionEnabled()
+private fun RecordingActivity(active: Boolean, levels: List<Float>) {
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
-    val animate = active && motionEnabled && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
-    val phase = if (animate) {
-        val transition = rememberInfiniteTransition(label = "recording-activity")
-        val value by transition.animateFloat(0f, 6.2832f,
-            infiniteRepeatable(tween(1200, easing = LinearEasing)), label = "recording-wave")
-        value
-    } else 0f
+    val showLevels = active && lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     val color = if (active) Ink else MaterialTheme.colorScheme.outline
     Canvas(Modifier.size(36.dp, 24.dp)) {
         repeat(5) { index ->
-            val fraction = if (animate) .3f + .65f * abs(sin(phase + index)) else .25f
+            val fraction = if (showLevels) levels.getOrNull(index)?.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f else 0f
             val x = size.width * (index + .5f) / 5
             drawLine(color, Offset(x, size.height * (1 - fraction) / 2),
                 Offset(x, size.height * (1 + fraction) / 2), 2.dp.toPx(), StrokeCap.Round)

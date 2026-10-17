@@ -2,6 +2,9 @@ package com.emerge.app.monitoring
 
 import com.emerge.app.analysis.*
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.capture.VisibilityInterval
+import com.emerge.app.capture.VisibilityIntervals
+import com.emerge.app.capture.VisibilityRegion
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -12,8 +15,12 @@ class EmotionAlertPolicyTest {
     private data class Fixture(val summary: EmotionExposureSummary, val events: List<BrowseEvent>)
     private fun fixture(count: Int = 8, minutes: Long = 5, known: Int = count, high: Int = known,
         category: EmotionCategory = EmotionCategory.ANXIETY): Fixture {
-        val events = List(count) { index -> BrowseEvent(index + 1L, "reader", start + index * minutes * 60_000,
-            32, text, workKey = "post-$index") }
+        val events = List(count) { index ->
+            val at = start + index * minutes * 60_000
+            val end = at + minutes * 60_000
+            BrowseEvent(index + 1L, "reader", at, 32, text, workKey = "post-$index", sampleCount = 2,
+                durationMillis = end - at, endTimestamp = end, visibilityIntervals = VisibilityIntervals.encode(
+                    listOf(VisibilityInterval(at, end, end - at, VisibilityRegion.MAIN)))) }
         val works = events.mapIndexed { index, event -> EmotionWorkExposure(BrowseWorkKey.of(event), listOf(event.id),
             listOf("2026-10-16"), listOf("求职"), if (index < known) listOf(EmotionEvidence(event.id, category,
                 if (index < high) ImpactLevel.HIGH else ImpactLevel.LOW, quote)) else emptyList()) }
@@ -35,7 +42,7 @@ class EmotionAlertPolicyTest {
         assertEquals((1L..8L).toList(), result.eventIds)
         assertEquals(listOf(quote), result.evidence.map { it.evidence }.distinct())
         assertEquals(start, result.earliest)
-        assertEquals(start + 35 * 60_000, result.latest)
+        assertEquals(start + 40 * 60_000, result.latest)
     }
 
     @Test fun onlyFourNegativeCategoriesCanCreateAlerts() {
@@ -64,7 +71,7 @@ class EmotionAlertPolicyTest {
     }
 
     @Test fun aShortBurstOrLateResamplingOfOneWorkCannotManufactureDuration() {
-        assertTrue(assess(fixture(minutes = 4)).isEmpty())
+        assertTrue(assess(fixture(minutes = 3)).isEmpty())
         val sample = fixture(minutes = 1)
         val revisit = sample.events.first().copy(id = 99, timestamp = start + 60 * 60_000)
         val first = sample.summary.works.first()
@@ -72,6 +79,43 @@ class EmotionAlertPolicyTest {
             emotions = first.emotions + first.emotions.single().copy(eventId = 99))
         assertTrue(EmotionAlertPolicy.assess(sample.summary.copy(works = listOf(duplicated) + sample.summary.works.drop(1)),
             sample.events + revisit).isEmpty())
+    }
+
+    @Test fun separatedVisitsAndUnknownDurationsCannotManufactureContinuousExposure() {
+        val sample = fixture()
+        val scattered = sample.events.mapIndexed { index, event ->
+            val offset = index * 60 * 60_000L
+            event.copy(timestamp = event.timestamp + offset, endTimestamp = event.endTimestamp + offset,
+                visibilityIntervals = VisibilityIntervals.encode(VisibilityIntervals.decode(event.visibilityIntervals!!)!!.map {
+                    it.copy(start = it.start + offset, end = it.end + offset) })) }
+        assertTrue(assess(sample.copy(events = scattered)).isEmpty())
+        assertTrue(assess(sample.copy(events = sample.events.map { it.copy(visibilityIntervals = null) })).isEmpty())
+        assertTrue(assess(sample.copy(events = sample.events.map { it.copy(visibilityIntervals = "damaged") })).isEmpty())
+    }
+
+    @Test fun samplingGapsDoNotContributeToTheThirtyMeasuredMinutes() {
+        val sample = fixture()
+        fun spaced(duration: Long) = sample.events.mapIndexed { index, event ->
+            val at = start + index * (duration + 2000)
+            event.copy(timestamp = at, endTimestamp = at + duration, durationMillis = duration,
+                visibilityIntervals = VisibilityIntervals.encode(listOf(VisibilityInterval(at, at + duration, duration, VisibilityRegion.MAIN)))) }
+        assertTrue(assess(sample.copy(events = spaced(224_000))).isEmpty())
+        assertEquals(1, assess(sample.copy(events = spaced(225_000))).size)
+    }
+
+    @Test fun duplicateAndLowIntensityTimeCannotMultiplyHighExposure() {
+        val sample = fixture(count = 10, minutes = 1, high = 8)
+        val longLow = sample.events.mapIndexed { index, event ->
+            if (index < 8) event else {
+                val at = start + 8 * 60_000 + (index - 8) * 20 * 60_000
+                event.copy(timestamp = at, endTimestamp = at + 20 * 60_000, durationMillis = 20 * 60_000,
+                    visibilityIntervals = VisibilityIntervals.encode(listOf(VisibilityInterval(at, at + 20 * 60_000,
+                        20 * 60_000, VisibilityRegion.MAIN))))
+            } }
+        assertTrue(assess(sample.copy(events = longLow)).isEmpty())
+        val overlap = fixture().let { fixture -> fixture.copy(events = fixture.events.map { event ->
+            event.copy(timestamp = start, endTimestamp = start + 5 * 60_000, visibilityIntervals = fixture.events.first().visibilityIntervals) }) }
+        assertTrue(assess(overlap).isEmpty())
     }
 
     @Test fun duplicateSummaryRowsAndSameWorkSamplesDoNotMultiplySupport() {

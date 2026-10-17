@@ -76,6 +76,7 @@ internal class LocalThumbnailCapture(private val service: AccessibilityService, 
             val window = Rect().also(target::getBoundsInScreen)
             val visible = Rect().also(root::getBoundsInScreen)
             if (!visible.intersect(window) || visible.isEmpty) return null
+            if (com.emerge.app.capture.PagePrivacyGuard.inspect(root, visible).blockImage) return null
             // Window screenshots exclude overlays, but an obscured/private page isn't representative.
             if (windows.any { other ->
                 val area = Rect().also(other::getBoundsInScreen)

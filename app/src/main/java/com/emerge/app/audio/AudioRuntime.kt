@@ -87,7 +87,7 @@ class AudioRuntime private constructor(context: Context) {
         checkReady()
         check(!state.value.isImporting && !state.value.isCapturing) { "请先结束当前音频任务" }
         val startedAt = System.currentTimeMillis()
-        mutableState.update { it.copy(isImporting = true, sessionId = sessionId, elapsedMillis = 0, error = null, status = "正在转写音频，仅处理前 5 分钟") }
+        mutableState.update { it.copy(isImporting = true, sessionId = sessionId, elapsedMillis = 0, audioLevels = emptyList(), error = null, status = "正在转写音频，仅处理前 5 分钟") }
         importJob = scope.launch {
             var duration = 0L
             var terminal = "completed"
@@ -135,7 +135,7 @@ class AudioRuntime private constructor(context: Context) {
         capturePaused.set(false)
         captureStopRequested.set(false)
         captureFailure.set(null)
-        mutableState.update { it.copy(sessionId = sessionId, isCapturing = true, isPaused = false, elapsedMillis = 0, error = null, status = "正在准备录音") }
+        mutableState.update { it.copy(sessionId = sessionId, isCapturing = true, isPaused = false, elapsedMillis = 0, audioLevels = emptyList(), error = null, status = "正在准备录音") }
         try {
             context.startForegroundService(Intent(context, ProjectionAudioService::class.java).apply {
                 action = ProjectionAudioService.ACTION_START
@@ -154,7 +154,7 @@ class AudioRuntime private constructor(context: Context) {
         capturePaused.set(true)
         // stop() releases an in-flight blocking AudioRecord.read immediately.
         try { record?.stop() } catch (_: Exception) { }
-        mutableState.update { it.copy(isPaused = true, status = "录音已暂停") }
+        mutableState.update { it.copy(isPaused = true, audioLevels = emptyList(), status = "录音已暂停") }
         ProjectionAudioService.refreshNotification(context)
     }
 
@@ -167,6 +167,7 @@ class AudioRuntime private constructor(context: Context) {
 
     fun stopPlayback() {
         captureStopRequested.set(true)
+        mutableState.update { it.copy(audioLevels = emptyList()) }
         try { record?.stop() } catch (_: Exception) { }
         val id = captureSession
         if (captureJob == null) {
@@ -179,6 +180,7 @@ class AudioRuntime private constructor(context: Context) {
     fun stop() {
         cancelImport()
         captureStopRequested.set(true)
+        mutableState.update { it.copy(audioLevels = emptyList()) }
         captureJob?.cancel()
         try { record?.stop() } catch (_: Exception) { }
         val id = captureSession
@@ -231,6 +233,7 @@ class AudioRuntime private constructor(context: Context) {
                                 val buffer = ShortArray(3200)
                                 var running = false
                                 var pendingOffset = 0L
+                                var lastMeterAt = -200L
                                 while (!captureStopRequested.get() && SystemClock.elapsedRealtime() - startedClock < MediaAudioDecoder.MAX_DURATION_MILLIS) {
                                     currentCoroutineContext().ensureActive()
                                     if (capturePaused.get()) {
@@ -256,6 +259,16 @@ class AudioRuntime private constructor(context: Context) {
                                     val limited = AudioPcm.limitedSamples(count, sampleRate, offset, MediaAudioDecoder.MAX_DURATION_MILLIS)
                                     if (limited > 0) {
                                         val samples = FloatArray(limited) { buffer[it] / 32768f }
+                                        // Bound updates even if AudioRecord returns a short buffer.
+                                        val meterAt = SystemClock.elapsedRealtime()
+                                        if (meterAt - lastMeterAt >= 200) {
+                                            lastMeterAt = meterAt
+                                            mutableState.update {
+                                                if (it.sessionId != sessionId) it
+                                                else if (captureStopRequested.get() || capturePaused.get()) it.copy(audioLevels = emptyList())
+                                                else it.withAudioSamples(sessionId, samples)
+                                            }
+                                        }
                                         check(chunks.trySend(PcmChunk(samples, offset)).isSuccess) { "设备转写速度不足，录音已停止。请改用导入音频。" }
                                     }
                                     if (limited < count) break
@@ -288,7 +301,7 @@ class AudioRuntime private constructor(context: Context) {
                 localRecord?.let { try { it.stop() } catch (_: Exception) { }; it.release() }
                 withContext(NonCancellable) {
                     emitCompletion(AudioRuntimeCompletion(sessionId, terminal, duration, failure))
-                    mutableState.update { if (it.sessionId == sessionId) it.copy(modelInstalled = models.isInstalled, isCapturing = false, isPaused = false, error = failure, status = terminalText(terminal)) else it }
+                    mutableState.update { if (it.sessionId == sessionId) it.copy(modelInstalled = models.isInstalled, isCapturing = false, isPaused = false, audioLevels = emptyList(), error = failure, status = terminalText(terminal)) else it }
                     if (captureSession == sessionId) {
                         captureSession = null
                         captureJob = null
@@ -301,6 +314,7 @@ class AudioRuntime private constructor(context: Context) {
 
     internal fun projectionEnded(sessionId: String) {
         if (captureSession != sessionId) return
+        mutableState.update { if (it.sessionId == sessionId) it.copy(audioLevels = emptyList()) else it }
         captureFailure.set("录音授权已结束，请重新开始")
         if (captureJob == null) failPlayback(sessionId, captureFailure.get())
         captureJob?.cancel()
@@ -309,6 +323,7 @@ class AudioRuntime private constructor(context: Context) {
 
     internal fun serviceDestroyed(sessionId: String?) {
         if (sessionId != null && captureSession == sessionId) {
+            mutableState.update { if (it.sessionId == sessionId) it.copy(audioLevels = emptyList()) else it }
             captureJob?.cancel()
             try { record?.stop() } catch (_: Exception) { }
             if (captureJob == null) failPlayback(sessionId, null, "cancelled")
@@ -316,7 +331,7 @@ class AudioRuntime private constructor(context: Context) {
     }
 
     internal fun failPlayback(sessionId: String, error: String?, terminal: String = "failed") {
-        mutableState.update { if (it.sessionId == sessionId) it.copy(isCapturing = false, isPaused = false, error = error, status = terminalText(terminal)) else it }
+        mutableState.update { if (it.sessionId == sessionId) it.copy(isCapturing = false, isPaused = false, audioLevels = emptyList(), error = error, status = terminalText(terminal)) else it }
         if (captureJob == null) {
             val duration = if (state.value.sessionId == sessionId) state.value.elapsedMillis else 0L
             captureSession = null

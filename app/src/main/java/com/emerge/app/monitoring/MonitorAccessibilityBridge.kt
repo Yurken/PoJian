@@ -71,12 +71,14 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
     private val screenTextRecognizer = ScreenTextRecognizer()
     private var lastMaterial: Pair<String, BrowseEvent>? = null
     private var sensitiveInputVisible = false
+    private var lastContentRefresh = -400L
     private var shotPending = false
     private val localThumbnails = LocalThumbnailCapture(service, app, scope) { shotPending }
     val captureRevision: Long get() = localThumbnails.revision
     fun observed(event: BrowseEvent, hint: com.emerge.app.capture.WorkHint, window: Int, revision: Long) =
         localThumbnails.observed(event, hint, window, revision)
     fun invalidateCapture() = localThumbnails.invalidate()
+    fun blockPrivatePage() { sensitiveInputVisible = true; clearScreen(); hide() }
     private var windowId = -1
     private var bounds = Rect()
     private val position = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT,
@@ -171,6 +173,12 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
         }
         if (event.packageName?.toString() !in app.captureSettings.allowedPackages.value &&
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) { clearScreen(); hide() }
+        // Payment dialogs can replace content without changing the window id.
+        val now = SystemClock.elapsedRealtime()
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && now - lastContentRefresh >= 400) {
+            lastContentRefresh = now
+            refresh()
+        }
     }
     private fun samplingScope(): String = monitor.state.value.contextToken.let {
         if (it.isBlank()) "" else "$it:${monitor.samplingRevision}"
@@ -197,6 +205,8 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
             }
             windowId = root.windowId
             root.getBoundsInScreen(bounds)
+            val privacy = com.emerge.app.capture.PagePrivacyGuard.inspect(root, bounds)
+            if (privacy.blockText) { blockPrivatePage(); return }
             val (structureText, text) = visibleText(root)
             if (com.emerge.app.capture.WorkIdentityExtractor.isRecommendationList(name, structureText)) {
                 clearScreen(); hide(); return

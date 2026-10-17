@@ -56,7 +56,7 @@ object DerivedMonitorFindings {
                     "重复 ${assessment.repeated}/${assessment.known}；记录 ${recordIds(assessment.eventIds)}",
                 topic = "${signal.topic} · ${signal.subject} · ${signal.dimension}", contextToken = token)
         }
-        if (config.emotion) EmotionAlertPolicy.assess(report.emotionExposure, events).forEach { signal ->
+        if (config.emotion) EmotionAlertPolicy.assess(report.emotionExposure, events, report.start, report.end).forEach { signal ->
             val latest = signal.evidence.maxWithOrNull(compareBy<com.emerge.app.analysis.EmotionEvidence> {
                 byId.getValue(it.eventId).timestamp }.thenBy { it.eventId }) ?: return@forEach
             val source = byId[latest.eventId] ?: return@forEach
@@ -66,7 +66,7 @@ object DerivedMonitorFindings {
             val formatter = DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.CHINA).withZone(zone)
             val interval = "${formatter.format(Instant.ofEpochMilli(signal.earliest))}–${formatter.format(Instant.ofEpochMilli(signal.latest))}"
             findings += MonitorFinding("emotion:" + MonitorPolicy.hash("${signal.topic}|${signal.category.wire}"),
-                "event:${latest.eventId}", source.packageName, source.timestamp, "emotion", "emotional_exposure", latest.evidence,
+                "event:${latest.eventId}", source.packageName, minOf(signal.latest, report.generatedAt), "emotion", "emotional_exposure", latest.evidence,
                 "已知 ${signal.known}；未知 ${signal.unknown}；强烈 ${signal.high}；$interval；记录 ${recordIds(signal.eventIds)}",
                 topic = "${signal.topic} · ${signal.category.label}", contextToken = token)
         }

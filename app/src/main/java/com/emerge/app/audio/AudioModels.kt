@@ -24,6 +24,7 @@ data class AudioRuntimeState(
     val elapsedMillis: Long = 0L,
     val status: String = "下载中文语音模型后，可导入音频或转写应用声音",
     val error: String? = null,
+    val audioLevels: List<Float> = emptyList(),
 )
 
 /** Terminal events let the database finish even a session that contained no speech. */
