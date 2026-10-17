@@ -40,11 +40,13 @@ class SwissNavigationReportUiTest {
         var factChecks = 0
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
             SwissAppHeader("观点分布", StatisticsPeriod.HOURS24, {}, false, "待授权", {},
-                Modifier.width(411.dp), { factChecks++ }, 73, showRecording = false)
+                Modifier.width(360.dp), { factChecks++ }, 73, showRecording = false, leftAlignPeriods = true)
         } } }
         compose.onNodeWithText("待授权").assertDoesNotExist()
+        val title = compose.onNodeWithText("观点分布").getUnclippedBoundsInRoot()
         val period = compose.onNodeWithTag("header-period-HOURS24").getUnclippedBoundsInRoot()
         val factCheck = compose.onNodeWithTag("viewpoints-fact-check-entry").getUnclippedBoundsInRoot()
+        org.junit.Assert.assertTrue(period.left < title.left)
         assertEquals(period.top.value, factCheck.top.value, 0.5f)
         compose.onNodeWithTag("viewpoints-fact-check-entry").performClick()
         compose.runOnIdle { assertEquals(1, factChecks) }

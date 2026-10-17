@@ -32,7 +32,8 @@ private val periodLabels = listOf("24H", "7D", "30D")
 @Composable
 internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit,
     active: Boolean, status: String, onRecording: () -> Unit, modifier: Modifier = Modifier,
-    onFactCheck: (() -> Unit)? = null, findingCount: Int = 0, showRecording: Boolean = true) {
+    onFactCheck: (() -> Unit)? = null, findingCount: Int = 0, showRecording: Boolean = true,
+    leftAlignPeriods: Boolean = false) {
     val scheme = MaterialTheme.colorScheme
     val titleStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
     val controlStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
@@ -89,14 +90,16 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         brand()
+                        if (leftAlignPeriods) periods()
                         Spacer(Modifier.weight(1f))
-                        periods()
+                        if (!leftAlignPeriods) periods()
                         actions()
                     }
                 } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     brand()
                     FlowRow(Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                        horizontalArrangement = if (leftAlignPeriods) Arrangement.SpaceBetween
+                            else Arrangement.spacedBy(12.dp, Alignment.End),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         periods()
                         actions()
