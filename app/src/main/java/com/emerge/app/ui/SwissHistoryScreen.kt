@@ -172,7 +172,7 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically) {
                     SwissPlatformTag(appNames[event.packageName] ?: swissKnownApps[event.packageName] ?: event.packageName)
-                    SwissSourceBadge(matches.isNotEmpty())
+                    if (matches.isNotEmpty()) SwissRepeatedEvidenceBadge()
                     Spacer(Modifier.weight(1f))
                     Text("${format.format(Instant.ofEpochMilli(event.timestamp))} · ${swissDuration(event)}",
                         style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
@@ -231,15 +231,15 @@ private fun SwissPlatformTag(text: String) {
 }
 
 @Composable
-private fun SwissSourceBadge(repeated: Boolean) {
-    val color = if (repeated) DesignTokens.Amber else Muted
+private fun SwissRepeatedEvidenceBadge() {
+    val color = DesignTokens.Amber
     Surface(color = color.copy(alpha = .08f), shape = RoundedCornerShape(5.dp),
         border = BorderStroke(1.dp, color.copy(alpha = .22f))) {
         Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Box(Modifier.size(5.dp).clip(CircleShape).background(color))
-            Text(if (repeated) "论据重复" else "来源未核实", color = color,
+            Text("论据重复", color = color,
                 style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
         }
     }
@@ -281,7 +281,7 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SwissPlatformTag(appNames[event.packageName] ?: swissKnownApps[event.packageName] ?: event.packageName)
-                    SwissSourceBadge(matches.isNotEmpty())
+                    if (matches.isNotEmpty()) SwissRepeatedEvidenceBadge()
                     Spacer(Modifier.weight(1f))
                     if (onDelete != null) PojianIconButton(onClick = onDelete, modifier = Modifier.testTag("history-detail-delete")) {
                         Icon(Icons.Outlined.Delete, contentDescription = "删除记录", tint = DesignTokens.Rose)

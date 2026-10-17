@@ -506,7 +506,7 @@ internal fun SwissTopicList(
                                     color = Ink
                                 )
                                 Text(
-                                    text = "$workCount 篇 · 来源未核实",
+                                    text = "$workCount 篇",
                                     color = Muted,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace

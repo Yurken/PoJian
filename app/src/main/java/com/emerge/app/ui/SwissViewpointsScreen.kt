@@ -755,11 +755,13 @@ private fun SwissRepresentative(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.weight(1f, fill = false))
-                Text(
-                    text = if (repeated > 0) "$repeated 篇观点重复" else "来源未核实",
-                    color = Muted,
-                    style = MaterialTheme.typography.labelSmall
-                )
+                if (repeated > 0) {
+                    Text(
+                        text = "$repeated 篇观点重复",
+                        color = Muted,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
                 PojianTextButton(
                     onClick = { onOpen(item) },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),

@@ -40,9 +40,10 @@ class SwissBrowseUiTest {
         compose.onNodeWithTag("history-record-2").assertDoesNotExist()
         compose.onNodeWithTag("history-keyword-clear").performClick()
         awaitTag("history-record-2")
+        compose.onAllNodesWithText("来源未核实").assertCountEquals(0)
         compose.onNodeWithTag("history-record-2").performClick()
         compose.onNodeWithTag("swiss-work-detail").assertIsDisplayed()
-        compose.onNode(hasText("来源未核实") and hasAnyAncestor(hasTestTag("swiss-work-detail"))).assertIsDisplayed()
+        compose.onNode(hasText("来源未核实") and hasAnyAncestor(hasTestTag("swiss-work-detail"))).assertDoesNotExist()
         compose.onNodeWithTag("history-detail-close").performClick()
         compose.onNodeWithTag("swiss-work-detail").assertDoesNotExist()
     }
