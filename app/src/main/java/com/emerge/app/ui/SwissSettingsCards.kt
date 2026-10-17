@@ -366,7 +366,7 @@ internal fun SwissCaptureSettings(
         checked = bubbleEnabled,
         onChange = onBubble,
         modifier = Modifier.testTag("monitor-switch-悬浮球"),
-        status = "浏览时显示边缘实时状态胶囊"
+        status = "浏览时显示悬浮球"
     )
     SettingsHairline()
     val capturing = audioState.task?.phase == AudioTaskPhase.CAPTURING

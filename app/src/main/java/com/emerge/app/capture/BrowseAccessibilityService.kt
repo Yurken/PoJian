@@ -256,6 +256,11 @@ open class BrowseAccessibilityService : AccessibilityService() {
         return lines.joinToString("\n").take(16000)
     }
 
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        monitorBridge?.onConfigurationChanged()
+    }
+
     override fun onInterrupt() {
         monitorBridge?.interrupt()
         pending?.cancel()
