@@ -3,9 +3,11 @@ package com.emerge.app.ui
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
@@ -13,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -20,6 +23,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -29,6 +33,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
@@ -87,38 +92,123 @@ fun SwissRecordingScreen(
         audioState.modelState.status == AudioModelStatus.ERROR -> "模型下载失败"
         else -> "模型未就绪"
     }
+    val active = enabled && permission && diagnostics.connected && selectedPackages.isNotEmpty()
+    val statusColor = when {
+        active -> DesignTokens.Emerald
+        !permission || selectedPackages.isEmpty() -> DesignTokens.Amber
+        else -> Muted
+    }
+    val audioStatusColor = when {
+        audioState.task != null -> DesignTokens.Rose
+        audioState.modelState.status == AudioModelStatus.READY -> DesignTokens.Emerald
+        audioState.modelState.status == AudioModelStatus.DOWNLOADING -> DesignTokens.Amber
+        else -> Muted
+    }
     LazyColumn(modifier.fillMaxSize().testTag("swiss-recording-screen"),
         contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         item("channels") {
             WhiteCard(Modifier.testTag("audio-entry")) {
-                RecordingChannelRow(
-                    title = "屏幕文字识别",
-                    status = captureLabel,
-                    checked = enabled,
-                    enabled = selectedPackages.isNotEmpty() || enabled,
-                    onChange = onCapture,
-                    tag = "capture-toggle",
-                    primary = true
-                )
-                if (!permission || !diagnostics.connected) {
-                    PojianTextButton(onClick = onOpenSettings,
-                        modifier = Modifier.testTag("recording-system-permission")) {
-                        Text(if (permission) "检查系统授权" else "前往系统授权")
+                SwissSectionHeader(number = "01", title = "实时内容记录", eyebrow = "LIVE CAPTURE")
+                Surface(shape = DesignTokens.InnerShape, color = MaterialTheme.colorScheme.background,
+                    border = BorderStroke(1.dp, DesignTokens.Border.copy(alpha = 0.75f)),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(8.dp).clip(CircleShape).background(statusColor))
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(captureLabel, style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold, color = Ink)
+                            Text(
+                                text = if (permission && diagnostics.connected) {
+                                    "无障碍服务已连接 · 仅记录下方勾选的应用"
+                                } else {
+                                    "未连接无障碍服务 · 需在系统设置中开启权限"
+                                },
+                                style = MaterialTheme.typography.bodySmall, color = Muted)
+                        }
+                        PojianSwitch(checked = enabled, onCheckedChange = onCapture,
+                            enabled = selectedPackages.isNotEmpty() || enabled,
+                            modifier = Modifier.testTag("capture-toggle")
+                                .semantics { contentDescription = "屏幕文字识别" })
                     }
                 }
-                message?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                Surface(shape = DesignTokens.InnerShape, color = MaterialTheme.colorScheme.background,
+                    border = BorderStroke(1.dp, DesignTokens.Border.copy(alpha = 0.7f)),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)
+                        .padding(vertical = 12.dp, horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).padding(horizontal = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("已选监测应用", style = MaterialTheme.typography.labelSmall, color = Muted)
+                            Text("${selectedPackages.size} 个", style = MaterialTheme.typography.titleLarge,
+                                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Ink)
+                        }
+                        VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
+                        Column(Modifier.weight(1f).padding(horizontal = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("本地留存快照", style = MaterialTheme.typography.labelSmall, color = Muted)
+                            Text("${events.size} 条", style = MaterialTheme.typography.titleLarge,
+                                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, color = Ink)
+                        }
+                    }
                 }
-                HorizontalDivider(color = DesignTokens.Border)
-                RecordingChannelRow(
-                    title = "离线语音转文字",
-                    status = audioLabel,
-                    checked = audioCapturing,
-                    enabled = audioCanStart || audioCapturing,
-                    onChange = { value -> if (value) onAudioCapture() else onCancelTask() },
-                    tag = "audio-record-toggle",
-                    onSettings = onSettings.takeIf { audioState.modelState.status != AudioModelStatus.READY }
-                )
+                if (!permission || !diagnostics.connected) {
+                    PojianPrimaryButton(
+                        text = if (!permission) "前往系统授权" else "检查系统授权",
+                        onClick = onOpenSettings,
+                        modifier = Modifier.testTag("recording-system-permission"))
+                }
+                message?.takeIf { it.isNotBlank() }?.let { msg ->
+                    Surface(shape = DesignTokens.InnerShape, color = DesignTokens.Amber.copy(alpha = 0.1f),
+                        border = BorderStroke(1.dp, DesignTokens.Amber.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text(msg, Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.bodySmall, color = Color(0xFFB45309))
+                    }
+                }
+                HorizontalDivider(color = DesignTokens.Border.copy(alpha = 0.7f), thickness = 0.75.dp)
+                RecordingApplications(apps, selectedPackages, onPackagesChange, onChooseApps)
+            }
+        }
+        item("audio-card") {
+            WhiteCard(Modifier.testTag("recording-audio-card")) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SwissSectionHeader(number = "02", title = "本地语音转文字", eyebrow = "LOCAL ASR",
+                        modifier = Modifier.weight(1f))
+                    if (audioState.modelState.status != AudioModelStatus.READY) {
+                        PojianIconButton(onClick = onSettings,
+                            modifier = Modifier.testTag("recording-model-settings")) {
+                            Icon(Icons.Outlined.Settings, contentDescription = "设置", tint = Muted)
+                        }
+                    }
+                }
+                Surface(shape = DesignTokens.InnerShape, color = MaterialTheme.colorScheme.background,
+                    border = BorderStroke(1.dp, DesignTokens.Border.copy(alpha = 0.75f)),
+                    modifier = Modifier.fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(7.dp).clip(CircleShape).background(audioStatusColor))
+                        Text(audioLabel, style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold, color = Ink,
+                            modifier = Modifier.weight(1f))
+                        Text("已存 ${audioSessions.size} 段", style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace, color = Muted)
+                        PojianSwitch(checked = audioCapturing,
+                            onCheckedChange = { value -> if (value) onAudioCapture() else onCancelTask() },
+                            enabled = audioCanStart || audioCapturing,
+                            modifier = Modifier.testTag("audio-record-toggle")
+                                .semantics { contentDescription = "离线语音转文字" })
+                    }
+                }
+                if (audioState.task == null) {
+                    MetadataText("音频仅在设备端离线识别为文本，不上传原始录音文件。")
+                }
                 if (audioState.modelState.status == AudioModelStatus.ERROR) {
                     audioState.modelState.detail?.takeIf { it.isNotBlank() }?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -133,31 +223,27 @@ fun SwissRecordingScreen(
                 }
             }
         }
-        item("applications") { RecordingApplications(apps, selectedPackages, onPackagesChange, onChooseApps) }
         item("materials") { RecordingMaterials(events, report) }
         item("transcript") { RecordingTranscriptStream(audioState, audioSessions, isAudioPaused) }
     }
 }
 
 @Composable
-private fun RecordingChannelRow(title: String, status: String, checked: Boolean, enabled: Boolean,
-    onChange: (Boolean) -> Unit, tag: String, primary: Boolean = false, onSettings: (() -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().heightIn(min = if (primary) 88.dp else 64.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(title, color = if (primary) Muted else Ink,
-                style = if (primary) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleSmall)
-            Text(status, color = if (primary) Ink else Muted,
-                style = if (primary) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.labelMedium,
-                fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Normal)
+private fun SwissSectionHeader(number: String, title: String, eyebrow: String,
+    modifier: Modifier = Modifier) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Surface(shape = RoundedCornerShape(5.dp), color = DesignTokens.Ink, contentColor = Color.White) {
+            Text(number, Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelSmall)
         }
-        if (onSettings != null) {
-            PojianIconButton(onClick = onSettings, modifier = Modifier.testTag("recording-model-settings")) {
-                Icon(Icons.Outlined.Settings, contentDescription = "设置", tint = Muted)
-            }
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
+                color = Ink, modifier = Modifier.semantics { heading() })
+            Text(eyebrow, color = Muted, fontFamily = FontFamily.Monospace, fontSize = 10.sp,
+                letterSpacing = 1.sp)
         }
-        PojianSwitch(checked, onChange, enabled = enabled,
-            modifier = Modifier.testTag(tag).semantics { contentDescription = title })
     }
 }
 
@@ -184,9 +270,10 @@ private fun RecordingApplications(apps: List<CaptureApp>, selected: Set<String>,
         val names = apps.associate { it.packageName to it.label }
         selected.map { packageName -> packageName to (names[packageName] ?: platformName(packageName)) }
     }
-    WhiteCard(Modifier.testTag("recording-app-scope")) {
+    Column(Modifier.fillMaxWidth().testTag("recording-app-scope")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("记录应用范围", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+            Text("记录应用范围", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold, color = Ink)
             PojianTextButton(onClick = onChooseApps) { Text("全部应用") }
         }
         if (selectedApps.isNotEmpty()) BoxWithConstraints(Modifier.fillMaxWidth()) {

@@ -10,18 +10,24 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -118,39 +124,78 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
     val format = remember { DateTimeFormatter.ofPattern("MM/dd HH:mm").withZone(ZoneId.systemDefault()) }
     LazyColumn(modifier.fillMaxSize().testTag("swiss-history-screen"), contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                SwissFilterChip("全部", appFilter == null, { appFilter = null }, Modifier.testTag("history-app-all"))
-                apps.forEach { (pkg, label) -> SwissFilterChip(label, appFilter == pkg, { appFilter = pkg },
-                    Modifier.testTag("history-app-$pkg")) }
+        item("filters") {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    SwissFilterChip("全部", appFilter == null, { appFilter = null }, Modifier.testTag("history-app-all"))
+                    apps.forEach { (pkg, label) -> SwissFilterChip(label, appFilter == pkg, { appFilter = pkg },
+                        Modifier.testTag("history-app-$pkg")) }
+                }
+                if (!keyword.isNullOrBlank()) InputChip(selected = true, onClick = onClearKeyword,
+                    label = { Text("热词：$keyword") },
+                    trailingIcon = { Icon(Icons.Outlined.Close, contentDescription = "清除热词筛选", Modifier.size(16.dp)) },
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("history-keyword-clear"))
+                PojianTextField(query, { query = it }, modifier = Modifier.fillMaxWidth().testTag("history-search"),
+                    label = { Text("搜索原文或应用") }, singleLine = true,
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = { if (query.isNotBlank()) PojianIconButton({ query = "" }) { Icon(Icons.Outlined.Close, "清除搜索") } })
             }
-            if (!keyword.isNullOrBlank()) InputChip(selected = true, onClick = onClearKeyword,
-                label = { Text(keyword) }, trailingIcon = { Icon(Icons.Outlined.Close, contentDescription = "清除热词筛选", Modifier.size(16.dp)) },
-                modifier = Modifier.heightIn(min = 48.dp).testTag("history-keyword-clear"))
-            PojianTextField(query, { query = it }, modifier = Modifier.fillMaxWidth().testTag("history-search"),
-                label = { Text("搜索原文或应用") }, singleLine = true,
-                trailingIcon = { if (query.isNotBlank()) PojianIconButton({ query = "" }) { Icon(Icons.Outlined.Close, "清除搜索") } })
         }
-        if (filtered.isEmpty()) item { SwissCard { Text(if (data == null) "整理中" else "暂无记录", color = Muted) } }
+        item("section-header") {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 2.dp)
+                .semantics { heading() },
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Surface(shape = RoundedCornerShape(5.dp), color = DesignTokens.Ink, contentColor = Color.White) {
+                    Text("01", Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                        style = MaterialTheme.typography.labelSmall)
+                }
+                Text("浏览记录明细", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold, color = Ink)
+                Text(if (data == null) "—" else "${filtered.size} 条", style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace, color = Muted)
+            }
+        }
+        if (filtered.isEmpty()) item("empty") {
+            SwissCard { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+                Text(if (data == null) "整理中" else "暂无记录", color = Muted,
+                    style = MaterialTheme.typography.bodyMedium)
+            } }
+        }
         items(filtered, key = { it.id }) { event ->
             val claims = model[event.id]?.takeIf { it.validFor(event) }?.claims.orEmpty()
             val matches = data?.matches?.get(event.id).orEmpty()
             SwissCard(onClick = { detailId = event.id }, modifier = Modifier.testTag("history-record-${event.id}")) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
                     SwissPlatformTag(appNames[event.packageName] ?: swissKnownApps[event.packageName] ?: event.packageName)
                     SwissSourceBadge(matches.isNotEmpty())
                     Spacer(Modifier.weight(1f))
+                    Text("${format.format(Instant.ofEpochMilli(event.timestamp))} · ${swissDuration(event)}",
+                        style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
                 }
                 Text(event.contentText.lineSequence().firstOrNull { it.isNotBlank() } ?: "内容为空",
-                    style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text("${format.format(Instant.ofEpochMilli(event.timestamp))} · ${swissDuration(event)}",
-                    style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(claims.map { it.stance }.filter(String::isNotBlank).distinct().joinToString(" · ").ifBlank { "未识别到观点" },
-                        style = MaterialTheme.typography.labelSmall, color = DesignTokens.Blue)
-                    Text(if (model[event.id]?.validFor(event) == true) "${claims.map { it.evidence }.filter(String::isNotBlank).distinct().size} 条依据" else "未提取到依据",
-                        style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
-                    Text(swissRecordSource(event), style = MaterialTheme.typography.labelSmall, color = Muted)
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = Ink,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                HorizontalDivider(color = DesignTokens.Border.copy(alpha = 0.6f), thickness = 0.75.dp)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween) {
+                    FlowRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(claims.map { it.stance }.filter(String::isNotBlank).distinct().joinToString(" · ").ifBlank { "观点未识别" },
+                            style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium,
+                            color = DesignTokens.Blue)
+                        Text(if (model[event.id]?.validFor(event) == true) {
+                            "${claims.map { it.evidence }.filter(String::isNotBlank).distinct().size} 条论据"
+                        } else "论据未提取",
+                            style = MaterialTheme.typography.labelSmall, color = Muted, fontFamily = FontFamily.Monospace)
+                        Text(swissRecordSource(event), style = MaterialTheme.typography.labelSmall, color = Muted)
+                    }
+                    Icon(imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null,
+                        modifier = Modifier.size(16.dp), tint = Muted)
                 }
             }
         }
@@ -180,7 +225,7 @@ private fun swissRecordSource(event: BrowseEvent): String = when (event.sourceTy
 @Composable
 private fun SwissPlatformTag(text: String) {
     Surface(color = DesignTokens.Ink, contentColor = Color.White, shape = RoundedCornerShape(5.dp)) {
-        Text(text, Modifier.widthIn(max = 180.dp).padding(horizontal = 7.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall,
+        Text(text, Modifier.widthIn(max = 180.dp).padding(horizontal = 7.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -188,9 +233,15 @@ private fun SwissPlatformTag(text: String) {
 @Composable
 private fun SwissSourceBadge(repeated: Boolean) {
     val color = if (repeated) DesignTokens.Amber else Muted
-    Surface(color = color.copy(alpha = .08f), shape = RoundedCornerShape(5.dp), border = BorderStroke(1.dp, color.copy(alpha = .2f))) {
-        Text(if (repeated) "观点重复" else "来源未核实", color = color, style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp))
+    Surface(color = color.copy(alpha = .08f), shape = RoundedCornerShape(5.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = .22f))) {
+        Row(Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Box(Modifier.size(5.dp).clip(CircleShape).background(color))
+            Text(if (repeated) "论据重复" else "来源未核实", color = color,
+                style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+        }
     }
 }
 
@@ -226,35 +277,37 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
         LazyColumn(Modifier.fillMaxWidth().heightIn(max = 720.dp).testTag("swiss-work-detail"),
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            item {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        SwissPlatformTag(appNames[event.packageName] ?: swissKnownApps[event.packageName] ?: event.packageName)
-                        SwissSourceBadge(matches.isNotEmpty())
-                    }
+            item("header") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SwissPlatformTag(appNames[event.packageName] ?: swissKnownApps[event.packageName] ?: event.packageName)
+                    SwissSourceBadge(matches.isNotEmpty())
+                    Spacer(Modifier.weight(1f))
                     if (onDelete != null) PojianIconButton(onClick = onDelete, modifier = Modifier.testTag("history-detail-delete")) {
-                        Icon(Icons.Outlined.Delete, contentDescription = "删除记录")
+                        Icon(Icons.Outlined.Delete, contentDescription = "删除记录", tint = DesignTokens.Rose)
                     }
                     PojianIconButton(onClick = onDismiss, modifier = Modifier.testTag("history-detail-close")) {
                         Icon(Icons.Outlined.Close, contentDescription = "关闭")
                     }
                 }
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 Text(event.contentText.lineSequence().firstOrNull { it.isNotBlank() } ?: "内容为空",
-                    style = MaterialTheme.typography.titleMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold, color = Ink,
+                    maxLines = 3, overflow = TextOverflow.Ellipsis)
             }
-            item {
+            item("claims-emotions") {
                 SwissCard {
-                    Text("核心观点", style = MaterialTheme.typography.titleSmall)
+                    Text("核心观点", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     val quotes = (analyzed.map { it.quote } + observations.map { it.quote }).distinct()
                     if (quotes.isEmpty()) Text("未识别", color = Muted, style = MaterialTheme.typography.bodyMedium)
-                    else quotes.forEach { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                    else quotes.forEach { Text(it, style = MaterialTheme.typography.bodyMedium, color = Ink) }
                     HorizontalDivider(color = DesignTokens.Border)
-                    Text("内容情绪", style = MaterialTheme.typography.titleSmall)
+                    Text("情绪与语境", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                     if (emotions.isEmpty()) Text("未识别", color = Muted, style = MaterialTheme.typography.bodyMedium)
                     emotions.forEach { emotion ->
-                        Text("${emotion.category.label} · ${emotion.level.label}", color = DesignTokens.Amber, style = MaterialTheme.typography.labelMedium)
-                        Text(emotion.evidence, style = MaterialTheme.typography.bodyMedium)
+                        Text("${emotion.category.label} · ${emotion.level.label}", color = DesignTokens.Amber,
+                            style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
+                        Text(emotion.evidence, style = MaterialTheme.typography.bodyMedium, color = Ink)
                         emotion.trigger?.let { Text(it, color = Muted, style = MaterialTheme.typography.bodySmall) }
                     }
                     analyzed.map { it.conditions }.filter(String::isNotBlank).distinct().forEach {
@@ -262,23 +315,28 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
                     }
                 }
             }
-            item { Text("核心依据与历史对照", style = MaterialTheme.typography.titleSmall) }
-            if (evidence.isEmpty()) item { Text("暂无依据", color = Muted, style = MaterialTheme.typography.bodyMedium) }
+            item("evidence-title") { Text("核心论据与历史对照", style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold) }
+            if (evidence.isEmpty()) item("evidence-empty") {
+                Text("暂无论据", color = Muted, style = MaterialTheme.typography.bodyMedium) }
             items(evidence.size) { index ->
                 val fragment = evidence[index]
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text((index + 1).toString().padStart(2, '0'), color = Muted, style = numberStyle,
                         textAlign = TextAlign.End, modifier = Modifier.width(numberWidth).alignByBaseline())
                     Column(Modifier.weight(1f).alignByBaseline(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(fragment.text, style = MaterialTheme.typography.bodyMedium)
+                        Text(fragment.text, style = MaterialTheme.typography.bodyMedium, color = Ink)
                         fragment.historyMatches.distinct().forEach { match ->
                             events.firstOrNull { it.id == match.eventId && it.timestamp < event.timestamp && it.visibleText.contains(match.quote) }?.let { source ->
                                 Surface(onClick = { onRelated(source) }, color = DesignTokens.Amber.copy(alpha = .07f),
-                                    shape = DesignTokens.InnerShape, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                    shape = DesignTokens.InnerShape, border = BorderStroke(1.dp, DesignTokens.Amber.copy(alpha = 0.22f)),
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                                         .testTag("history-related-${source.id}")) {
                                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Text("历史记录 #${source.id}", style = MaterialTheme.typography.labelSmall, color = DesignTokens.Amber)
-                                        Text(match.quote, style = MaterialTheme.typography.bodySmall)
+                                        Text("历史记录 #${source.id}", style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                                            color = DesignTokens.Amber)
+                                        Text(match.quote, style = MaterialTheme.typography.bodySmall, color = Ink)
                                     }
                                 }
                             }
@@ -287,18 +345,18 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
                 }
             }
             val audio = attached.filter { it.sourceType.startsWith("audio_") }
-            if (audio.isNotEmpty()) item {
+            if (audio.isNotEmpty()) item("audio") {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Spacer(Modifier.width(numberWidth))
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         HorizontalDivider(color = DesignTokens.Border)
-                        Text("语音转文字摘录", style = MaterialTheme.typography.titleSmall)
-                        audio.forEach { Text(it.contentText, style = MaterialTheme.typography.bodyMedium) }
+                        Text("语音转文字摘录", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                        audio.forEach { Text(it.contentText, style = MaterialTheme.typography.bodyMedium, color = Ink) }
                     }
                 }
             }
-            item { WorkOriginalContent(event) }
-            item { Text("原文", style = MaterialTheme.typography.titleSmall) }
+            item("original") { WorkOriginalContent(event) }
+            item("raw-title") { Text("原文", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold) }
             items(attached, key = { "raw:${it.id}" }) { row ->
                 Text(swissRecordSource(row), style = MaterialTheme.typography.labelSmall, color = Muted)
                 QuoteBlock(rememberOriginalText(row), fromAudio = row.sourceType.startsWith("audio_"))

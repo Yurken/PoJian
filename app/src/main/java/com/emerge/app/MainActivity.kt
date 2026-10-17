@@ -8,7 +8,9 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
@@ -17,8 +19,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -237,9 +242,19 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     if (showReports) SwissReportDialog(all, semantics, now, onDismiss = { showReports = false },
         purpose = analysis.purpose, onPurposeChange = model::updatePurpose, analysisStatuses = analysisStatuses, appNames = appNames)
     if (showFindings) ModalBottomSheet(onDismissRequest = { showFindings = false },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("事实核查", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = PageBackground) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Surface(shape = RoundedCornerShape(5.dp), color = DesignTokens.Ink,
+                contentColor = Color.White) {
+                Text("VERIFY", Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.labelSmall)
+            }
+            Text("事实核查与发现", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold)
             PojianIconButton({ showFindings = false }) { Icon(Icons.Outlined.Close, "关闭") }
         }
         MonitorDiscoverScreen(monitor, appNames, Modifier.fillMaxHeight(.88f),
@@ -266,15 +281,25 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     if (showApps) AppPickerDialog(availableApps, allowed, appsLoading,
         remember(all) { all.groupingBy { it.packageName }.eachCount() }, onDismiss = { showApps = false },
         onApply = { model.setAllowedPackages(it); showApps = false }, onDeletePackage = { deletePackage = it })
-    if (confirmClear) PojianDialog(onDismissRequest = { confirmClear = false }, title = { Text("清空本地记录？") },
-        text = { Text("暂停采集并删除全部记录与分析，无法撤销。已导出文件保留。") },
+    if (confirmClear) PojianDialog(onDismissRequest = { confirmClear = false },
+        title = { Text("清空本地记录？", fontWeight = FontWeight.SemiBold) },
+        text = {
+            Surface(shape = DesignTokens.InnerShape,
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.25f))) {
+                Text("暂停采集并删除全部记录与分析，无法撤销。已导出文件保留。",
+                    Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium, color = Ink)
+            }
+        },
         confirmButton = { PojianButton(onClick = { app.monitor.invalidate(); model.clearHistory(); confirmClear = false }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("清空全部") } },
         dismissButton = { PojianTextButton(onClick = { confirmClear = false }) { Text("取消") } })
-    deleteEvent?.let { event -> PojianDialog(onDismissRequest = { deleteEvent = null }, title = { Text("删除这条记录？") },
+    deleteEvent?.let { event -> PojianDialog(onDismissRequest = { deleteEvent = null },
+        title = { Text("删除这条记录？", fontWeight = FontWeight.SemiBold) },
         text = { Text("删除记录 #${event.id} 并清除旧核查结果，无法撤销。") },
         confirmButton = { PojianButton(onClick = { app.monitor.invalidate(); model.deleteEvent(event.id); deleteEvent = null }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) { Text("删除") } },
         dismissButton = { PojianTextButton(onClick = { deleteEvent = null }) { Text("取消") } }) }
-    deletePackage?.let { application -> PojianDialog(onDismissRequest = { deletePackage = null }, title = { Text("删除此应用的记录？") },
+    deletePackage?.let { application -> PojianDialog(onDismissRequest = { deletePackage = null },
+        title = { Text("删除此应用的记录？", fontWeight = FontWeight.SemiBold) },
         text = { SourceAppText(application.packageName,
             "暂停采集，删除「${application.label}」的历史记录与旧核查结果。无法撤销。", appName = application.label,
             style = MaterialTheme.typography.bodyMedium, color = LocalContentColor.current) },

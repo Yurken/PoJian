@@ -13,10 +13,10 @@ import com.emerge.app.ui.Ink
 import com.emerge.app.ui.Muted
 import com.emerge.app.ui.SectionTitle
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -25,7 +25,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -130,23 +129,26 @@ fun MonitorSettingsSection(
 
 @Composable
 private fun MonitorSwitch(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .testTag("monitor-switch-$title")
-            .toggleable(checked, role = Role.Switch, onValueChange = onChange)
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = Ink)
-            if (title == "云端分析" || title == "允许云端分析" || title == "夜间免打扰") {
-                Text(detail, style = MaterialTheme.typography.labelSmall, color = Muted)
+    Surface(shape = DesignTokens.InnerShape, color = MaterialTheme.colorScheme.background,
+        border = BorderStroke(1.dp, DesignTokens.Border.copy(alpha = 0.7f)),
+        modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("monitor-switch-$title")
+                .toggleable(checked, role = Role.Switch, onValueChange = onChange)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = Ink)
+                if (title == "云端分析" || title == "允许云端分析" || title == "夜间免打扰") {
+                    Text(detail, style = MaterialTheme.typography.labelSmall, color = Muted)
+                }
             }
+            PojianSwitch(checked = checked, onCheckedChange = null)
         }
-        PojianSwitch(checked = checked, onCheckedChange = null)
     }
 }
 
