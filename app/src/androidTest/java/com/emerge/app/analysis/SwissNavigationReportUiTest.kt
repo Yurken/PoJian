@@ -24,8 +24,12 @@ class SwissNavigationReportUiTest {
         var clicks = 0
         compose.runOnUiThread { compose.activity.setContent {
             var period by remember { mutableStateOf(selected) }
-            EmergeTheme { SwissAppHeader("信息概览", period, { selected = it; period = it }, false, "已暂停", { clicks++ }) }
+            EmergeTheme { SwissAppHeader("信息概览", period, { selected = it; period = it }, false, "已暂停",
+                { clicks++ }, Modifier.width(360.dp)) }
         } }
+        val title = compose.onNodeWithText("信息概览").getUnclippedBoundsInRoot()
+        val periodBounds = compose.onNodeWithTag("header-period-HOURS24").getUnclippedBoundsInRoot()
+        org.junit.Assert.assertTrue(periodBounds.left < title.left)
         compose.onNodeWithTag("header-period-HOURS24").assertTextEquals("24H").assertIsSelected()
         compose.onNodeWithTag("header-period-WEEK").assertTextEquals("7D").performClick().assertIsSelected()
         compose.runOnIdle { assertEquals(StatisticsPeriod.WEEK, selected) }
@@ -40,7 +44,7 @@ class SwissNavigationReportUiTest {
         var factChecks = 0
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
             SwissAppHeader("观点分布", StatisticsPeriod.HOURS24, {}, false, "待授权", {},
-                Modifier.width(360.dp), { factChecks++ }, 73, showRecording = false, leftAlignPeriods = true)
+                Modifier.width(360.dp), { factChecks++ }, 73, showRecording = false)
         } } }
         compose.onNodeWithText("待授权").assertDoesNotExist()
         val title = compose.onNodeWithText("观点分布").getUnclippedBoundsInRoot()
@@ -50,6 +54,16 @@ class SwissNavigationReportUiTest {
         assertEquals(period.top.value, factCheck.top.value, 0.5f)
         compose.onNodeWithTag("viewpoints-fact-check-entry").performClick()
         compose.runOnIdle { assertEquals(1, factChecks) }
+    }
+    @Test fun headerOmitsPeriodsOnSettings() {
+        compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
+            SwissAppHeader("系统设置", StatisticsPeriod.HOURS24, {}, false, "待授权", {},
+                Modifier.width(360.dp), showPeriods = false)
+        } } }
+        listOf("HOURS24", "WEEK", "MONTH").forEach {
+            compose.onNodeWithTag("header-period-$it").assertDoesNotExist()
+        }
+        compose.onNodeWithText("待授权").assertIsDisplayed()
     }
     @Test fun reportsSwitchRealWindowsAndKeepExportActions() {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme { SwissReportDialog(emptyList(), emptyList(), 1_792_000_000_000L, {}) } } }

@@ -33,7 +33,7 @@ private val periodLabels = listOf("24H", "7D", "30D")
 internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit,
     active: Boolean, status: String, onRecording: () -> Unit, modifier: Modifier = Modifier,
     onFactCheck: (() -> Unit)? = null, findingCount: Int = 0, showRecording: Boolean = true,
-    leftAlignPeriods: Boolean = false) {
+    showPeriods: Boolean = true) {
     val scheme = MaterialTheme.colorScheme
     val titleStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
     val controlStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
@@ -43,7 +43,7 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
         measurer.measure(text, if (titleText) titleStyle else controlStyle, softWrap = false).size.width.toDp()
     }
     val titleWidth = textWidth(title, true) + 42.dp
-    val periodsWidth = periodLabels.map { textWidth(it) + 16.dp }.reduce { a, b -> a + b } + 8.dp
+    val periodsWidth = if (showPeriods) periodLabels.map { textWidth(it) + 16.dp }.reduce { a, b -> a + b } + 8.dp else 0.dp
     val statusWidth = if (showRecording) textWidth(status) + 38.dp else 0.dp
     val factCheckWidth = if (onFactCheck == null) 0.dp else textWidth("事实核查") + 34.dp +
         if (findingCount > 0) textWidth("$findingCount") + 12.dp else 0.dp
@@ -90,18 +90,17 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         brand()
-                        if (leftAlignPeriods) periods()
+                        if (showPeriods) periods()
                         Spacer(Modifier.weight(1f))
-                        if (!leftAlignPeriods) periods()
                         actions()
                     }
                 } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     brand()
                     FlowRow(Modifier.fillMaxWidth(),
-                        horizontalArrangement = if (leftAlignPeriods) Arrangement.SpaceBetween
+                        horizontalArrangement = if (showPeriods) Arrangement.SpaceBetween
                             else Arrangement.spacedBy(12.dp, Alignment.End),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        periods()
+                        if (showPeriods) periods()
                         actions()
                     }
                 }
