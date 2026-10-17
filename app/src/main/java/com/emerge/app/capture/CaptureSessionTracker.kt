@@ -12,8 +12,14 @@ internal data class CaptureSample(
     val rawText: String,
     val hint: WorkHint,
     val work: ObservedWork,
-    val region: VisibilityRegion
-)
+    val region: VisibilityRegion,
+    val previousText: String = "",
+    val pauseVersion: Long = 0
+) {
+    fun withCleanedText(text: String): CaptureSample = copy(event = event.copy(visibleText =
+        (if (continuing) previousText.lines() + text.lines() else text.lines())
+            .filter(String::isNotBlank).distinct().joinToString("\n").take(16000)))
+}
 
 /** Keeps deleted sessions as in-memory tombstones until the visible content changes. */
 internal class CaptureSessionTracker {
@@ -24,8 +30,9 @@ internal class CaptureSessionTracker {
     private var lastHint = WorkHint()
     private var work: ObservedWork? = null
     private var paused = false
+    private var pauseVersion = 0L
     private var lastRegion = VisibilityRegion.UNLOCATED
-    fun pause() { paused = true }
+    fun pause() { paused = true; pauseVersion++ }
     @Volatile private var revision = 0L
     val packageName: String? get() = session?.packageName
     fun canAttachComments(packageName: String): Boolean = session?.packageName == packageName &&
@@ -105,7 +112,8 @@ internal class CaptureSessionTracker {
                     if (region == lastRegion) region else VisibilityRegion.UNLOCATED))) else "",
             durationMillis = if (measured > 0 && !clockDiscontinuity) measured else 0L
         )
-        return CaptureSample(event, continuing, elapsed, revision, text, effectiveHint, content, region)
+        return CaptureSample(event, continuing, elapsed, revision, text, effectiveHint, content, region,
+            if (continuing) old!!.visibleText else "", pauseVersion)
     }
 
     fun isCurrent(sample: CaptureSample): Boolean = sample.revision == revision
@@ -119,7 +127,7 @@ internal class CaptureSessionTracker {
         work = sample.work
         lastElapsed = sample.elapsedRealtime
         deleted = id == null
-        paused = false
+        paused = pauseVersion != sample.pauseVersion
         lastRegion = sample.region
     }
 

@@ -12,6 +12,19 @@ import org.junit.Test
 import java.time.ZoneId
 
 class PlatformTextCleanerTest {
+    @Test fun screenshotChromeIsRemovedWithoutDeletingNumericProse() {
+        val raw = "欧洲赛场之第一场WSK世界赛 #赛车 #赛车手 广告 展开\n" +
+            "未点赞，喜欢16.2万，按钮\n16.2万\n3023\n1.2万\n6452\n相关搜索\n学而思学习机T6国际版"
+        assertEquals("欧洲赛场之第一场WSK世界赛 #赛车 #赛车手", PlatformTextCleaner.clean(raw))
+        val facts = "2026年比赛共有20名选手。\n2026\n1.2万\n20%\n相关搜索是平台的一项功能。"
+        assertEquals(facts, PlatformTextCleaner.clean(facts))
+    }
+
+    @Test fun ambiguousProseSuffixAndSearchTopicAreKeptWithoutUiContext() {
+        val prose = "这段论证需要进一步 展开\n矩阵按第一行 展开\n请把雨伞 收起\n相关搜索\n搜索技术综述"
+        assertEquals(prose, PlatformTextCleaner.clean(prose))
+    }
+
     private val body = "今天分享求职经历，推荐比较不同岗位的要求。"
     private val chrome = listOf("分享", "点赞", "关注", "评论", "按钮", "直播", "推荐", "已关注", "首页", "返回",
         "说点什么…", "展开全文", "图片，第 1 张，共 3 张")

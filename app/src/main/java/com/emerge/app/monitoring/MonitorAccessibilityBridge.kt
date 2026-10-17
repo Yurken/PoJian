@@ -324,14 +324,17 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                         val (encoded, recognized) = prepared
                         sampling.sampled(sampleScope, encoded.image == null)
                         val image = encoded.image ?: return@launch
-                        val extra = ScreenTextMaterial.additionalText(recognized, state.screenText)
+                        val rawExtra = ScreenTextMaterial.additionalText(recognized, state.screenText)
+                        val extra = if (rawExtra.isBlank()) "" else app.cleanCaptureText(rawExtra, state.currentPackage, generation) {
+                            app.captureSettings.isPermissionCurrent(state.currentPackage, permission)
+                        }
                         val material = if (extra.isBlank()) null else {
                             val retained = lastMaterial?.takeIf { it.first == sampleScope && it.second.visibleText == extra &&
                                 at - it.second.timestamp in 0 until 300_000L }?.second
                             if (retained != null && app.repository.findEvent(retained.id) == retained) retained else {
                                 val event = ScreenTextMaterial.event(state.currentPackage, extra, at, parent)
                                 app.repository.saveCapture(event, false, generation) {
-                                    samplingScope() == sampleScope && localThumbnails.revision == captureRevision && app.captureSettings.isPermissionCurrent(state.currentPackage, permission)
+                                    app.captureSettings.isPermissionCurrent(state.currentPackage, permission)
                                 }?.let { event.copy(id = it).also { saved -> lastMaterial = sampleScope to saved } }
                             }
                         }

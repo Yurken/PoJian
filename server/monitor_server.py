@@ -97,6 +97,15 @@ def qwen_structured_options(url: str, model: str, image: bool = False) -> dict:
     return {}
 
 
+def fast_text_options(url: str, model: str) -> dict:
+    options = qwen_structured_options(url, model)
+    host = (urlsplit(url).hostname or "").lower()
+    official = host in {"dashscope.aliyuncs.com", "dashscope-intl.aliyuncs.com", "dashscope-us.aliyuncs.com"} or host.endswith(".maas.aliyuncs.com")
+    if official and model.lower().startswith(("qwen-plus", "qwen-flash", "qwen3")):
+        options["enable_thinking"] = False
+    return {**options, "max_tokens": 1024}
+
+
 def fact_check_failure(stage: str, error: UpstreamError) -> tuple[dict, str]:
     code = getattr(error, "code", "invalid_evidence" if stage == "evidence" else "provider_failure")
     if error.status == 504:
@@ -183,10 +192,17 @@ claim 是初筛后的待核查短句，original_quote 是它所在的原句；�
 def endpoint_ok(url: str) -> bool:
     try:
         p = urlsplit(url)
-        return bool(p.hostname) and not (p.username or p.password or p.query or p.fragment) and (
+        return bool(p.hostname) and (p.port is None or 1 <= p.port <= 65535) and not (p.username or p.password or p.query or p.fragment) and (
             p.scheme == "https" or (p.scheme == "http" and p.hostname in {"localhost", "127.0.0.1", "::1"}))
     except ValueError:
         return False
+
+
+def endpoint_origin(url: str) -> tuple[str, str, int] | None:
+    if not endpoint_ok(url):
+        return None
+    parsed = urlsplit(url)
+    return parsed.scheme, parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80)
 
 
 def evidence_url(url: object) -> bool:
@@ -522,6 +538,7 @@ class RuntimeConfig:
         self._lock = threading.Lock()
         self._path = path
         self._text = {"url": config.upstream_url, "model": config.upstream_model, "key": config.upstream_key}
+        self._fast_text = {"url": "", "model": os.getenv("EMERGE_CLEANUP_MODEL", "").strip(), "key": ""}
         self._vision = {"url": "", "model": "", "key": ""}
         if options.vision_model:
             self._vision = {"url": options.vision_url, "model": options.vision_model, "key": options.vision_key}
@@ -562,6 +579,21 @@ class RuntimeConfig:
                         self._vision["key"] or self._text["key"], self._vision["model"])
             return (normalize_endpoint(self._text["url"]), self._text["key"], self._text["model"])
 
+    @staticmethod
+    def _resolve_fast_text(text: dict, fast: dict) -> tuple[str, str, str]:
+        url = fast["url"] or text["url"]
+        origin = endpoint_origin(url)
+        # An invalid legacy endpoint must not break the admin status used to repair it.
+        if origin is None:
+            return url, "", fast["model"] or text["model"]
+        # Never inherit another provider's secret after changing only the API host.
+        key = fast["key"] or (text["key"] if origin == endpoint_origin(text["url"]) else "")
+        return normalize_endpoint(url), key, fast["model"] or text["model"]
+
+    def fast_text_settings(self) -> tuple[str, str, str]:
+        with self._lock:
+            return self._resolve_fast_text(self._text, self._fast_text)
+
     def search_key(self) -> str:
         with self._lock:
             return self._search_keys[0] if self._search_keys else ""
@@ -571,7 +603,12 @@ class RuntimeConfig:
             return list(self._search_keys)
 
     def update(self, fields: dict) -> None:
+        with self._lock:
+            self._update_locked(fields)
+
+    def _update_locked(self, fields: dict) -> None:
         text = dict(self._text)
+        fast = dict(self._fast_text)
         vision = dict(self._vision)
         search_keys = list(self._search_keys)
         limit = self._daily_limit
@@ -585,6 +622,14 @@ class RuntimeConfig:
                 text["key"] = ""
             elif value:
                 text[field] = value
+        for field in ("url", "model", "key"):
+            value = fields.get("fast_text_" + field, "")
+            if not isinstance(value, str) or len(value) > 400:
+                raise ClientError("Invalid configuration field")
+            if value == "-":
+                fast[field] = ""
+            elif value.strip():
+                fast[field] = value.strip()
         for field in ("url", "model", "key"):
             value = fields.get("vision_" + field, "")
             if not isinstance(value, str) or len(value) > 400:
@@ -614,19 +659,27 @@ class RuntimeConfig:
             raise ClientError("文字接口必须是有效的 HTTPS 地址")
         if vision["model"] and not endpoint_ok(vision["url"] or text["url"]):
             raise ClientError("视觉接口必须是有效的 HTTPS 地址")
-        with self._lock:
-            self._text, self._vision, self._search_keys, self._daily_limit = text, vision, search_keys, limit
-            self._source = "env" if self._path == ":memory:" else "runtime"
-            self._persist()
+        if not endpoint_ok(fast["url"] or text["url"]):
+            raise ClientError("快速文本接口必须是有效的 HTTPS 地址")
+        if (self._fast_text["key"] and fast["key"] and not fields.get("fast_text_key", "").strip()
+                and endpoint_origin(self._fast_text["url"] or self._text["url"])
+                != endpoint_origin(fast["url"] or text["url"])):
+            raise ClientError("接口变更后请重新填写快速文本密钥")
+        if fast["url"] and not fast["key"] and not self._resolve_fast_text(text, fast)[1] and text["key"]:
+            raise ClientError("请填写快速文本密钥")
+        self._text, self._fast_text, self._vision, self._search_keys, self._daily_limit = text, fast, vision, search_keys, limit
+        self._source = "env" if self._path == ":memory:" else "runtime"
+        self._persist()
 
     def list_profiles(self) -> list[dict]:
         with self._lock:
             return [{"name": row["name"], "saved_at": int(row["saved_at"]),
                      "text_model": row["text"]["model"], "vision_model": row["vision"]["model"],
+                     "fast_text_model": row.get("fast_text", {}).get("model") or row["text"]["model"],
                      "retrieval": bool(row.get("search_keys") or row.get("search_key"))} for row in self._profiles]
 
     def _active_snapshot(self) -> dict:
-        return {"text": dict(self._text), "vision": dict(self._vision),
+        return {"text": dict(self._text), "fast_text": dict(self._fast_text), "vision": dict(self._vision),
                 "search_keys": list(self._search_keys), "daily_limit": self._daily_limit}
 
     def save_profile(self, name: str) -> None:
@@ -651,6 +704,7 @@ class RuntimeConfig:
             if row is None:
                 return False
             self._text = _config_section(row.get("text"))
+            self._fast_text = _config_section(row.get("fast_text"))
             self._vision = _config_section(row.get("vision"))
             if not self._vision["model"]:
                 self._vision = {"url": "", "model": "", "key": ""}
@@ -679,11 +733,16 @@ class RuntimeConfig:
         with self._lock:
             profiles = [{"name": row["name"], "saved_at": int(row["saved_at"]),
                          "text_model": row["text"]["model"], "vision_model": row["vision"]["model"],
+                         "fast_text_model": row.get("fast_text", {}).get("model") or row["text"]["model"],
                          "retrieval": bool(row.get("search_keys") or row.get("search_key"))} for row in self._profiles]
+            fast_url, fast_key, fast_model = self._resolve_fast_text(self._text, self._fast_text)
             return {
                 "config_source": self._source,
                 "text": {"url": self._text["url"], "model": self._text["model"],
                          "api_key": admin.mask_secret(self._text["key"]), "configured": bool(self._text["key"])},
+                "fast_text": {"url": fast_url, "model": fast_model, "api_key": admin.mask_secret(fast_key),
+                              "configured": bool(fast_key),
+                              "overrides": {"url": self._fast_text["url"], "model": self._fast_text["model"]}},
                 "vision": {"url": self._vision["url"] or self._text["url"], "model": self._vision["model"],
                            "api_key": admin.mask_secret(self._vision["key"]),
                            "configured": bool(self._vision["model"]) and bool(self._vision["key"] or self._text["key"])},
@@ -705,6 +764,8 @@ class RuntimeConfig:
         section = _config_section(data.get("text"))
         if section["url"] and section["model"]:
             self._text = section
+        if "fast_text" in data:
+            self._fast_text = _config_section(data["fast_text"])
         vision = _config_section(data.get("vision"))
         self._vision = vision if vision["model"] else {"url": "", "model": "", "key": ""}
         keys = data.get("search_keys")
@@ -734,6 +795,7 @@ class RuntimeConfig:
                     entry_keys = []
                 entry = {"name": row["name"], "saved_at": float(row["saved_at"]),
                          "text": _config_section(row.get("text")), "vision": _config_section(row.get("vision")),
+                         "fast_text": _config_section(row.get("fast_text")),
                          "search_keys": entry_keys,
                          "daily_limit": row["daily_limit"] if type(row.get("daily_limit")) is int else self._daily_limit}
                 if not entry["vision"]["model"]:
@@ -745,7 +807,7 @@ class RuntimeConfig:
     def _persist(self) -> None:
         if self._path == ":memory:":
             return
-        payload = {"text": self._text, "vision": self._vision, "search_keys": self._search_keys,
+        payload = {"text": self._text, "fast_text": self._fast_text, "vision": self._vision, "search_keys": self._search_keys,
                    "search_key": self._search_keys[0] if self._search_keys else "",
                    "daily_limit": self._daily_limit, "profiles": self._profiles}
         raw = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
@@ -784,6 +846,12 @@ def probe_provider(target: str, runtime: RuntimeConfig) -> dict:
             post_json(settings[0], settings[1], {"model": settings[2],
                 "messages": [{"role": "user", "content": "ping"}],
                 "max_tokens": 1, "temperature": 0, "stream": False}, PROBE_TIMEOUT, detail=True)
+        elif target == "fast_text":
+            url, key, model = runtime.fast_text_settings()
+            if not key:
+                raise ClientError("尚未配置快速文本密钥")
+            post_json(url, key, {"model": model, "messages": [{"role": "user", "content": "ping"}],
+                "temperature": 0, "stream": False, **fast_text_options(url, model)}, PROBE_TIMEOUT, detail=True)
         elif target == "vision":
             settings = runtime.provider_settings(True)
             if settings is None:
@@ -1201,25 +1269,33 @@ class Providers:
     def search_key(self) -> str:
         return self.runtime.search_key()
 
-    def model(self, system: str, user: object, deadline: float, image: str = "") -> dict:
+    def cleanup_model(self, system: str, user: object, deadline: float) -> dict:
+        return self.model(system, user, deadline, cleanup=True)
+
+    def model(self, system: str, user: object, deadline: float, image: str = "", *, cleanup: bool = False) -> dict:
         # Monitor shares its end-to-end budget across extraction and verification;
         # the legacy /analyze timeout must not truncate these model calls.
         remaining = min(MONITOR_TIMEOUT_SECONDS, deadline - time.monotonic())
         if remaining <= 0:
             raise UpstreamError("Monitor deadline exceeded", 504)
-        settings = self.runtime.provider_settings(bool(image))
+        settings = self.runtime.fast_text_settings() if cleanup else self.runtime.provider_settings(bool(image))
         if settings is None:
             raise UpstreamError("Vision model is not configured", 503)
         url, key, model = settings
+        options = qwen_structured_options(url, model, bool(image))
+        if cleanup:
+            if not key:
+                raise UpstreamError("Fast text model is not configured", 503)
+            options = fast_text_options(url, model)
         content: object = json.dumps(user, ensure_ascii=False)
         if image:
             content = [{"type": "text", "text": content},
                        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + image}}]
-        stage = "extraction" if system == EXTRACT_PROMPT else "alignment"
+        stage = "cleanup" if cleanup else "extraction" if system == EXTRACT_PROMPT else "alignment"
         result = self.diagnostics.call(stage, url, key, {"model": model, "messages": [
             {"role": "system", "content": system}, {"role": "user", "content": content}],
             "temperature": 0, "max_tokens": 2600, "stream": False,
-            "response_format": {"type": "json_object"}, **qwen_structured_options(url, model, bool(image))}, remaining)
+            "response_format": {"type": "json_object"}, **options}, remaining)
         try:
             choice = result["choices"][0]
             if not isinstance(choice, dict):
@@ -1671,6 +1747,8 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
 
         def do_POST(self):
             self._mark()
+            if self.path == "/capture-cleanup":
+                return self._capture_cleanup()
             if self.path == "/information-supplement":
                 return self._information_supplement()
             if self.path == "/admin/login":
@@ -1712,6 +1790,35 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
             except Exception:
                 # Never return upstream payloads, screenshot text, credentials or tracebacks to clients.
                 self.send_json(500, {"error": "Monitor processing failed"})
+            finally:
+                slots.release()
+
+        def _capture_cleanup(self):
+            import capture_cleanup
+            if not self._authorized():
+                return self.send_json(401, {"error": "Invalid service token"})
+            try:
+                source = capture_cleanup.validate_request(self._read_json(capture_cleanup.MAX_BODY))
+            except BodyError as error:
+                return self.send_json(error.status, {"error": str(error)})
+            except ClientError:
+                return self.send_json(400, {"error": "Invalid cleanup request"})
+            if not runtime.fast_text_settings()[1]:
+                return self.send_json(503, {"error": "Model API is not configured"})
+            if not slots.acquire(False):
+                return self.send_json(429, {"error": "Service is busy"})
+            try:
+                if not budget.reserve():
+                    return self.send_json(429, {"error": "Daily monitor request budget exhausted"})
+                self.send_json(200, capture_cleanup.clean(source, providers))
+            except UpstreamError as error:
+                self.send_json(error.status, {"error": "Capture cleanup failed"})
+            except (TimeoutError, socket.timeout):
+                self.send_json(408, {"error": "Request timed out"})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception:
+                self.send_json(500, {"error": "Capture cleanup failed"})
             finally:
                 slots.release()
 

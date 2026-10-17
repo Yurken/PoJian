@@ -235,6 +235,9 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
       <div class="field"><label for="cfg_text_url">文字接口（完整地址或 /v1 基础地址均可）</label><input id="cfg_text_url" autocomplete="off"></div>
       <div class="field"><label for="cfg_text_model">文字模型</label><input id="cfg_text_model" autocomplete="off"></div>
       <div class="field"><label for="cfg_text_key">文字密钥</label><input id="cfg_text_key" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="cfg_fast_text_url">快速文本接口</label><input id="cfg_fast_text_url" autocomplete="off"></div>
+      <div class="field"><label for="cfg_fast_text_model">快速文本模型</label><input id="cfg_fast_text_model" autocomplete="off"></div>
+      <div class="field"><label for="cfg_fast_text_key">快速文本密钥</label><input id="cfg_fast_text_key" type="password" autocomplete="new-password"></div>
       <div class="field"><label for="cfg_vision_url">视觉接口（留空同文字接口；填 - 清空回退）</label><input id="cfg_vision_url" autocomplete="off"></div>
       <div class="field"><label for="cfg_vision_model">视觉模型（留空停用视觉；填 - 清空）</label><input id="cfg_vision_model" autocomplete="off"></div>
       <div class="field"><label for="cfg_vision_key">视觉密钥（留空同文字密钥；填 - 清空）</label><input id="cfg_vision_key" type="password" autocomplete="new-password"></div>
@@ -242,11 +245,12 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
       <div class="field"><label for="cfg_daily_limit">每日限额（次）</label><input id="cfg_daily_limit" type="number" min="1" max="10000"></div>
     </div>
     <div class="msg" id="configMsg"></div>
-    <div><button class="btn" id="saveConfigBtn" type="button">保存并生效</button></div>
+    <div><button class="btn" id="saveConfigBtn" type="button">保存并生效</button> <button class="btn" id="resetFastTextBtn" type="button">沿用文本配置</button></div>
 
     <h2 class="subhead">连通性测试</h2>
     <div class="test-grid" id="testGrid">
       <div class="test-item"><button class="btn" type="button" data-test="text">测试文字模型</button><span class="msg" id="testMsg_text"></span></div>
+      <div class="test-item"><button class="btn" type="button" data-test="fast_text">测试快速文本模型</button><span class="msg" id="testMsg_fast_text"></span></div>
       <div class="test-item"><button class="btn" type="button" data-test="vision">测试视觉模型</button><span class="msg" id="testMsg_vision"></span></div>
       <div class="test-item"><button class="btn" type="button" data-test="retrieval">测试检索（Tavily）</button><span class="msg" id="testMsg_retrieval"></span></div>
     </div>
@@ -395,11 +399,18 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
   function keyHint(current) { return current ? "留空保持不变（当前 " + current + "）" : "未配置"; }
 
   function prefillConfig(cfg) {
+    var fast = cfg.fast_text || {}, overrides = fast.overrides || {};
+    field("cfg_fast_text_url").placeholder = fast.url || "";
+    field("cfg_fast_text_model").placeholder = fast.model || "";
+    field("cfg_fast_text_key").placeholder = fast.api_key || "";
     if (field("configPanel").contains(document.activeElement)) return;
     setVal("cfg_text_url", cfg.text ? cfg.text.url : "");
     setVal("cfg_text_model", cfg.text ? cfg.text.model : "");
     setVal("cfg_text_key", "");
     field("cfg_text_key").placeholder = keyHint(cfg.text && cfg.text.api_key);
+    setVal("cfg_fast_text_url", overrides.url || "");
+    setVal("cfg_fast_text_model", overrides.model || "");
+    setVal("cfg_fast_text_key", "");
     setVal("cfg_vision_url", cfg.vision ? (cfg.vision.url || "") : "");
     setVal("cfg_vision_model", cfg.vision ? cfg.vision.model : "");
     setVal("cfg_vision_key", "");
@@ -523,6 +534,10 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
       html += block("视觉模型", cfg.vision.configured,
         row("接口", cfg.vision.url) + row("模型", cfg.vision.model) + row("密钥", cfg.vision.api_key));
     }
+    if (cfg.fast_text) {
+      html += block("快速文本模型", cfg.fast_text.configured,
+        row("接口", cfg.fast_text.url) + row("模型", cfg.fast_text.model) + row("密钥", cfg.fast_text.api_key));
+    }
     if (cfg.retrieval) {
       html += block("联网取证", cfg.retrieval.configured,
         row("服务", cfg.retrieval.provider) + row("密钥", cfg.retrieval.api_key +
@@ -562,6 +577,7 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
   function saveConfig() {
     var body = {
       text_url: val("cfg_text_url"), text_model: val("cfg_text_model"), text_key: val("cfg_text_key"),
+      fast_text_url: val("cfg_fast_text_url"), fast_text_model: val("cfg_fast_text_model"), fast_text_key: val("cfg_fast_text_key"),
       vision_url: val("cfg_vision_url"), vision_model: val("cfg_vision_model"), vision_key: val("cfg_vision_key"),
       search_key: val("cfg_search_key")
     };
@@ -606,6 +622,10 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
     });
   });
   document.getElementById("saveConfigBtn").addEventListener("click", saveConfig);
+  document.getElementById("resetFastTextBtn").addEventListener("click", function () {
+    ["cfg_fast_text_url", "cfg_fast_text_model", "cfg_fast_text_key"].forEach(function (id) { setVal(id, ""); });
+    postConfig("config/update", { fast_text_url: "-", fast_text_model: "-", fast_text_key: "-" }, "configMsg", "已保存并即时生效");
+  });
   document.getElementById("saveProfileBtn").addEventListener("click", function () {
     var name = val("profileName");
     if (!name) { setMsg(document.getElementById("profileMsg"), "请输入配置名称", false); return; }

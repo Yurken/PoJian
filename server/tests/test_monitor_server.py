@@ -672,6 +672,25 @@ class ConfigApiTests(unittest.TestCase):
             self.assertTrue(self.budget.reserve())
         self.assertFalse(self.budget.reserve())
 
+    def test_fast_text_api_probe_and_cleanup_use_independent_config(self):
+        self.assertEqual(self.call("/config/update", {"fast_text_url": "https://fast.example.org/v1",
+            "fast_text_model": "fast-model", "fast_text_key": "independent-secret", "text_key": "-"})[0], 200)
+        settings = self.status()["settings"]
+        self.assertFalse(settings["text"]["configured"])
+        self.assertTrue(settings["fast_text"]["configured"])
+        self.assertNotIn("independent-secret", json.dumps(settings))
+        reply = {"choices": [{"message": {"content": '{"drop_lines":[],"trim_suffixes":[]}'}, "finish_reason": "stop"}]}
+        with patch.object(m, "post_json", return_value=reply) as post:
+            status, body = self.call("/config/test", {"target": "fast_text"})
+            self.assertEqual(200, status)
+            self.assertTrue(body["ok"])
+            self.assertEqual(200, self.call("/capture-cleanup", {"version": 1, "text": "真实正文"})[0])
+            self.assertEqual(2, post.call_count)
+            for sent in post.call_args_list:
+                self.assertEqual("https://fast.example.org/v1/chat/completions", sent.args[0])
+                self.assertEqual("independent-secret", sent.args[1])
+                self.assertEqual("fast-model", sent.args[2]["model"])
+
     def test_vision_and_retrieval_updates(self):
         self.assertEqual(self.call("/config/update", {"vision_model": "vision-2", "search_key": "tavily-2"})[0], 200)
         settings = self.status()["settings"]
@@ -854,6 +873,8 @@ class ProbeErrorDetailTests(unittest.TestCase):
     def setUpClass(cls):
         class RejectingHandler(BaseHTTPRequestHandler):
             def do_POST(self):
+                # Drain the request before close; unread body bytes can reset the socket on Windows.
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
                 body = json.dumps({"error": {"message": "Invalid API-key provided", "type": "authentication_error"}}).encode()
                 self.send_response(401)
                 self.send_header("Content-Type", "application/json")

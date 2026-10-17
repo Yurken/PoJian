@@ -98,7 +98,9 @@ open class BrowseAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun sampleWindow(type: Int) {
-        sampleMutex.withLock { captureWindow(type) }
+        // Animated pages can emit faster than a model reply; never queue stale sampling ticks.
+        if (!sampleMutex.tryLock()) return
+        try { captureWindow(type) } finally { sampleMutex.unlock() }
     }
 
     /** Notice exits before the debounced sample, including a short app switch between periodic ticks. */
@@ -158,7 +160,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 return
             }
             val identityNodes = mutableListOf<IdentityNode>()
-            val text = extractText(root, identityNodes)
+            val text = PlatformTextCleaner.clean(extractText(root, identityNodes))
             // Page structure and identity still need gallery/follow controls, even when prose excludes them.
             val structureText = identityNodes.flatMap { listOf(it.text, it.description) }
                 .filter(String::isNotBlank).distinct().joinToString("\n")
@@ -182,21 +184,30 @@ open class BrowseAccessibilityService : AccessibilityService() {
                 app.captureDiagnostics.update { it.copy(result = "当前不是可识别作品，或评论缺少原视频上下文，未增加作品数") }
                 return
             }
-            val sample = sessions.sample(activePackage, text, now, elapsed, type, hint)
+            val captured = sessions.sample(activePackage, text, now, elapsed, type, hint)
             if (monitorBridge?.captureRevision != bridgeRevision) { sessions.pause(); return }
+            val capturedWindow = root.windowId
+            root.recycle()
+            root = null
+            // A valid historical snapshot need not still be on screen when the fast model replies.
+            // Identity/time were sampled above; permissions/deletion are checked again at the write.
+            val cleaned = app.cleanCaptureText(text, activePackage, generation) {
+                app.captureSettings.isPermissionCurrent(activePackage, permission)
+            }
+            val sample = captured.withCleanedText(cleaned)
+            if (sample.event.visibleText.isBlank()) { sessions.pause(); return }
             val id = app.repository.saveCapture(sample.event, sample.continuing, generation,
-                work = sample.work, sampleText = sample.rawText) {
-                app.captureSettings.isPermissionCurrent(activePackage, permission) && sessions.isCurrent(sample) && monitorBridge?.captureRevision == bridgeRevision
+                work = sample.work, sampleText = cleaned) {
+                app.captureSettings.isPermissionCurrent(activePackage, permission)
             }
             if (!app.captureSettings.isPermissionCurrent(activePackage, permission)) {
                 sessions.reset()
                 return
             }
             if (!sessions.isCurrent(sample)) return
-            if (id == null && monitorBridge?.captureRevision != bridgeRevision) { sessions.pause(); return }
             sessions.saved(sample, id)
             if (id != null && monitorBridge?.captureRevision == bridgeRevision)
-                monitorBridge?.observed(sample.event.copy(id = id), hint, root.windowId, bridgeRevision)
+                monitorBridge?.observed(sample.event.copy(id = id), hint, capturedWindow, bridgeRevision)
             app.captureDiagnostics.update { it.copy(lastSaved = if (id == null) it.lastSaved else now,
                 result = when {
                     id == null -> "记录已删除或采集范围有变化，本次采样已丢弃"
@@ -232,7 +243,7 @@ open class BrowseAccessibilityService : AccessibilityService() {
                     node.contentDescription?.toString()?.trim()?.take(2000).orEmpty())
                 val captured = identityNodes.last()
                 length += captured.text.length + captured.description.length
-                PlatformTextCleaner.nodeText(captured.text, captured.description, captured.resourceId).lines().forEach { line ->
+                PlatformTextCleaner.captureNodeText(captured.text, captured.description, captured.resourceId).lines().forEach { line ->
                     if (line.isNotBlank()) lines.add(line)
                 }
             }

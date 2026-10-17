@@ -21,6 +21,26 @@ class EmergeApplication : Application() {
     val captureDiagnostics = CaptureDiagnostics()
     val monitorTasks by lazy { com.emerge.app.monitoring.MonitorTaskStore(database) }
     val monitor by lazy { com.emerge.app.monitoring.MonitorRuntime(this) }
+    private val captureTextCleaner by lazy {
+        com.emerge.app.capture.CaptureTextCleaner { text, config, current ->
+            audioCoordinator.settings.recordRequest()
+            com.emerge.app.capture.CaptureCleanupClient.request(text, config, BuildConfig.DEBUG, current)
+        }
+    }
+
+    internal suspend fun cleanCaptureText(text: String, packageName: String, generation: Long,
+        permitted: () -> Boolean): String {
+        val settings = audioCoordinator.settings
+        val config = settings.config.value
+        val authorization = settings.authorizationRevision
+        val permission = captureSettings.permissionToken(packageName)
+        return captureTextCleaner.clean(text, config, "$authorization|$generation|$packageName|$permission") {
+            permission != null && captureSettings.isPermissionCurrent(packageName, permission) &&
+                repository.captureGeneration == generation && permitted() &&
+                settings.authorizationRevision == authorization && settings.config.value == config &&
+                captureSettings.permissionToken(packageName) == permission
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()

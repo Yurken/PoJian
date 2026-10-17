@@ -10,6 +10,9 @@ Linux 部署使用服务名 `pojian-backend.service`，端口 `28763`。运行 `
 export EMERGE_UPSTREAM_URL='https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 export EMERGE_UPSTREAM_MODEL='你的文字模型名称'
 export EMERGE_UPSTREAM_API_KEY='你的文字模型密钥'
+# 可选：首次启动的快速文本模型；未设置时沿用已配置的文字模型。
+# 管理台“快速文本模型”可独立配置接口、模型和密钥，保存后覆盖此环境变量。
+# export EMERGE_CLEANUP_MODEL='你的快速文字模型名称'
 export EMERGE_SERVICE_TOKEN='自行生成的高强度访问令牌'
 # 视觉使用兼容 Chat Completions 图像输入的模型；三项可与文字提供方不同。
 export EMERGE_VISION_URL="$EMERGE_UPSTREAM_URL"
@@ -24,11 +27,15 @@ python server/monitor_server.py
 
 默认监听 `127.0.0.1:8787`，对外使用受控的 HTTPS 反向代理。手机填写可达的网关根地址，不包含 `/monitor`，令牌填写 `EMERGE_SERVICE_TOKEN`，不是模型 API Key。仅开发调试允许符合既有 EndpointPolicy 的本地 HTTP；不要在不受信网络明文传输。
 
+快速文本配置用于 `/capture-cleanup`。未单独配置时，沿用已有文字接口、模型及密钥；官方 DashScope 的 Qwen 混合思考模型明确发送 `enable_thinking=false`，其他提供方沿用其兼容参数，不擅自替换模型。管理台支持即时修改、连通性测试、保存配置方案和“沿用文本配置”重置；既有运行时配置和旧方案缺少快速文本字段时自动继承文字配置。`/config/update` 字段为 `fast_text_url`、`fast_text_model`、`fast_text_key`，空字符串保持已有覆盖值，`-` 清除覆盖；密钥仅脱敏展示，独立接口换域名时须提供对应密钥。
+
 如需先部署、以后再配置模型 API，可显式设置 `EMERGE_ALLOW_UNCONFIGURED=1`；服务访问令牌仍须填写。此时健康与能力接口返回 `model_configured=false`，认证后的分析接口返回 `503`，不会调用模型或消耗监测额度。之后可直接在 `/admin` 页面填写模型与密钥（即时生效、无需重启），或填写环境变量后重启；未设置该开关且无持久化配置时，缺少模型密钥仍会拒绝启动。
 
 手机开启云端分析后，当前采集授权范围内的文字与播放音频转写会自动进入 `/monitor`，并补处理最近 24 小时尚未分析的记录。实时事实核查只控制 `check_facts`，不再控制观点分析的发送；关键画面分析仍单独开启。客户端不设置云端或画面请求额度，保留请求计数，额度由服务端管理。原有手动音频回顾继续使用 `/analyze`；纯旧服务 `python server/emerge_server.py` 仍可运行，但不提供 `/monitor`，不能用于新版实时核查。
 
 ## 接口及限制
+
+- `POST /capture-cleanup`：保存新采集文字前的清理，须 Bearer 服务令牌，复用监测并发池和每日额度。请求 `{version:1,text:...}` 最多 16000 字、256 行；只返回原文哈希、删除行号及严格限定的控件后缀，不生成替代正文。上游限时 2.5 秒，App 总等待上限 3 秒，成功结果按采集授权缓存 5 分钟；故障后 10 秒内使用本地规则。断网、旧版网关、关闭云端、超时和无效结果均在本地清理后保存。不会回写已有记录，也不处理音频转写。部署需同时更新 App 和本服务。Qwen 非思考参数参考[官方文档](https://www.alibabacloud.com/help/en/model-studio/deep-thinking)。
 
 - `GET /health`：存活检查，保留旧协议，公开。
 - `GET /capabilities`：返回监测协议以及视觉、检索是否配置；这是配置状态，不是效果验证；公开。
