@@ -9,6 +9,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,7 +42,18 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+internal data class SwissHistoryPage(val index: Int, val count: Int, val records: List<BrowseEvent>)
+
+internal fun swissHistoryPage(records: List<BrowseEvent>, requestedIndex: Int): SwissHistoryPage {
+    val pageSize = 20
+    val count = ((records.size + pageSize - 1) / pageSize).coerceAtLeast(1)
+    val index = requestedIndex.coerceIn(0, count - 1)
+    val start = index * pageSize
+    return SwissHistoryPage(index, count, records.subList(start, minOf(start + pageSize, records.size)))
+}
 
 /** Display-only filtering. A missing or invalid analysis never hides retained content. */
 internal fun swissHistoryRecords(events: List<BrowseEvent>, semantics: List<EventSemantics>,
@@ -103,6 +115,9 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
     var appFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var query by rememberSaveable { mutableStateOf("") }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pageIndex by rememberSaveable(appFilter, keyword, query) { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val apps = remember(events, appNames) { swissKnownApps + events.map { it.packageName }.distinct()
         .filterNot { it in swissKnownApps }.associateWith { appNames[it] ?: it } }
     val inputKey = remember(events, semantics, report, appFilter, keyword, query, appNames) { Any() }
@@ -120,9 +135,16 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
     }
     val data = prepared?.takeIf { it.first === inputKey }?.second
     val filtered = data?.records.orEmpty()
+    val page = remember(filtered, pageIndex) { swissHistoryPage(filtered, pageIndex) }
+    // A pending refresh is not an empty result and must not erase the selected page.
+    LaunchedEffect(data, page.index) { if (data != null) pageIndex = page.index }
+    fun changePage(index: Int) {
+        pageIndex = index
+        scope.launch { listState.scrollToItem(0) }
+    }
     val model = data?.model.orEmpty()
     val format = remember { DateTimeFormatter.ofPattern("MM/dd HH:mm").withZone(ZoneId.systemDefault()) }
-    LazyColumn(modifier.fillMaxSize().testTag("swiss-history-screen"), contentPadding = PaddingValues(16.dp),
+    LazyColumn(modifier.fillMaxSize().testTag("swiss-history-screen"), state = listState, contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item("filters") {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -159,13 +181,18 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
                     fontFamily = FontFamily.Monospace, color = Muted)
             }
         }
+        if (page.count > 1) item("pages-top") {
+            SwissChartSelectionHeader("${page.index + 1} / ${page.count}", "上一页", "下一页",
+                page.index > 0, page.index < page.count - 1,
+                { changePage(page.index - 1) }, { changePage(page.index + 1) }, "history-pages-top")
+        }
         if (filtered.isEmpty()) item("empty") {
             SwissCard { Box(Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                 Text(if (data == null) "整理中" else "暂无记录", color = Muted,
                     style = MaterialTheme.typography.bodyMedium)
             } }
         }
-        items(filtered, key = { it.id }) { event ->
+        items(page.records, key = { it.id }) { event ->
             val claims = model[event.id]?.takeIf { it.validFor(event) }?.claims.orEmpty()
             val matches = data?.matches?.get(event.id).orEmpty()
             SwissCard(onClick = { detailId = event.id }, modifier = Modifier.testTag("history-record-${event.id}")) {
@@ -198,6 +225,11 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
                         modifier = Modifier.size(16.dp), tint = Muted)
                 }
             }
+        }
+        if (page.count > 1) item("pages-bottom") {
+            SwissChartSelectionHeader("${page.index + 1} / ${page.count}", "上一页", "下一页",
+                page.index > 0, page.index < page.count - 1,
+                { changePage(page.index - 1) }, { changePage(page.index + 1) }, "history-pages-bottom")
         }
     }
     events.firstOrNull { it.id == detailId }?.let { event ->

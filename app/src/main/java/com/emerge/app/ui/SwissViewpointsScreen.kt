@@ -32,12 +32,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
-import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -142,13 +140,14 @@ internal fun SwissViewpointsScreen(
     val scopedReport = report?.takeIf { it.period == period.label }
     val inputKey = remember(events, semantics, scopedReport, period, now, selectedTopic) { Any() }
     val prepared by produceState<Pair<Any, SwissViewpointsData>?>(null, inputKey) {
-        value = null
         value = inputKey to withContext(Dispatchers.Default) {
             prepareSwissViewpoints(events, semantics, scopedReport, period, now, zone, selectedTopic)
         }
     }
     val data = prepared?.takeIf { it.first === inputKey }?.second
-    val topics = (data?.topics.orEmpty() + listOfNotNull(selectedTopic)).distinct()
+    // Retain the full topic strip during filtering; shrinking it clamps its scroll offset to zero.
+    // Statistics below still require the current input key, so no stale result is shown as current.
+    val topics = (prepared?.second?.topics.orEmpty() + listOfNotNull(selectedTopic)).distinct()
     val shares = data?.shares.orEmpty()
     val candidates = data?.candidates.orEmpty()
     val trend = data?.trend.orEmpty()
@@ -169,7 +168,7 @@ internal fun SwissViewpointsScreen(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 顶部工具栏：左侧横向话题筛选组 + 右侧固定「事实核查」入口胶囊
+        // 顶部话题筛选组。
         item("topic-filter-bar") {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -179,6 +178,7 @@ internal fun SwissViewpointsScreen(
                 Row(
                     modifier = Modifier
                         .weight(1f)
+                        .testTag("viewpoints-topics")
                         .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -197,12 +197,6 @@ internal fun SwissViewpointsScreen(
                             modifier = Modifier.testTag("viewpoints-topic-$topic")
                         )
                     }
-                }
-                if (onFactCheck != null) {
-                    SwissFactCheckPill(
-                        count = findingCount,
-                        onClick = onFactCheck
-                    )
                 }
             }
         }
@@ -262,7 +256,7 @@ internal fun SwissViewpointsScreen(
                         SwissViewpointMetric(
                             label = "已浏览内容",
                             value = data?.let { "${it.workCount} 篇" } ?: "—",
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(1f).testTag("viewpoints-work-count"),
                             emphasized = true
                         )
                         VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
@@ -571,57 +565,6 @@ internal fun SwissViewpointsScreen(
             onDismiss = { detailId = null },
             onRelated = { detailId = it.id }
         )
-    }
-}
-
-@Composable
-private fun SwissFactCheckPill(
-    count: Int,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = DesignTokens.ControlShape,
-        color = DesignTokens.Ink,
-        contentColor = Color.White,
-        modifier = Modifier
-            .heightIn(min = 38.dp)
-            .testTag("viewpoints-fact-check-entry")
-            .semantics { role = Role.Button }
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(if (count > 0) DesignTokens.Amber else DesignTokens.Emerald)
-            )
-            Text(
-                text = "事实核查",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1
-            )
-            if (count > 0) {
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = Color.White.copy(alpha = 0.18f),
-                    contentColor = Color.White
-                ) {
-                    Text(
-                        text = "$count",
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
     }
 }
 

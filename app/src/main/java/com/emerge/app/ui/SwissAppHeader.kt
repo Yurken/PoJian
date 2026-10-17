@@ -1,11 +1,12 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.emerge.app.ui
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +15,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
@@ -26,7 +31,8 @@ private val periodLabels = listOf("24H", "7D", "30D")
 
 @Composable
 internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (StatisticsPeriod) -> Unit,
-    active: Boolean, status: String, onRecording: () -> Unit, modifier: Modifier = Modifier) {
+    active: Boolean, status: String, onRecording: () -> Unit, modifier: Modifier = Modifier,
+    onFactCheck: (() -> Unit)? = null, findingCount: Int = 0) {
     val scheme = MaterialTheme.colorScheme
     val titleStyle = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
     val controlStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
@@ -38,6 +44,8 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
     val titleWidth = textWidth(title, true) + 42.dp
     val periodsWidth = periodLabels.map { textWidth(it) + 16.dp }.reduce { a, b -> a + b } + 8.dp
     val statusWidth = textWidth(status) + 38.dp
+    val factCheckWidth = if (onFactCheck == null) 0.dp else textWidth("事实核查") + 44.dp +
+        if (findingCount > 0) textWidth("$findingCount") + 18.dp else 0.dp
     val brand: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SwissBrandLogo(Modifier.size(32.dp))
@@ -67,29 +75,58 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
             }
         }
     }
+    val actions: @Composable () -> Unit = {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            onFactCheck?.let { SwissFactCheckPill(findingCount, it) }
+            recording()
+        }
+    }
     Surface(modifier, color = scheme.surface, tonalElevation = 0.dp) {
         Column {
             BoxWithConstraints(Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp)) {
                 // Measure the actual labels so long states and larger system fonts wrap before they collide.
-                if (maxWidth >= titleWidth + periodsWidth + statusWidth + 30.dp) {
+                if (maxWidth >= titleWidth + periodsWidth + statusWidth + factCheckWidth + 30.dp) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         brand()
                         Spacer(Modifier.weight(1f))
                         periods()
-                        recording()
+                        actions()
                     }
                 } else Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     brand()
-                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    FlowRow(Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         periods()
-                        Spacer(Modifier.width(12.dp))
-                        recording()
+                        actions()
                     }
                 }
             }
             HorizontalDivider(color = scheme.outlineVariant.copy(alpha = .75f))
+        }
+    }
+}
+
+@Composable
+private fun SwissFactCheckPill(count: Int, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = DesignTokens.ControlShape,
+        color = DesignTokens.Ink, contentColor = Color.White,
+        modifier = Modifier.heightIn(min = 48.dp).testTag("viewpoints-fact-check-entry")
+            .semantics { role = Role.Button }) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.size(6.dp).clip(CircleShape)
+                .background(if (count > 0) DesignTokens.Amber else DesignTokens.Emerald))
+            Text("事实核查", style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold, maxLines = 1)
+            if (count > 0) Surface(shape = RoundedCornerShape(999.dp),
+                color = Color.White.copy(alpha = 0.18f), contentColor = Color.White) {
+                Text("$count", Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
+                    style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold)
+            }
         }
     }
 }
