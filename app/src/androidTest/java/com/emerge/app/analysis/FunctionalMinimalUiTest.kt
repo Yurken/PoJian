@@ -61,7 +61,7 @@ class FunctionalMinimalUiTest {
         tab("设置").performClick().assertIsSelected()
         compose.onNodeWithTag("swiss-settings-screen").assertIsDisplayed()
         compose.onNodeWithTag("capture-toggle").assertDoesNotExist()
-        compose.onNodeWithTag("swiss-settings-screen").performScrollToNode(hasText("提醒与隐私"))
+        compose.onNodeWithTag("swiss-settings-screen").performScrollToNode(hasText("分析与提醒"))
         compose.onNodeWithTag("settings-monitor-options").performClick()
         saveScreenshot("pojian-monitor-settings-analysis.png")
         compose.onNodeWithText("专题研究模式").performScrollTo()

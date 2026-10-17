@@ -64,13 +64,13 @@ fun SwissSettingsScreen(
         item("capture-permissions") {
             SwissSettingsSection(
                 index = "01",
-                title = "采集",
-                subtitle = "Capture"
+                title = "采集与系统权限",
+                subtitle = "CAPTURE & PERMISSIONS"
             ) {
                 captureSettingsContent?.invoke() ?: SettingsActionRow("实时记录", onClick = onCaptureTools)
                 SettingsHairline()
                 SettingsDisclosure(
-                    title = "提醒与隐私",
+                    title = "分析与提醒",
                     value = "已启用 $activeMonitors 项",
                     tag = "settings-monitor-options"
                 ) {
@@ -93,8 +93,8 @@ fun SwissSettingsScreen(
         item("analysis-engine") {
             SwissSettingsSection(
                 index = "02",
-                title = "分析",
-                subtitle = "Analysis"
+                title = "分析引擎与模型",
+                subtitle = "ENGINE & MODELS"
             ) {
                 SettingsSwitchRow(
                     title = "云端分析",
@@ -129,8 +129,8 @@ fun SwissSettingsScreen(
         item("storage-retention") {
             SwissSettingsSection(
                 index = "03",
-                title = "存储",
-                subtitle = "Storage"
+                title = "数据与存储管理",
+                subtitle = "STORAGE & DATA"
             ) {
                 LocalStorageSettingsCard(
                     usage = storageUsage,
@@ -146,7 +146,7 @@ fun SwissSettingsScreen(
                 transcriptContent?.let { content ->
                     SettingsHairline()
                     SettingsDisclosure(
-                        title = "录音转文字",
+                        title = "语音转写记录",
                         value = "转写记录",
                         tag = "settings-transcripts-options"
                     ) { content() }

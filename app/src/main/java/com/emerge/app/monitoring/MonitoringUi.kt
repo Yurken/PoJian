@@ -53,7 +53,7 @@ fun MonitorSettingsSection(
 ) {
     var showMore by remember { mutableStateOf(false) }
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        if (!embedded) SectionTitle("提醒与隐私")
+        if (!embedded) SectionTitle("分析与提醒")
         if (includeCloudControls) {
             MonitorSwitch("云端分析", "发送文字；开启画面分析时发送采样画面", cloudEnabled, onCloudEnabledChange)
         }
@@ -73,7 +73,7 @@ fun MonitorSettingsSection(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("情绪提醒时段", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Muted)
+            Text("情绪提醒时长门槛", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = Muted)
             Text(
                 text = "30 分钟 · 固定",
                 style = MaterialTheme.typography.bodySmall,

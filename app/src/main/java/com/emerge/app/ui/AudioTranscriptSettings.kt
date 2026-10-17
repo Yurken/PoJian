@@ -19,7 +19,7 @@ internal fun AudioTranscriptSettings(sessions: List<AudioSessionUi>, onOpenRecor
     onSession: (AudioSessionUi) -> Unit, embedded: Boolean = false) {
     SettingsContentFrame(embedded, Modifier.testTag("settings-audio-transcripts")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (!embedded) Text("录音转文字", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            if (!embedded) Text("语音转写记录", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
             PojianTextButton(onClick = onOpenRecords, modifier = Modifier.testTag("settings-audio-records")) {
                 Text("全部记录")
             }
