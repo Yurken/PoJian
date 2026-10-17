@@ -44,8 +44,8 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
     val titleWidth = textWidth(title, true) + 42.dp
     val periodsWidth = periodLabels.map { textWidth(it) + 16.dp }.reduce { a, b -> a + b } + 8.dp
     val statusWidth = textWidth(status) + 38.dp
-    val factCheckWidth = if (onFactCheck == null) 0.dp else textWidth("事实核查") + 44.dp +
-        if (findingCount > 0) textWidth("$findingCount") + 18.dp else 0.dp
+    val factCheckWidth = if (onFactCheck == null) 0.dp else textWidth("事实核查") + 34.dp +
+        if (findingCount > 0) textWidth("$findingCount") + 12.dp else 0.dp
     val brand: @Composable () -> Unit = {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SwissBrandLogo(Modifier.size(32.dp))
@@ -111,21 +111,25 @@ internal fun SwissAppHeader(title: String, period: StatisticsPeriod, onPeriod: (
 @Composable
 private fun SwissFactCheckPill(count: Int, onClick: () -> Unit) {
     Surface(onClick = onClick, shape = DesignTokens.ControlShape,
-        color = DesignTokens.Ink, contentColor = Color.White,
-        modifier = Modifier.heightIn(min = 48.dp).testTag("viewpoints-fact-check-entry")
+        color = Color.Transparent, contentColor = Color.White,
+        modifier = Modifier.testTag("viewpoints-fact-check-entry")
             .semantics { role = Role.Button }) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Box(Modifier.size(6.dp).clip(CircleShape)
-                .background(if (count > 0) DesignTokens.Amber else DesignTokens.Emerald))
-            Text("事实核查", style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold, maxLines = 1)
-            if (count > 0) Surface(shape = RoundedCornerShape(999.dp),
-                color = Color.White.copy(alpha = 0.18f), contentColor = Color.White) {
-                Text("$count", Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
-                    style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold)
+        Box(Modifier.heightIn(min = 48.dp), contentAlignment = Alignment.Center) {
+            Row(Modifier.background(DesignTokens.Ink, DesignTokens.ControlShape)
+                .heightIn(min = 32.dp)
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Box(Modifier.size(6.dp).clip(CircleShape)
+                    .background(if (count > 0) DesignTokens.Amber else DesignTokens.Emerald))
+                Text("事实核查", style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold, maxLines = 1)
+                if (count > 0) Surface(shape = RoundedCornerShape(999.dp),
+                    color = Color.White.copy(alpha = 0.18f), contentColor = Color.White) {
+                    Text("$count", Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                        style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

@@ -2,9 +2,11 @@ package com.emerge.app.analysis
 
 import androidx.activity.compose.setContent
 import com.emerge.app.MainActivity
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.emerge.app.ui.*
@@ -33,6 +35,18 @@ class SwissNavigationReportUiTest {
         compose.runOnIdle { assertEquals(StatisticsPeriod.HOURS24, selected) }
         compose.onNodeWithText("已暂停").performClick()
         compose.runOnIdle { assertEquals(1, clicks) }
+    }
+    @Test fun headerCompactsFactCheckWithoutWrappingControls() {
+        var factChecks = 0
+        compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
+            SwissAppHeader("观点分布", StatisticsPeriod.HOURS24, {}, false, "待授权", {},
+                Modifier.width(411.dp), { factChecks++ }, 73)
+        } } }
+        val period = compose.onNodeWithTag("header-period-HOURS24").getUnclippedBoundsInRoot()
+        val factCheck = compose.onNodeWithTag("viewpoints-fact-check-entry").getUnclippedBoundsInRoot()
+        assertEquals(period.top.value, factCheck.top.value, 0.5f)
+        compose.onNodeWithTag("viewpoints-fact-check-entry").performClick()
+        compose.runOnIdle { assertEquals(1, factChecks) }
     }
     @Test fun reportsSwitchRealWindowsAndKeepExportActions() {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme { SwissReportDialog(emptyList(), emptyList(), 1_792_000_000_000L, {}) } } }
