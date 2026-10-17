@@ -285,7 +285,7 @@ internal fun PojianNavigationBar(labels: List<String>, selectedIndex: Int, onSel
                         .selectable(selected, role = Role.Tab, onClick = { onSelect(index) })
                         .sizeIn(minWidth = 48.dp, minHeight = 64.dp).padding(horizontal = 8.dp, vertical = 9.dp),
                         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        CompositionLocalProvider(LocalContentColor provides if (selected) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.8f)) {
+                        CompositionLocalProvider(LocalContentColor provides if (selected) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.5f)) {
                             Box(Modifier.size(23.dp), contentAlignment = Alignment.Center) { icon(index) }
                             Text(label, style = MaterialTheme.typography.labelMedium,
                                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
