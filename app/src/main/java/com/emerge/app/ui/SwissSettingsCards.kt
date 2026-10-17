@@ -64,8 +64,8 @@ fun SwissSettingsScreen(
         item("capture-permissions") {
             SwissSettingsSection(
                 index = "01",
-                title = "采集与系统权限",
-                subtitle = "CAPTURE & SCOPE"
+                title = "采集",
+                subtitle = "Capture"
             ) {
                 captureSettingsContent?.invoke() ?: SettingsActionRow("实时记录", onClick = onCaptureTools)
                 SettingsHairline()
@@ -93,8 +93,8 @@ fun SwissSettingsScreen(
         item("analysis-engine") {
             SwissSettingsSection(
                 index = "02",
-                title = "分析引擎与模型",
-                subtitle = "ENGINE & MODELS"
+                title = "分析",
+                subtitle = "Analysis"
             ) {
                 SettingsSwitchRow(
                     title = "云端分析",
@@ -129,8 +129,8 @@ fun SwissSettingsScreen(
         item("storage-retention") {
             SwissSettingsSection(
                 index = "03",
-                title = "数据与存储管理",
-                subtitle = "STORAGE & DATA"
+                title = "存储",
+                subtitle = "Storage"
             ) {
                 LocalStorageSettingsCard(
                     usage = storageUsage,
@@ -163,8 +163,8 @@ fun SwissSettingsScreen(
         item("system-about") {
             SwissSettingsSection(
                 index = "04",
-                title = "系统与关于",
-                subtitle = "SYSTEM & VERSION"
+                title = "版本",
+                subtitle = "Version"
             ) {
                 updateContent?.invoke() ?: SettingsDataRow("当前版本", "v${com.emerge.app.BuildConfig.VERSION_NAME}")
             }
