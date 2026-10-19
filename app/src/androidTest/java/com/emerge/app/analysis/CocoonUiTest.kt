@@ -28,8 +28,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class CocoonUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
-    private fun state(repeated: Int, total: Int = 5): AnalysisState {
-        val report = CognitiveAnalyzer().analyze(emptyList(), StatisticsPeriod.DAY, 1_792_000_000_000L)
+    private fun state(repeated: Int, total: Int = 5, period: StatisticsPeriod = StatisticsPeriod.DAY): AnalysisState {
+        val report = CognitiveAnalyzer().analyze(emptyList(), period, 1_792_000_000_000L)
         val claims = (0 until total).map { i ->
             ClaimObservation(i.toLong(), report.end, "test", "主题", "观点", emptyList(), "", false,
                 if (i < repeated) Increment.REPEATED else Increment.NEW, null)
@@ -38,7 +38,9 @@ class CocoonUiTest {
         val views = claims.firstOrNull()?.let { listOf(ViewpointExposure("fixture", "主题", "对象", "维度", "支持", dist,
             repeated.toDouble() / total, null, null, 1, false, it, listOf(it.eventId))) }.orEmpty()
         return AnalysisState(report = report.copy(claims = claims,
-            exposure = ExposureAssessment(report.end - 7 * 86_400_000L, report.end, dist, "主题", null, views, claims)))
+            exposure = ExposureAssessment(report.end - 7 * 86_400_000L, report.end, dist, "主题", null,
+                views.map { it.copy(share = .2) }, claims),
+            periodExposure = ExposureAssessment(report.start, report.end, dist, "主题", null, views, claims)))
     }
 
     @Test fun overviewShowsActualShareAndDoesNotReuseStaleOrWrongPeriodData() {
@@ -53,7 +55,7 @@ class CocoonUiTest {
             }
         }
         compose.onNodeWithTag("overview-list").performScrollToNode(hasTestTag("cocoon-card"))
-        compose.onNodeWithText("观点集中度 · 近7天").assertIsDisplayed()
+        compose.onNodeWithText("观点集中度 · 今天").assertIsDisplayed()
         compose.onNodeWithText("信息视野").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("60%")
         compose.onNodeWithText("3 / 5 条观点引用重复依据").assertIsDisplayed()
@@ -65,6 +67,17 @@ class CocoonUiTest {
         compose.onNodeWithText("信息视野").assertIsDisplayed()
         compose.onNodeWithTag("cocoon-share").assertTextEquals("—")
         compose.onNodeWithText("暂无分析").assertIsDisplayed()
+        StatisticsPeriod.entries.forEachIndexed { index, selected ->
+            compose.runOnIdle {
+                period.value = selected
+                analysis.value = state(index + 1, period = selected)
+            }
+            compose.onNodeWithText("观点集中度 · ${selected.label}").assertIsDisplayed()
+            compose.onNodeWithText("话题集中度 · ${selected.label}").assertIsDisplayed()
+            compose.onNodeWithText("主要立场占比 · ${selected.label}").assertIsDisplayed()
+            compose.onNodeWithTag("cocoon-share").assertTextEquals("${(index + 1) * 20}%")
+            compose.onNodeWithText("观点集中度 · 近7天").assertDoesNotExist()
+        }
     }
 
     @Test fun ringSupportsSystemDarkPreferenceLargeTextAndDataExtremes() {

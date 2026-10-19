@@ -65,14 +65,15 @@ object ExposureAnalyzer {
 
     fun analyze(events: List<BrowseEvent>, claims: List<ClaimObservation>, now: Long,
         zone: ZoneId, topicByEvent: Map<Long, String> = emptyMap(),
-        checkCancellation: () -> Unit = {}): ExposureAssessment {
+        checkCancellation: () -> Unit = {}, window: ObservationWindow? = null): ExposureAssessment {
         val end = Instant.ofEpochMilli(now).atZone(zone)
-        val start = end.minusDays(7).toInstant().toEpochMilli()
-        val previousStart = end.minusDays(14).toInstant().toEpochMilli()
+        val start = window?.start ?: end.minusDays(7).toInstant().toEpochMilli()
+        // Selected-period metrics have no seven-day baseline; monitoring retains its rolling history.
+        val previousStart = window?.start ?: end.minusDays(14).toInstant().toEpochMilli()
         fun date(at: Long) = Instant.ofEpochMilli(at).atZone(zone).toLocalDate()
         val eventsById = events.associateBy { it.id }
         val screens = events.filter { it.sourceType == "accessibility" && it.timestamp <= now &&
-            it.timestamp >= previousStart && it.visibleText.isNotBlank() &&
+            (window?.contains(it) ?: (it.timestamp >= previousStart)) && it.visibleText.isNotBlank() &&
             !it.packageName.contains("launcher") && it.packageName != "com.android.systemui" }
             .sortedBy { it.timestamp }
         val resolved = BrowseWorkKey.resolve(screens)
@@ -82,17 +83,19 @@ object ExposureAnalyzer {
             checkCancellation()
             // Reuse capture's work identity, not a time bucket:
             // scrolling through many distinct works in one sitting must still count those works.
-            val key = "${date(event.timestamp)}|${resolved[index]}"
+            val at = if (window == null) event.timestamp else maxOf(start, event.timestamp)
+            val key = "${date(at)}|${resolved[index]}"
             eventKeys[event.id] = key
-            contacts.getOrPut(key) { Contact(key, resolved[index], event.timestamp, event.packageName) }
+            contacts.getOrPut(key) { Contact(key, resolved[index], at, event.packageName) }
         }
         // Multimodal samples inherit an explicitly bound work; an audio session is not a platform work.
-        events.filter { it.sourceType in setOf("screen_ocr", "visual_model", "audio_playback") }.forEach { event ->
+        events.filter { it.sourceType in setOf("screen_ocr", "visual_model", "audio_playback") &&
+            (window == null || window.contains(it)) }.forEach { event ->
             val parent = event.parentEventId?.let(eventsById::get)
             if (parent != null && parent.sourceType == "accessibility" && parent.packageName == event.packageName &&
                 parent.workKey == event.workKey) eventKeys[parent.id]?.let { eventKeys[event.id] = it }
         }
-        claims.filter { it.timestamp in previousStart..now }.forEach { claim ->
+        claims.filter { it.timestamp <= now && (window != null || it.timestamp >= previousStart) }.forEach { claim ->
             eventKeys[claim.eventId]?.let { contacts[it]?.claims?.add(claim) }
         }
         topicByEvent.forEach { (id, topic) ->

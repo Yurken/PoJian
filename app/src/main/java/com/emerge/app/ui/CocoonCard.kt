@@ -28,7 +28,7 @@ import java.util.Locale
 @Composable
 internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible: Boolean) {
     val report = state.report?.takeIf { !state.stale && it.period == period.label }
-    val exposure = report?.exposure
+    val exposure = report?.periodExposure
     val primary = exposure?.primary
     val repeat = repeatedEvidenceShare(state, period)
     val fraction = primary?.share?.toFloat()
@@ -112,7 +112,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                         )
                     }
                     Text(
-                        text = "观点集中度 · 近7天",
+                        text = "观点集中度 · ${period.label}",
                         color = Muted,
                         style = MaterialTheme.typography.labelSmall
                     )
@@ -121,12 +121,12 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
             val bars: @Composable () -> Unit = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     SwissMetricBar(
-                        label = "话题集中度 · 近7天",
+                        label = "话题集中度 · ${period.label}",
                         fraction = exposure?.takeIf { it.topics.sufficient }?.topics?.shares?.values?.maxOrNull()?.toFloat(),
                         color = DesignTokens.Amber
                     )
                     SwissMetricBar(
-                        label = "主要立场占比 · 近7天",
+                        label = "主要立场占比 · ${period.label}",
                         fraction = fraction,
                         color = DesignTokens.Blue
                     )

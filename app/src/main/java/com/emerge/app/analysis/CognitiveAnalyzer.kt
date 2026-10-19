@@ -52,7 +52,8 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val rejectedSemanticsRecords: Int = 0, val pendingAnalysisRecords: Int = 0,
     val failedAnalysisRecords: Int = 0, val exposure: ExposureAssessment? = null,
     val emotionExposure: EmotionExposureSummary = EmotionExposureSummary(),
-    val topicDigests: List<TopicDigest> = emptyList())
+    val topicDigests: List<TopicDigest> = emptyList(),
+    val periodExposure: ExposureAssessment? = null)
 
 class CognitiveAnalyzer {
     private companion object {
@@ -236,6 +237,8 @@ class CognitiveAnalyzer {
             .map { Instant.ofEpochMilli(it.start).atZone(zone).toLocalDate() }.distinct().size
         val exposure = ExposureAnalyzer.analyze(ordered, observations.map { it.second }, now, zone,
             eventTopics.mapKeys { it.key.id }, checkCancellation)
+        val periodExposure = ExposureAnalyzer.analyze(selected, current, now, zone,
+            eventTopics.mapKeys { it.key.id }, checkCancellation, window)
         val findings = exposure.findings()
         val exposures = usableEvents.groupBy { eventTopics[it] ?: "未分类" }.map { (topic, entries) ->
             TopicExposure(topic, entries.size, window.unionDuration(entries.filter { it.sourceType == "accessibility" }))
@@ -267,7 +270,7 @@ class CognitiveAnalyzer {
             pendingAnalysisRecords = selected.count { analysisStatuses[it.id] in setOf("queued", "running") },
             failedAnalysisRecords = selected.count { analysisStatuses[it.id] == "failed" }, exposure = exposure,
             emotionExposure = EmotionExposure.analyze(events, semantics, window.start, now, zone),
-            topicDigests = TopicDigests.build(current, ordered, zone))
+            topicDigests = TopicDigests.build(current, ordered, zone), periodExposure = periodExposure)
     }
 
     private fun clean(event: BrowseEvent): List<String> {
