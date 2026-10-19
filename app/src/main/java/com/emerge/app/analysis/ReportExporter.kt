@@ -1,5 +1,6 @@
 package com.emerge.app.analysis
 
+import android.content.pm.PackageManager
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
@@ -173,7 +174,22 @@ object ReportExporter {
         appendLine("这份回顾在本机生成。语音转写在本机完成；配置云端并启用相应分析、实时核查或关键画面开关后，必要文字或采样画面会发送到指定服务。PDF 和文本报告包含原文引用，导出后由你自行保管；清空应用记录不会删除已导出的文件。")
     }
 
-    fun writePdf(report: CognitiveReport, output: OutputStream, checkCancellation: () -> Unit = {}) {
+    fun appNames(report: CognitiveReport, manager: PackageManager): Map<String, String> {
+        val packages = buildSet {
+            addAll(report.sourceCounts.keys)
+            report.workStatistics?.apps?.forEach { add(it.packageName) }
+            report.claims.forEach { add(it.packageName) }
+            report.groups.forEach { group -> group.observations.forEach { add(it.packageName) } }
+            report.exposure?.claims?.forEach { add(it.packageName) }
+        }
+        return packages.mapNotNull { packageName ->
+            runCatching { manager.getApplicationLabel(manager.getApplicationInfo(packageName, 0)).toString() }
+                .getOrNull()?.takeIf { it.isNotBlank() }?.let { packageName to it }
+        }.toMap()
+    }
+
+    fun writePdf(report: CognitiveReport, output: OutputStream, appNames: Map<String, String> = emptyMap(),
+        checkCancellation: () -> Unit = {}) {
         val regular = Typeface.create("sans-serif", Typeface.NORMAL)
         val bold = Typeface.create("sans-serif", Typeface.BOLD)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -181,7 +197,7 @@ object ReportExporter {
             paint.textSize = size
             paint.typeface = if (isBold) bold else regular
             paint.measureText(text)
-        }, checkCancellation = checkCancellation).layout(ReportPdfContent.from(report))
+        }, checkCancellation = checkCancellation).layout(ReportPdfContent.from(report, appNames))
         val document = PdfDocument()
         var page: PdfDocument.Page? = null
         try {

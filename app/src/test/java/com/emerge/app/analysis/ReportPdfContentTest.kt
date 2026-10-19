@@ -8,6 +8,34 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class ReportPdfContentTest {
+    @Test fun applicationNamesReplaceMetadataButNeverRewriteOriginalQuotations() {
+        val packageName = "com.sina.weibo"
+        val observation = claim(11, "原文提及 com.sina.weibo，必须保留。").copy(packageName = packageName)
+        val current = report().copy(claims = listOf(observation),
+            groups = listOf(ClaimGroup("就业", observation.quote, listOf(observation))),
+            sourceCounts = mapOf(packageName to 1),
+            workStatistics = BrowseStatistics(1, 1, 20, emptyList(), listOf(AppShare(packageName, 1))))
+        val content = ReportPdfContent.from(current, mapOf(packageName to "设备应用名"))
+        assertTrue(content.blocks.filterIsInstance<ReportPdfBlock.Bars>().flatMap { it.rows }
+            .any { it.label == "设备应用名" })
+        val tables = content.blocks.filterIsInstance<ReportPdfBlock.Table>()
+        assertEquals(2, tables.count { table -> table.rows.any { it.first() == "设备应用名" } })
+        val paragraphs = content.blocks.filterIsInstance<ReportPdfBlock.Paragraph>()
+        assertTrue(paragraphs.any { it.kind == ReportPdfBlock.Kind.SOURCE && it.text.endsWith("| 设备应用名") })
+        assertTrue(paragraphs.any { it.kind == ReportPdfBlock.Kind.QUOTE && it.text == observation.quote })
+        assertEquals(packageName, current.claims.single().packageName)
+    }
+
+    @Test fun unavailableAppLabelsUseKnownNamesAndPreserveUnknownSourceIdentifiers() {
+        val packages = listOf("com.sina.weibo", "com.xingin.xhs", "com.smile.gifmaker",
+            "com.ss.android.ugc.aweme", "com.zhihu.android", "unknown.reader")
+        val current = report().copy(sourceCounts = packages.associateWith { 1 })
+        val content = ReportPdfContent.from(current, mapOf("com.sina.weibo" to " "))
+        val sources = content.blocks.filterIsInstance<ReportPdfBlock.Table>()
+            .single { it.headers.first() == "记录来源" }.rows.map { it.first() }
+        assertEquals(listOf("微博", "小红书", "快手", "抖音", "知乎", "unknown.reader"), sources)
+    }
+
     @Test fun supportingEvidenceCannotBecomeTheSharedClaimOfTheNextRecord() {
         val original = claim(11, "共同原文").copy(evidence = listOf("对应依据"),
             evidenceDetails = listOf(EvidenceFragment("对应依据", EvidenceType.FACT,

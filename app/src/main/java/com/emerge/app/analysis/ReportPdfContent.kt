@@ -4,6 +4,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.emerge.app.ui.platformName
 
 internal data class PdfMetric(val label: String, val value: String)
 internal data class PdfBar(val label: String, val value: Double, val display: String, val total: Double? = null)
@@ -22,11 +23,12 @@ internal sealed interface ReportPdfBlock {
 
 internal data class ReportPdfContent(val title: String, val period: String, val blocks: List<ReportPdfBlock>) {
     companion object {
-        fun from(report: CognitiveReport): ReportPdfContent = PdfContentBuilder(report).build()
+        fun from(report: CognitiveReport, appNames: Map<String, String> = emptyMap()): ReportPdfContent =
+            PdfContentBuilder(report, appNames).build()
     }
 }
 
-private class PdfContentBuilder(private val report: CognitiveReport) {
+private class PdfContentBuilder(private val report: CognitiveReport, private val appNames: Map<String, String>) {
     private val blocks = mutableListOf<ReportPdfBlock>()
     private val zone = ZoneId.of(report.zone)
     private val timeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
@@ -73,10 +75,10 @@ private class PdfContentBuilder(private val report: CognitiveReport) {
         if (stats != null) {
             note("${stats.unidentifiedWorks} 个作品未识别。")
             if (stats.apps.isNotEmpty()) {
-                heading("平台", 2)
-                bars(stats.apps.map { PdfBar(it.packageName, it.count.toDouble(), "${it.count}/${stats.total} 个作品", stats.total.toDouble()) })
-                table(listOf("平台", "观看", "停留时长", "未识别作品", "时长未统计"),
-                    stats.apps.map { listOf(it.packageName, "${it.visitCount} 次", duration(it.durationMillis),
+                heading("应用", 2)
+                bars(stats.apps.map { PdfBar(appName(it.packageName), it.count.toDouble(), "${it.count}/${stats.total} 个作品", stats.total.toDouble()) })
+                table(listOf("应用", "观看", "停留时长", "未识别作品", "时长未统计"),
+                    stats.apps.map { listOf(appName(it.packageName), "${it.visitCount} 次", duration(it.durationMillis),
                         "${it.unidentifiedWorks} 个", "${it.unknownDurationRecords} 次") },
                     listOf(2.5f, 0.8f, 1.1f, 1.1f, 1.1f))
             }
@@ -130,7 +132,7 @@ private class PdfContentBuilder(private val report: CognitiveReport) {
             .groupBy { it.quote }.forEach { (text, observations) ->
                 quote(text)
                 observations.distinctBy { Triple(it.eventId, it.timestamp, it.packageName) }.forEach {
-                    source("记录 #${it.eventId} | ${time(it.timestamp)} | ${it.packageName}")
+                    source("记录 #${it.eventId} | ${time(it.timestamp)} | ${appName(it.packageName)}")
                 }
             }
         report.contentSignals.take(signalLimit).forEach {
@@ -203,7 +205,7 @@ private class PdfContentBuilder(private val report: CognitiveReport) {
     private fun sourcesAndHours() {
         heading("6. 记录来源与 24 小时分布")
         table(listOf("记录来源", "原始记录"), report.sourceCounts.entries.sortedByDescending { it.value }
-            .map { listOf(it.key, "${it.value} 条原始记录") }, listOf(3f, 2f))
+            .map { listOf(appName(it.key), "${it.value} 条原始记录") }, listOf(3f, 2f))
         paragraph("以下为${report.period}范围内同一小时的合计。")
         val byHour = report.hourlyReviews.associateBy { it.hour }
         if (report.hourlyReviews.isNotEmpty()) {
@@ -245,7 +247,7 @@ private class PdfContentBuilder(private val report: CognitiveReport) {
                 val observations = byQuote[text].orEmpty()
                 if (text != group.quote) quote(text)
                 observations.forEach { observation ->
-                    source("记录 #${observation.eventId} | 开始时间 ${time(observation.timestamp)} | ${observation.packageName}")
+                    source("记录 #${observation.eventId} | 开始时间 ${time(observation.timestamp)} | ${appName(observation.packageName)}")
                     note("该记录在本次范围内的停留时长：${observation.durationMillis?.let(::duration) ?: "时长未统计"}（同一记录里的多个观点共用时长，不能相加）")
                     val details = mutableListOf(
                         listOf("观点来源", if (observation.analysisSource == "structured_model") "云端分析（需核对）" else "本地识别"),
@@ -305,6 +307,7 @@ private class PdfContentBuilder(private val report: CognitiveReport) {
     }
 
     private fun time(value: Long) = Instant.ofEpochMilli(value).atZone(zone).format(timeFormat)
+    private fun appName(packageName: String) = appNames[packageName]?.takeIf { it.isNotBlank() } ?: platformName(packageName)
     private fun duration(value: Long) = String.format(Locale.CHINA, "%.1f 秒", value / 1000.0)
     private fun percent(part: Int, total: Int) = percent(part.toLong(), total.toLong())
     private fun percent(part: Long, total: Long) = if (total <= 0) "暂不可计算"

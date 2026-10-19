@@ -58,7 +58,8 @@ internal fun ReportFilePreview(source: ReportPreviewSource, onClose: () -> Unit)
                         } ?: error("Unavailable document")
                         is ReportPreviewSource.Generated -> {
                             val bounded = ReportPreviewContent.boundedOutput(output, checkCancellation = { task.ensureActive() })
-                            if (pdf) ReportExporter.writePdf(source.report, bounded) { task.ensureActive() }
+                            if (pdf) ReportExporter.writePdf(source.report, bounded,
+                                ReportExporter.appNames(source.report, context.packageManager)) { task.ensureActive() }
                             else bounded.write(ReportExporter.text(source.report).toByteArray(Charsets.UTF_8))
                         }
                     }

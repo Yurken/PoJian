@@ -69,7 +69,7 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
     SideEffect { exportModel.updateRequest(request) }
     val save = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("*/*")) { uri ->
         exportModel.updateRequest(request)
-        exportModel.export(uri, context.applicationContext.contentResolver)
+        exportModel.export(uri, context.applicationContext.contentResolver, context.applicationContext.packageManager)
     }
     fun export(pdf: Boolean) {
         val snapshot = report ?: return

@@ -1,6 +1,7 @@
 package com.emerge.app.ui
 
 import android.content.ContentResolver
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -92,7 +93,7 @@ internal class SwissReportExportViewModel : ViewModel() {
         if (session.updateRequest(request)) exportJob?.cancel()
     }
 
-    fun export(uri: Uri?, resolver: ContentResolver) {
+    fun export(uri: Uri?, resolver: ContentResolver, packageManager: PackageManager) {
         val snapshot = session.takePending(destinationSelected = uri != null) ?: return
         if (uri == null) return
         val version = session.begin(snapshot) ?: return
@@ -101,7 +102,8 @@ internal class SwissReportExportViewModel : ViewModel() {
                 val bytes = withContext(Dispatchers.Default) {
                     val task = currentCoroutineContext()
                     if (snapshot.pdf) ByteArrayOutputStream().use { output ->
-                        ReportExporter.writePdf(snapshot.report, output) { task.ensureActive() }
+                        ReportExporter.writePdf(snapshot.report, output,
+                            ReportExporter.appNames(snapshot.report, packageManager)) { task.ensureActive() }
                         output.toByteArray()
                     } else swissReportJson(snapshot.report).toByteArray(Charsets.UTF_8)
                 }

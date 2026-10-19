@@ -264,7 +264,9 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
                 val bytes = withContext(Dispatchers.Default) {
                     val computationContext = currentCoroutineContext()
                     if (pdf) ByteArrayOutputStream().use { output ->
-                        ReportExporter.writePdf(report, output) { computationContext.ensureActive() }
+                        ReportExporter.writePdf(report, output, ReportExporter.appNames(report, app.packageManager)) {
+                            computationContext.ensureActive()
+                        }
                         output.toByteArray()
                     }
                     else ReportExporter.text(report).toByteArray(Charsets.UTF_8)
