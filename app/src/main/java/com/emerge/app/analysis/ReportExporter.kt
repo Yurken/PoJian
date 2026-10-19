@@ -1,6 +1,5 @@
 package com.emerge.app.analysis
 
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
@@ -34,6 +33,7 @@ object ReportExporter {
         if (report.structuredAnalyzedRecords == 0) appendLine("当前没有通过校验的云端分析；观点和依据均来自本地识别，需核对原文。")
         appendLine("有效记录共 ${report.coverageSessions} 条；范围内停留时长合计 ${duration(report.observedDurationMillis)}；${report.unknownDurationRecords} 条时长未统计。时长为零表示尚未采集到连续的检查间隔。")
         appendLine("共识别出 ${report.claims.size} 个观点，记录覆盖 ${report.observedDays} 天。一条记录里可能有多个观点，观点数量不能换算成帖子数、阅读次数或浏览时长。")
+        appendLine("新增事实：${newFactMetric(report.claims).display}；独立来源：${report.independentSources().display}")
         appendLine("停留时长按相邻两次检查的间隔估算，中断超过 6 秒结束一段浏览。每条记录只计一次，按统计范围、日期和小时分摊。停留时长不能代表实际阅读、理解或观看时间；旧版本记录不补算时长，音频转写和媒体长度不计入观看时长。")
         appendLine("数据来自本机按存储容量上限与保留周期保留的记录，包括可见页面文字、已保存的音频转写及视觉提取文字，后者可能有误。未获取的页面文字、未转写的音频、完整视频画面和已删除历史均不在范围内。记录为零可能源于未采集、权限或页面限制。")
         appendLine("范围之前还保留 ${report.comparisonRecords} 条历史记录${report.comparisonStart?.let { "，最早一条是 ${time(it)}" } ?: ""}；对比按浏览先后顺序，仅使用这些记录。“首次出现”表示未匹配到可比历史。")
@@ -174,58 +174,45 @@ object ReportExporter {
     }
 
     fun writePdf(report: CognitiveReport, output: OutputStream, checkCancellation: () -> Unit = {}) {
+        val regular = Typeface.create("sans-serif", Typeface.NORMAL)
+        val bold = Typeface.create("sans-serif", Typeface.BOLD)
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+        val pages = ReportPdfLayout(measure = { text, size, isBold ->
+            paint.textSize = size
+            paint.typeface = if (isBold) bold else regular
+            paint.measureText(text)
+        }, checkCancellation = checkCancellation).layout(ReportPdfContent.from(report))
         val document = PdfDocument()
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f; typeface = Typeface.create("sans-serif", Typeface.NORMAL) }
-        var number = 0
         var page: PdfDocument.Page? = null
-        var y = 0f
-        fun newPage() {
-            checkCancellation()
-            page?.let { document.finishPage(it) }
-            number++
-            page = document.startPage(PdfDocument.PageInfo.Builder(595, 842, number).create())
-            paint.color = Color.rgb(20, 88, 78)
-            paint.textSize = 10f
-            page!!.canvas.drawText("破茧 | 浏览回顾", 44f, 30f, paint)
-            page!!.canvas.drawText("$number", 540f, 817f, paint)
-            y = 60f
-        }
         try {
-            newPage()
-            text(report, appendixLimit = 100).lines().forEach { raw ->
+            pages.forEachIndexed { index, layout ->
                 checkCancellation()
-                val heading = raw.startsWith("#")
-                val text = raw.removePrefix("### ").removePrefix("## ").removePrefix("# ")
-                val fontSize = if (raw.startsWith("# ")) 20f else if (heading) 14f else 11f
-                val height = if (heading) 24f else 18f
-                if (heading && y > 740f) newPage()
-                paint.textSize = fontSize
-                paint.color = if (heading) Color.rgb(20, 88, 78) else Color.rgb(35, 45, 55)
-                if (text.isEmpty()) { y += 8f; return@forEach }
-                var offset = 0
-                while (offset < text.length) {
+                val current = document.startPage(PdfDocument.PageInfo.Builder(595, 842, index + 1).create())
+                page = current
+                layout.commands.forEach { command ->
                     checkCancellation()
-                    if (y + height > 785f) {
-                        newPage()
-                        paint.textSize = fontSize
-                        paint.color = if (heading) Color.rgb(20, 88, 78) else Color.rgb(35, 45, 55)
+                    when (command) {
+                        is PdfDraw.Text -> {
+                            paint.color = command.color
+                            paint.textSize = command.size
+                            paint.typeface = if (command.bold) bold else regular
+                            current.canvas.drawText(command.text, command.x, command.y, paint)
+                        }
+                        is PdfDraw.Rect -> {
+                            paint.color = command.color
+                            current.canvas.drawRoundRect(command.x, command.y, command.x + command.width,
+                                command.y + command.height, command.radius, command.radius, paint)
+                        }
+                        is PdfDraw.Line -> {
+                            paint.color = command.color
+                            paint.strokeWidth = command.width
+                            current.canvas.drawLine(command.x, command.y, command.endX, command.endY, paint)
+                        }
                     }
-                    var count = paint.breakText(text, offset, text.length, true, 507f, null).coerceAtLeast(1)
-                    // Keep short numbers and English words together when a line boundary cuts through them.
-                    fun asciiToken(character: Char) = character in '0'..'9' || character in 'A'..'Z' ||
-                        character in 'a'..'z' || character in ".%_/-"
-                    if (offset + count < text.length && asciiToken(text[offset + count - 1]) && asciiToken(text[offset + count])) {
-                        var boundary = offset + count
-                        while (boundary > offset && asciiToken(text[boundary - 1])) boundary--
-                        if (boundary > offset) count = boundary - offset
-                    }
-                    page!!.canvas.drawText(text.substring(offset, offset + count), 44f, y, paint)
-                    offset += count
-                    y += height
                 }
+                document.finishPage(current)
+                page = null
             }
-            page?.let { document.finishPage(it) }
-            page = null
             checkCancellation()
             document.writeTo(output)
         } finally {
