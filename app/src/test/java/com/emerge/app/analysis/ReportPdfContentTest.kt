@@ -46,7 +46,8 @@ class ReportPdfContentTest {
         val paragraphs = content.blocks.filterIsInstance<ReportPdfBlock.Paragraph>()
         assertEquals(listOf("共同原文"), paragraphs.filter { it.kind == ReportPdfBlock.Kind.QUOTE }.map { it.text })
         assertEquals(listOf("对应依据", "历史依据"), paragraphs.filter { it.kind == ReportPdfBlock.Kind.EVIDENCE }.map { it.text })
-        assertTrue(paragraphs.any { it.kind == ReportPdfBlock.Kind.SOURCE && it.text.startsWith("记录 #22 |") })
+        assertTrue(paragraphs.any { it.kind == ReportPdfBlock.Kind.SOURCE && it.text.startsWith("记录 #22 |") && !it.keepWithNext })
+        assertTrue(paragraphs.any { it.text.startsWith("历史依据记录 #1") && it.keepWithNext })
     }
     private fun report() = CognitiveAnalyzer().analyze(emptyList(), StatisticsPeriod.MONTH,
         1_792_123_200_000L, ZoneId.of("Asia/Shanghai"))

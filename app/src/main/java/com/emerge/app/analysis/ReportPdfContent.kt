@@ -11,7 +11,8 @@ internal data class PdfBar(val label: String, val value: Double, val display: St
 
 internal sealed interface ReportPdfBlock {
     data class Heading(val text: String, val level: Int = 1) : ReportPdfBlock
-    data class Paragraph(val text: String, val kind: Kind = Kind.BODY) : ReportPdfBlock
+    data class Paragraph(val text: String, val kind: Kind = Kind.BODY,
+        val keepWithNext: Boolean = false) : ReportPdfBlock
     data class Metrics(val items: List<PdfMetric>) : ReportPdfBlock
     data class Bars(val rows: List<PdfBar>) : ReportPdfBlock
     data class Table(val headers: List<String>, val rows: List<List<String>>,
@@ -136,7 +137,7 @@ private class PdfContentBuilder(private val report: CognitiveReport, private val
                 }
             }
         report.contentSignals.take(signalLimit).forEach {
-            source("记录 #${it.eventId} · ${it.label}")
+            source("记录 #${it.eventId} · ${it.label}", keepWithNext = true)
             quote(it.quote)
         }
         if (report.contentSignals.isEmpty()) note("没有匹配到预设的焦虑或紧迫表达词。")
@@ -168,7 +169,7 @@ private class PdfContentBuilder(private val report: CognitiveReport, private val
                     evidence(item.text)
                     source("对应记录：${item.eventIds.joinToString { "#$it" }}")
                     item.historyMatches.groupBy { it.quote }.forEach { (text, matches) ->
-                        matches.forEach { source("历史依据 #${it.eventId}") }
+                        matches.forEach { source("历史依据 #${it.eventId}", keepWithNext = true) }
                         evidence(text)
                     }
                 }
@@ -196,7 +197,7 @@ private class PdfContentBuilder(private val report: CognitiveReport, private val
         if (evidence.size > appendixLimit)
             note("情绪原文仅列出前 $appendixLimit 项，完整内容见文本报告。")
         evidence.take(appendixLimit).forEach {
-            source("记录 #${it.eventId} · ${it.category.label} · ${it.level.label}")
+            source("记录 #${it.eventId} · ${it.category.label} · ${it.level.label}", keepWithNext = true)
             quote(it.evidence)
             it.trigger?.let { trigger -> paragraph("诱因：$trigger") }
         }
@@ -271,7 +272,7 @@ private class PdfContentBuilder(private val report: CognitiveReport, private val
                             if (evidence.identity.origins.isNotEmpty())
                                 paragraph("材料来源：${evidence.identity.origins.joinToString("、")}")
                             evidence.historyMatches.groupBy { it.quote }.forEach { (text, matches) ->
-                                matches.forEach { source("历史依据记录 #${it.eventId} · 原句") }
+                                matches.forEach { source("历史依据记录 #${it.eventId} · 原句", keepWithNext = true) }
                                 evidence(text)
                             }
                             if (evidence.identityUnresolved) note("案例身份或材料关系不清楚，暂不确认新增或重复。")
@@ -318,7 +319,9 @@ private class PdfContentBuilder(private val report: CognitiveReport, private val
     private fun note(text: String) { blocks += ReportPdfBlock.Paragraph(text, ReportPdfBlock.Kind.NOTE) }
     private fun quote(text: String) { blocks += ReportPdfBlock.Paragraph(text, ReportPdfBlock.Kind.QUOTE) }
     private fun evidence(text: String) { blocks += ReportPdfBlock.Paragraph(text, ReportPdfBlock.Kind.EVIDENCE) }
-    private fun source(text: String) { blocks += ReportPdfBlock.Paragraph(text, ReportPdfBlock.Kind.SOURCE) }
+    private fun source(text: String, keepWithNext: Boolean = false) {
+        blocks += ReportPdfBlock.Paragraph(text, ReportPdfBlock.Kind.SOURCE, keepWithNext)
+    }
     private fun bars(rows: List<PdfBar>) { if (rows.isNotEmpty()) blocks += ReportPdfBlock.Bars(rows) }
     private fun table(headers: List<String>, rows: List<List<String>>, weights: List<Float> = emptyList()) {
         if (rows.isNotEmpty()) blocks += ReportPdfBlock.Table(headers, rows, weights)

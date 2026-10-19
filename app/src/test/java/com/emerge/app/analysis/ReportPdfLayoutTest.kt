@@ -75,4 +75,85 @@ class ReportPdfLayoutTest {
         assertEquals(quote, lines.joinToString("") { it.text })
         assertTrue(lines.none { it.text.startsWith('\u0301') })
     }
+
+    @Test fun sectionCardsEncloseContentAcrossAutomaticPageBreaks() {
+        val blocks = (1..8).flatMap { index -> listOf(
+            ReportPdfBlock.Heading("$index. 主题观点"),
+            ReportPdfBlock.Paragraph("需要保留的观点原文。".repeat(40), ReportPdfBlock.Kind.QUOTE),
+            ReportPdfBlock.Paragraph("记录 #$index · 应用", ReportPdfBlock.Kind.SOURCE),
+            ReportPdfBlock.Table(listOf("字段", "内容"), List(8) { listOf("条件$it", "依据原文".repeat(8)) })
+        ) }
+        val pages = ReportPdfLayout(::measure).layout(ReportPdfContent("报告", "今天", blocks))
+        assertTrue(pages.size > 4)
+        pages.forEach { page ->
+            val frames = page.commands.withIndex().filter { (_, draw) ->
+                draw is PdfDraw.Rect && draw.x > 0f && draw.width > 500f && draw.radius >= 10f
+            }
+            assertTrue(frames.isNotEmpty())
+            frames.forEach { (_, draw) ->
+                draw as PdfDraw.Rect
+                assertTrue(draw.y >= 50f && draw.y + draw.height <= 790f)
+            }
+            page.commands.forEachIndexed { index, draw ->
+                if (draw is PdfDraw.Text && draw.y in 50f..790f) {
+                    assertTrue("Unframed content: ${draw.text}", frames.any { (frameIndex, frameDraw) ->
+                        val frame = frameDraw as PdfDraw.Rect
+                        frameIndex < index && draw.x >= frame.x &&
+                            draw.x + measure(draw.text, draw.size, draw.bold) <= frame.x + frame.width &&
+                            draw.y - draw.size >= frame.y && draw.y <= frame.y + frame.height
+                    })
+                }
+            }
+        }
+    }
+
+    @Test fun shortQuoteKeepsItsFirstAttributionOnTheSamePage() {
+        (12..23).forEach { count ->
+            val blocks = List(count) { ReportPdfBlock.Paragraph("正文") } + listOf(
+                ReportPdfBlock.Paragraph("观点原句", ReportPdfBlock.Kind.QUOTE),
+                ReportPdfBlock.Paragraph("记录 #42", ReportPdfBlock.Kind.SOURCE),
+                ReportPdfBlock.Paragraph("下一条观点", ReportPdfBlock.Kind.QUOTE)
+            )
+            val pages = ReportPdfLayout(::measure).layout(ReportPdfContent("报告", "今天", blocks))
+            fun pageOf(value: String) = pages.indexOfFirst { page ->
+                page.commands.filterIsInstance<PdfDraw.Text>().any { it.text == value }
+            }
+            assertEquals(pageOf("观点原句"), pageOf("记录 #42"))
+        }
+    }
+
+    @Test fun leadingEvidenceLabelStaysWithItsExcerpt() {
+        (12..23).forEach { count ->
+            val blocks = List(count) { ReportPdfBlock.Paragraph("正文") } + listOf(
+                ReportPdfBlock.Paragraph("前条观点", ReportPdfBlock.Kind.QUOTE),
+                ReportPdfBlock.Paragraph("历史依据 #42", ReportPdfBlock.Kind.SOURCE, keepWithNext = true),
+                ReportPdfBlock.Paragraph("依据原句", ReportPdfBlock.Kind.EVIDENCE)
+            )
+            val pages = ReportPdfLayout(::measure).layout(ReportPdfContent("报告", "今天", blocks))
+            fun pageOf(value: String) = pages.indexOfFirst { page ->
+                page.commands.filterIsInstance<PdfDraw.Text>().any { it.text == value }
+            }
+            assertEquals(pageOf("历史依据 #42"), pageOf("依据原句"))
+        }
+    }
+
+    @Test fun longEvidenceHeadingDoesNotPaintOverTheFooter() {
+        val heading = "很长的依据类型与适用范围".repeat(400)
+        val pages = render(ReportPdfBlock.Heading(heading, 3),
+            ReportPdfBlock.Paragraph("完整依据片段", ReportPdfBlock.Kind.EVIDENCE))
+        assertEquals(heading, pages.flatMap { it.commands }.filterIsInstance<PdfDraw.Text>()
+            .filter { it.size == 10f && it.bold }.joinToString("") { it.text })
+        assertTrue(pages.flatMap { it.commands }.filterIsInstance<PdfDraw.Rect>()
+            .filter { it.y > 0f }.all { it.y + it.height <= 790f })
+    }
+
+    @Test fun longSecondaryHeadingDoesNotInsertAnEmptyContinuationPage() {
+        val heading = List(31) { "二级标题" }.joinToString("\n")
+        val pages = render(ReportPdfBlock.Heading(heading, 2), ReportPdfBlock.Paragraph("观点内容"))
+        assertTrue(pages.size > 1)
+        pages.forEach { page ->
+            assertTrue(page.commands.filterIsInstance<PdfDraw.Text>().any { it.y in 50f..790f })
+        }
+        assertEquals(31, pages.flatMap { it.commands }.filterIsInstance<PdfDraw.Text>().count { it.text == "二级标题" })
+    }
 }
