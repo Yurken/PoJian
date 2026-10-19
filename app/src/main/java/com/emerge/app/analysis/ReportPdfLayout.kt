@@ -12,6 +12,7 @@ internal data class PdfPage(val commands: List<PdfDraw>)
 
 internal class ReportPdfLayout(
     private val measure: (String, Float, Boolean) -> Float,
+    private val pageNumberOffset: Int = 0,
     private val checkCancellation: () -> Unit = {}
 ) {
     private val ink = 0xff0f172a.toInt()
@@ -74,7 +75,7 @@ internal class ReportPdfLayout(
         endCard()
         line(left, 800f, left + width, 800f, border)
         text(content.period, left, 818f, 9f, muted)
-        val number = (pages.size + 1).toString()
+        val number = (pageNumberOffset + pages.size + 1).toString()
         text(number, left + width - measure(number, 9f, false), 818f, 9f, muted)
         pages += PdfPage(commands.toList())
         commands.clear()

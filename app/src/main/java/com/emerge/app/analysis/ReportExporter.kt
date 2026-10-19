@@ -193,11 +193,11 @@ object ReportExporter {
         val regular = Typeface.create("sans-serif", Typeface.NORMAL)
         val bold = Typeface.create("sans-serif", Typeface.BOLD)
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        val pages = ReportPdfLayout(measure = { text, size, isBold ->
+        val pages = ReportPdfDocumentLayout(measure = { text, size, isBold ->
             paint.textSize = size
             paint.typeface = if (isBold) bold else regular
             paint.measureText(text)
-        }, checkCancellation = checkCancellation).layout(ReportPdfContent.from(report, appNames))
+        }, checkCancellation = checkCancellation).layout(ReportPdfDocument.from(report, appNames))
         val document = PdfDocument()
         var page: PdfDocument.Page? = null
         try {
