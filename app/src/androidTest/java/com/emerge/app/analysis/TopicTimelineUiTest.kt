@@ -24,10 +24,10 @@ class TopicTimelineUiTest {
     private val start = Instant.parse("2026-10-17T01:00:00Z").toEpochMilli()
     private fun work(id: Long) = ViewpointItem(BrowseEvent(id, "reader", start, 0, "原文$id"),
         null, null, false, workIdentity = "work:$id")
-    private fun show(data: SwissTopicTimelineData, onWork: (BrowseEvent) -> Unit) {
+    private fun show(data: SwissTopicTimelineData, onTopic: (String) -> Unit = {}, onWork: (BrowseEvent) -> Unit) {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
             Column(Modifier.width(360.dp).verticalScroll(rememberScrollState())) {
-                SwissTopicTimelineContent(data, StatisticsPeriod.DAY, onWork = onWork)
+                SwissTopicTimelineContent(data, StatisticsPeriod.DAY, onTopic = onTopic, onWork = onWork)
             }
         } } }
     }
@@ -41,28 +41,40 @@ class TopicTimelineUiTest {
         }
         var opened: Long? = null
         show(SwissTopicTimelineData(buckets, listOf(SwissTopicRow("教育", 2, listOf(1, 1))))) { opened = it.id }
-        compose.onNodeWithTag("swiss-topic-work-2").assertExists()
-        compose.onNodeWithTag("swiss-topic-plot-教育").performTouchInput { click(Offset(width / 4f, height / 2f)) }
-        compose.onNodeWithTag("swiss-topic-work-1").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(1L, opened) }
+        compose.onNodeWithText("关注话题").assertExists()
+        compose.onNodeWithText("分时主题分布").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-topic-time-next").assertDoesNotExist()
         compose.onNodeWithTag("swiss-topic-work-2").assertDoesNotExist()
-        compose.onNodeWithTag("swiss-topic-time-next").performScrollTo().performClick()
-        compose.onNodeWithTag("swiss-topic-work-2").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("swiss-topic-plot-教育").performTouchInput { click(Offset(width / 4f, height / 2f)) }
+        compose.onNodeWithTag("swiss-topic-work-1").assertIsDisplayed()
+        compose.onNodeWithTag("swiss-topic-work-2").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-topic-time-next").performClick()
+        compose.onNodeWithTag("swiss-topic-work-2").assertIsDisplayed()
+        compose.onNodeWithTag("swiss-topic-time-previous").performClick()
+        compose.onNodeWithTag("swiss-topic-work-1").performClick()
+        compose.runOnIdle { assertEquals(1L, opened) }
+        compose.onNodeWithTag("swiss-topic-close").assertDoesNotExist()
     }
 
-    @Test fun pagingKeepsLastTopicAndLastWorkReachableWithoutMultiplyingTotal() {
-        val works = (1L..7L).map(::work)
+    @Test fun pagingKeepsLastTopicAndLastWorkReachableWithOneTopicControl() {
+        val works = (1L..37L).map(::work)
         val groups = (1..13).map { TopicTimeGroup("主题$it", works) }
         val bucket = TopicTimeBucket("09", start, start + 3_600_000, works, groups)
         var opened: Long? = null
-        show(SwissTopicTimelineData(listOf(bucket), groups.map { SwissTopicRow(it.title, 7, listOf(7)) })) { opened = it.id }
-        compose.onNodeWithTag("swiss-topic-work-count").assertTextEquals("7篇")
+        var topic: String? = null
+        show(SwissTopicTimelineData(listOf(bucket), groups.map { SwissTopicRow(it.title, 37, listOf(37)) }),
+            onTopic = { topic = it }) { opened = it.id }
         repeat(3) { compose.onNodeWithTag("swiss-topic-pages-next").performScrollTo().performClick() }
+        compose.onNodeWithTag("overview-topic-主题13").performScrollTo().performClick()
+        compose.runOnIdle { assertEquals("主题13", topic) }
         compose.onNodeWithTag("swiss-topic-plot-主题13").performScrollTo().performClick()
-        compose.onNodeWithTag("swiss-topic-selection-date").assertTextEquals("主题13 · 7篇 · 13/13")
-        compose.onNodeWithTag("swiss-topic-works-next").performScrollTo().performClick()
-        compose.onNodeWithTag("swiss-topic-work-7").performScrollTo().performClick()
-        compose.runOnIdle { assertEquals(7L, opened) }
+        compose.onNodeWithTag("swiss-topic-selection-date").assertTextEquals("主题13")
+        compose.onNodeWithTag("swiss-topic-work-count").assertTextEquals("37篇")
+        compose.onNodeWithTag("swiss-topic-selection-next").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-topic-works-next").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-topic-works").performScrollToNode(hasTestTag("swiss-topic-work-37"))
+        compose.onNodeWithTag("swiss-topic-work-37").performClick()
+        compose.runOnIdle { assertEquals(37L, opened) }
     }
 
     @Test fun selectingEmptyTopicCellDoesNotSubstituteAnotherTopicsWorks() {
@@ -75,11 +87,14 @@ class TopicTimelineUiTest {
         show(SwissTopicTimelineData(buckets, listOf(SwissTopicRow("教育", 1, listOf(1, 0)),
             SwissTopicRow("科技", 1, listOf(0, 1))))) {}
         compose.onNodeWithTag("swiss-topic-plot-教育").performTouchInput { click(Offset(width * .75f, height / 2f)) }
-        compose.onNodeWithTag("swiss-topic-selection-date").assertTextEquals("教育 · 0篇 · 1/2")
-        compose.onNodeWithText("该时段暂无内容").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("swiss-topic-selection-date").assertTextEquals("教育")
+        compose.onNodeWithTag("swiss-topic-work-count").assertTextEquals("0篇")
+        compose.onNodeWithText("该时段暂无内容").assertIsDisplayed()
         compose.onNodeWithTag("swiss-topic-work-2").assertDoesNotExist()
-        compose.onNodeWithTag("swiss-topic-selection-next").performScrollTo().performClick()
-        compose.onNodeWithTag("swiss-topic-selection-date").assertTextEquals("科技 · 1篇 · 2/2")
-        compose.onNodeWithTag("swiss-topic-work-2").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("swiss-topic-close").performClick()
+        compose.onNodeWithTag("swiss-topic-plot-科技").performScrollTo().performClick()
+        compose.onNodeWithTag("swiss-topic-selection-date").assertTextEquals("科技")
+        compose.onNodeWithTag("swiss-topic-work-count").assertTextEquals("1篇")
+        compose.onNodeWithTag("swiss-topic-work-2").assertIsDisplayed()
     }
 }

@@ -37,7 +37,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import java.time.ZoneId
 
 @Composable
 internal fun SwissOverviewSectionHeader(
@@ -418,116 +417,6 @@ internal fun SwissEmotionSummary(report: CognitiveReport?) {
                                     color = DesignTokens.Rose
                                 )
                             }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun SwissTopicList(
-    report: CognitiveReport?,
-    events: List<BrowseEvent>,
-    semantics: List<EventSemantics>,
-    period: StatisticsPeriod,
-    now: Long,
-    onTopic: (String) -> Unit,
-    viewpoints: Lazy<List<ViewpointBucket>>? = null
-) {
-    val topics = remember(report?.topicDigests) {
-        report?.topicDigests.orEmpty()
-            .groupBy { it.topic }
-            .map { (name, digests) ->
-                name to digests.flatMap { it.viewpoints }.flatMap { it.workKeys }.distinct().size
-            }
-            .sortedByDescending { it.second }
-            .take(8)
-    }
-    val zone = ZoneId.systemDefault()
-    val inputKey = remember(report?.claims, report?.period, topics, events, semantics, period, now, viewpoints, zone) { Any() }
-    var failed by remember(inputKey) { mutableStateOf(false) }
-    val prepared by produceState<Pair<Any, Map<String, List<ViewpointStanceShare>>>?>(null, inputKey) {
-        value = null
-        try {
-            value = inputKey to withContext(Dispatchers.Default) {
-                currentCoroutineContext().ensureActive()
-                if (topics.isEmpty()) emptyMap() else {
-                    val buckets = viewpoints?.value
-                        ?: ViewpointTimeline.build(events, period, now, zone, report, semantics)
-                    val works = ViewpointTimeline.details(buckets.flatMap { it.items })
-                    topics.associate { (name, _) ->
-                        currentCoroutineContext().ensureActive()
-                        val scoped = swissTopicItems(works, name)
-                        name to viewpointSpectrum(ViewpointDistribution.topics(ViewpointTimeline.groups(scoped)))
-                    }
-                }
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            failed = true
-        }
-    }
-    val distribution = prepared?.takeIf { it.first === inputKey }?.second
-    WhiteCard {
-        SwissOverviewSectionHeader(
-            index = "05",
-            title = "关注话题",
-            subtitle = "TOP TOPICS"
-        )
-        if (topics.isEmpty()) {
-            Text("暂无话题", color = Muted, style = MaterialTheme.typography.bodySmall)
-        }
-        if (topics.isNotEmpty()) Column(Modifier.fillMaxWidth()) {
-            topics.forEachIndexed { index, (topic, workCount) ->
-                if (index > 0) {
-                    HorizontalDivider(color = DesignTokens.Border.copy(alpha = 0.7f), thickness = 0.75.dp)
-                }
-                Surface(
-                    onClick = { onTopic(topic) },
-                    color = Color.Transparent,
-                    shape = DesignTokens.InnerShape,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("overview-topic-$topic")
-                ) {
-                    Column(
-                        modifier = Modifier.padding(vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Text(
-                                    text = topic,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Ink
-                                )
-                                Text(
-                                    text = "$workCount 篇",
-                                    color = Muted,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp),
-                                tint = Muted
-                            )
-                        }
-                        if (failed) {
-                            Text("分析暂不可用", color = Muted, style = MaterialTheme.typography.bodySmall)
-                        } else if (distribution == null) {
-                            Text("整理中", color = Muted, style = MaterialTheme.typography.bodySmall)
-                        } else {
-                            SwissStanceDistribution(distribution[topic].orEmpty())
                         }
                     }
                 }

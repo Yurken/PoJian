@@ -52,7 +52,7 @@ fun OverviewScreen(
 ) {
     val report = analysis.report?.takeIf { !analysis.stale && it.period == period.label }
     val zone = ZoneId.systemDefault()
-    // Both topic cards request the same snapshot from background producers, only when composed.
+    // Retain the topic snapshot across lazy card disposal; build it only in the background producer.
     val topicViewpoints = remember(rawEvents, semantics, period, now, report?.claims, report?.period, zone) {
         lazy { ViewpointTimeline.build(rawEvents, period, now, zone, report, semantics) }
     }
@@ -94,11 +94,7 @@ fun OverviewScreen(
 
         // 05 / 关注话题
         item(key = "topics") {
-            SwissTopicList(report, rawEvents, semantics, period, now, onTopic, topicViewpoints)
-        }
-
-        item(key = "topic-timeline") {
-            SwissTopicTimeline(rawEvents, semantics, period, now, appNames, report, topicViewpoints)
+            SwissTopicTimeline(rawEvents, semantics, period, now, appNames, report, onTopic, topicViewpoints)
         }
 
         // 底部报告与采集引导区
