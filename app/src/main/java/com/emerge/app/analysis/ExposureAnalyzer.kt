@@ -155,6 +155,7 @@ object ExposureAnalyzer {
             }
             return result
         }
+        val claimsByScope = claims.groupBy(::scope)
         val currentScopes = indexedVotes(current)
         val previousScopes = indexedVotes(previous)
         val workByEvent = eventKeys.mapValues { (_, key) -> contacts.getValue(key).workKey }
@@ -176,7 +177,7 @@ object ExposureAnalyzer {
             val identity = listOf(key.topic, key.subject, key.dimension, key.conditions).joinToString("") { "${it.length}:$it" }
             val longitudinal = LongitudinalEvidence.assess(
                 votes.flatMap { it.contact.claims }.filter { scope(it) == key },
-                claims.filter { scope(it) == key }, workByEvent, dominant.key, zone, checkCancellation)
+                claimsByScope[key].orEmpty(), workByEvent, dominant.key, zone, checkCancellation)
             ViewpointExposure(identity, latest.topic, latest.subject, latest.dimension, latest.stance, dist, dominant.value,
                 if (historyComparable) old.shares[dominant.key] ?: 0.0 else null,
                 if (historyComparable) dist.diversity - old.diversity else null, alignedApps,
