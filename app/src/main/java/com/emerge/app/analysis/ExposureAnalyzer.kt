@@ -57,11 +57,12 @@ private fun signedPoints(value: Double) = String.format(Locale.CHINA, "%+.1f", v
 
 /** Sample size gates concentration; elapsed days are descriptive and only windows gate trends. */
 object ExposureAnalyzer {
+    private val whitespace = Regex("\\s+")
     private data class Contact(val key: String, val workKey: String, val at: Long, val packageName: String,
         val claims: MutableList<ClaimObservation> = mutableListOf(), val topics: MutableSet<String> = linkedSetOf())
     private data class Vote(val contact: Contact, val values: Set<String>)
     private data class Scope(val topic: String, val subject: String, val dimension: String, val conditions: String)
-    private fun field(value: String) = value.trim().lowercase(Locale.ROOT).replace(Regex("\\s+"), " ")
+    private fun field(value: String) = value.trim().lowercase(Locale.ROOT).replace(whitespace, " ")
 
     fun analyze(events: List<BrowseEvent>, claims: List<ClaimObservation>, now: Long,
         zone: ZoneId, topicByEvent: Map<Long, String> = emptyMap(),

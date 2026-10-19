@@ -13,7 +13,11 @@ data class ViewpointClaim(val quote: String, val topic: String = "", val subject
     val record: BrowseEvent? = null, val zoneId: String = ZoneId.systemDefault().id,
     val evidence: String = "", val presentation: ClaimPresentation? = null,
     val inputKind: String = "", val analyzedAt: Long = 0) {
-    private fun normalized(value: String) = value.trim().replace(Regex("\\s+"), " ").lowercase()
+    private companion object {
+        val whitespace = Regex("\\s+")
+        val conditionalQuote = Regex("如果|只有|除非|条件|反对|不支持|不应该|不需要")
+    }
+    private fun normalized(value: String) = value.trim().replace(whitespace, " ").lowercase()
     val confirmed: Boolean get() = !uncertain && topic.isNotBlank() && subject.isNotBlank() && dimension.isNotBlank() && stance.isNotBlank()
     val key: String get() = if (analysisSource == "structured_model")
         listOf(analysisSource, topic, subject, dimension,
@@ -21,7 +25,7 @@ data class ViewpointClaim(val quote: String, val topic: String = "", val subject
             SemanticFieldKeys.stance(stance, subject, dimension),
             if (confirmed) "" else quote).joinToString("|") { normalized(it) }
         else "local_rules|" + if (ViewpointTimeline.label(quote) == "未识别" ||
-            Regex("如果|只有|除非|条件|反对|不支持|不应该|不需要").containsMatchIn(quote)) normalized(quote) else ViewpointTimeline.label(quote)
+            conditionalQuote.containsMatchIn(quote)) normalized(quote) else ViewpointTimeline.label(quote)
     val label: String get() = if (analysisSource == "structured_model") {
         listOf(topic.takeIf(String::isNotBlank), subject.takeIf(String::isNotBlank),
             dimension.takeIf(String::isNotBlank), conditions.takeIf(String::isNotBlank),

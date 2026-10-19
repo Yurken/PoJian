@@ -56,6 +56,9 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
 
 class CognitiveAnalyzer {
     private companion object {
+        val whitespace = Regex("\\s+")
+        val sentenceBoundary = Regex("[\\n。！？]+")
+        val numericLabel = Regex("^[0-9.,万千\\s:+/-]+$")
         const val HISTORY_LIMIT = 120
         const val MATCHES_PER_FRAGMENT = 3
     }
@@ -276,9 +279,9 @@ class CognitiveAnalyzer {
 
     private fun clean(event: BrowseEvent): List<String> {
         if (event.packageName.contains("launcher") || event.packageName == "com.android.systemui") return emptyList()
-        return event.contentText.split(Regex("[\\n。！？]+"))
-            .map { it.trim().replace(Regex("\\s+"), " ") }.filter { line ->
-                line.length >= 8 && line !in uiLabels && !Regex("^[0-9.,万千\\s:+/-]+$").matches(line) &&
+        return event.contentText.split(sentenceBoundary)
+            .map { it.trim().replace(whitespace, " ") }.filter { line ->
+                line.length >= 8 && line !in uiLabels && !numericLabel.matches(line) &&
                     !line.startsWith("http")
             }.distinct().take(100)
     }
@@ -299,7 +302,7 @@ class CognitiveAnalyzer {
         Candidate(topic, quote, subject(quote), evidence, conditions, attributionMarker.containsMatchIn(quote))
     }
 
-    private fun fieldKey(value: String) = value.lowercase().replace(Regex("\\s+"), " ").trim()
+    private fun fieldKey(value: String) = value.lowercase().replace(whitespace, " ").trim()
 
     private fun sameClaimGroup(first: ClaimObservation, next: ClaimObservation, zone: ZoneId): Boolean {
         if (first.analysisSource != next.analysisSource) return false
