@@ -87,11 +87,7 @@ fun OverviewScreen(
 
         // 05 / 关注话题
         item(key = "topics") {
-            SwissTopicList(report, rawEvents, semantics, period, now, onTopic)
-        }
-
-        item(key = "topic-timeline") {
-            SwissTopicTimeline(rawEvents, semantics, period, now, appNames, report)
+            SwissTopicTimeline(rawEvents, semantics, period, now, appNames, report, onTopic)
         }
 
         // 底部报告与采集引导区
