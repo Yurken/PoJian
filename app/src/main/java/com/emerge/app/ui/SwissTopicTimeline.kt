@@ -37,16 +37,18 @@ internal data class SwissTopicTimelineData(val buckets: List<TopicTimeBucket>, v
 
 @Composable
 internal fun SwissTopicTimeline(events: List<BrowseEvent>, semantics: List<EventSemantics>, period: StatisticsPeriod,
-    now: Long, appNames: Map<String, String>, report: CognitiveReport? = null) {
+    now: Long, appNames: Map<String, String>, report: CognitiveReport? = null,
+    viewpoints: Lazy<List<ViewpointBucket>>? = null) {
     val zone = ZoneId.systemDefault()
-    val request = remember(events, semantics, period, now, report, zone) { Any() }
+    val request = remember(events, semantics, period, now, report?.claims, report?.period, zone, viewpoints) { Any() }
     var failed by remember(request) { mutableStateOf(false) }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     val prepared by produceState<Pair<Any, SwissTopicTimelineData>?>(null, request) {
         value = null
         try {
             value = request to withContext(Dispatchers.Default) {
-                val buckets = TopicTimeline.build(events, period, now, zone, report, semantics)
+                val buckets = viewpoints?.let { TopicTimeline.fromViewpoints(it.value) }
+                    ?: TopicTimeline.build(events, period, now, zone, report, semantics)
                 currentCoroutineContext().ensureActive()
                 val byTopic = buckets.flatMap { it.topics }.groupBy { it.title }
                 val countsByBucket = buckets.map { bucket -> bucket.topics.associate { it.title to it.works.size } }

@@ -24,6 +24,8 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
+private data class PreparedDialogReport(val report: CognitiveReport, val progress: ReportAnalysisProgress)
+
 @Composable
 internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventSemantics>, now: Long, onDismiss: () -> Unit,
     purpose: String = "", onPurposeChange: (String) -> Unit = {}, analysisStatuses: Map<Long, String> = emptyMap(),
@@ -33,18 +35,33 @@ internal fun SwissReportDialog(events: List<BrowseEvent>, semantics: List<EventS
     val anchorNow = rememberSaveable { now }
     val periods = listOf(StatisticsPeriod.HOUR, StatisticsPeriod.DAY, StatisticsPeriod.MONTH)
     val request = SwissReportRequest(events, semantics, periods[level], anchorNow, purpose, analysisStatuses)
+    val contentRequest = request.copy(analysisStatuses = emptyMap())
+    // The dialog has three periods and one anchored snapshot. Reuse only results from that snapshot.
+    val reports = remember(events, semantics, anchorNow, purpose) {
+        mutableMapOf<StatisticsPeriod, PreparedDialogReport>()
+    }
     var retry by remember { mutableIntStateOf(0) }
-    var loadError by remember(request) { mutableStateOf(false) }
-    val result by produceState<Pair<SwissReportRequest, CognitiveReport>?>(null, request, retry) {
-        value = null
+    var loadError by remember(contentRequest) { mutableStateOf(false) }
+    val result by produceState<Pair<SwissReportRequest, PreparedDialogReport>?>(null, contentRequest, retry) {
+        value = reports[contentRequest.period]?.let { contentRequest to it }
         loadError = false
-        try { value = withContext(Dispatchers.Default) {
-            val task = currentCoroutineContext()
-            request to buildSwissReport(request) { task.ensureActive() }
-        } } catch (error: CancellationException) { throw error }
+        try {
+            if (value == null) {
+                val report = withContext(Dispatchers.Default) {
+                    val task = currentCoroutineContext()
+                    val content = buildSwissReport(contentRequest) { task.ensureActive() }
+                    PreparedDialogReport(content, ReportAnalysisProgress(contentRequest.events, content))
+                }
+                reports[contentRequest.period] = report
+                value = contentRequest to report
+            }
+        } catch (error: CancellationException) { throw error }
         catch (_: Exception) { loadError = true }
     }
-    val report = result?.takeIf { it.first == request }?.second
+    val prepared = result?.takeIf { it.first == contentRequest }?.second
+    val report = remember(prepared, analysisStatuses) {
+        prepared?.let { it.progress.applyTo(it.report, analysisStatuses) }
+    }
     var selection by remember(request) { mutableStateOf<SwissArgumentSelection?>(null) }
     val context = LocalContext.current
     val exportModel: SwissReportExportViewModel = viewModel()

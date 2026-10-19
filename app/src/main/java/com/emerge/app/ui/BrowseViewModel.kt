@@ -69,6 +69,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     private var reportMinute = 0L
     private var generation = 0L
     private var analysisJob: Job? = null
+    private var reportProgress: ReportAnalysisProgress? = null
     private var pendingAnalysis = false
     private var exportJob: Job? = null
     private var pendingMutations = 0
@@ -85,15 +86,31 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
         viewModelScope.launch {
-            combine(allEvents, semantics, analysisStatuses, semanticsLoaded) { events, extracted, statuses, loaded ->
-                if (loaded) Triple(events, extracted, statuses) else null
+            combine(allEvents, semantics, semanticsLoaded) { events, extracted, loaded ->
+                if (loaded) events to extracted else null
             }.filterNotNull().collect {
                 invalidate("记录已更新，正在整理回顾", cancelAnalysis = false, clearReport = false)
                 scheduleAnalysis()
             }
         }
         viewModelScope.launch {
-            combine(allEvents.map { rows -> rows.filter { it.sourceType != "audio_import" }.map(BrowseEvent::packageName).toSet() }.distinctUntilChanged(), allowedPackages) { recorded, allowed -> recorded + allowed }
+            analysisStatuses.collect { statuses ->
+                val state = analysisState.value
+                val report = state.report
+                if (report != null && !state.running && !state.stale) {
+                    val updated = reportProgress?.applyTo(report, statuses) ?: report
+                    if (updated !== report) {
+                        generation++
+                        invalidateExport()
+                        analysisState.update { it.copy(report = updated, exporting = false, exportMessage = null) }
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
+            val recordedApps = allEvents.map { rows -> rows.asSequence().filter { it.sourceType != "audio_import" }
+                .map(BrowseEvent::packageName).toSet() }.distinctUntilChanged().flowOn(Dispatchers.Default)
+            combine(recordedApps, allowedPackages) { recorded, allowed -> recorded + allowed }
                 .collectLatest { known ->
                     appsLoadingState.value = true
                     try {
@@ -155,20 +172,25 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     private fun invalidate(status: String, cancelAnalysis: Boolean = true, clearReport: Boolean = true) {
         generation++
-        if (reportPreviewState.value is ReportPreviewSource.Generated) reportPreviewState.value = null
+        reportProgress = null
         if (cancelAnalysis) {
             analysisJob?.cancel()
             analysisJob = null
             pendingAnalysis = false
         }
-        exportJob?.cancel()
-        exportSnapshot = null
-        exportGeneration = -1
-        lastExport = null
+        invalidateExport()
         analysisState.update { it.copy(report = if (clearReport) null else it.report,
             running = if (cancelAnalysis) false else it.running, exporting = false, error = null,
             stale = !clearReport && it.report != null,
             exportMessage = null, status = if (it.active) status else null) }
+    }
+
+    private fun invalidateExport() {
+        if (reportPreviewState.value is ReportPreviewSource.Generated) reportPreviewState.value = null
+        exportJob?.cancel()
+        exportSnapshot = null
+        exportGeneration = -1
+        lastExport = null
     }
 
     private fun scheduleAnalysis(immediate: Boolean = false) {
@@ -191,13 +213,17 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             }
             analysisState.update { it.copy(running = true, status = "正在整理浏览回顾", error = null) }
             try {
-                val result = withContext(Dispatchers.Default) {
+                val (content, progress) = withContext(Dispatchers.Default) {
                     val computationContext = currentCoroutineContext()
-                    CognitiveAnalyzer().analyze(snapshot, selectedPeriod, System.currentTimeMillis(),
+                    val report = CognitiveAnalyzer().analyze(snapshot, selectedPeriod, System.currentTimeMillis(),
                         purpose = purpose.trim().ifBlank { "未填写" }, checkCancellation = { computationContext.ensureActive() },
                         semantics = semanticSnapshot, analysisStatuses = statusSnapshot)
+                    report to ReportAnalysisProgress(snapshot, report)
                 }
                 ensureActive()
+                // Progress may have changed while the content was being analyzed.
+                val result = progress.applyTo(content, analysisStatuses.value)
+                reportProgress = if (generation == version) progress else null
                 analysisState.update { it.copy(running = false, report = result, stale = generation != version,
                     status = if (generation == version) "回顾已更新" else "发现新记录，正在更新回顾") }
             } catch (error: Exception) {

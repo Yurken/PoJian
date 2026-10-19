@@ -11,7 +11,9 @@ data class TopicTimeBucket(val label: String, val start: Long, val end: Long,
 object TopicTimeline {
     fun build(events: List<BrowseEvent>, period: StatisticsPeriod, now: Long, zone: ZoneId,
         report: CognitiveReport? = null, semantics: List<EventSemantics> = emptyList()): List<TopicTimeBucket> =
-        ViewpointTimeline.build(events, period, now, zone, report, semantics).map { bucket ->
+        fromViewpoints(ViewpointTimeline.build(events, period, now, zone, report, semantics))
+
+    fun fromViewpoints(buckets: List<ViewpointBucket>): List<TopicTimeBucket> = buckets.map { bucket ->
             val works = ViewpointTimeline.details(bucket.items)
             val topics = linkedMapOf<String, MutableList<ViewpointItem>>()
             works.forEach { work ->
@@ -19,7 +21,7 @@ object TopicTimeline {
                     claim.topic.trim().takeIf { it.isNotEmpty() }
                         ?: WorkTopicPresentation.category(claim).takeUnless { it == "其他" }
                         ?: claim.label
-                }.ifEmpty { listOf("未识别") }.map { it.replace(Regex("\\s+"), " ") }.distinct()
+                }.ifEmpty { listOf("未识别") }.map(LiteralWhitespace::collapse).distinct()
                 names.forEach { name -> topics.getOrPut(name) { mutableListOf() }.add(work) }
             }
             TopicTimeBucket(bucket.label, bucket.start, bucket.end, works,

@@ -67,9 +67,12 @@ fun MonitorDiscoverScreen(
 ) {
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableIntStateOf(0) }
-    val repetitions = state.findings.filter { it.kind == "cocoon" }
-    val facts = state.findings.filter { it.kind == "fact" }
-    val emotions = state.findings.filter { it.kind == "emotion" }
+    val categories = remember(state.findings) {
+        state.findings.sortedByDescending { it.capturedAt }.groupBy { it.kind }
+    }
+    val repetitions = categories["cocoon"].orEmpty()
+    val facts = categories["fact"].orEmpty()
+    val emotions = categories["emotion"].orEmpty()
     val displayed = when (filter) {
         0 -> repetitions
         1 -> facts
@@ -143,7 +146,7 @@ fun MonitorDiscoverScreen(
                     }
                 }
             }
-            items(displayed.sortedByDescending { it.capturedAt }, key = { it.id }) { finding ->
+            items(displayed, key = { it.id }) { finding ->
                 DiscoveryCard(finding, appNames) { selectedId = finding.id }
             }
             item("all-records-action") {

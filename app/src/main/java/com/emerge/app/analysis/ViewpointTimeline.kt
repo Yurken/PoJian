@@ -18,19 +18,19 @@ data class ViewpointClaim(val quote: String, val topic: String = "", val subject
     }
     private fun normalized(value: String) = LiteralWhitespace.collapse(value.trim()).lowercase()
     val confirmed: Boolean get() = !uncertain && topic.isNotBlank() && subject.isNotBlank() && dimension.isNotBlank() && stance.isNotBlank()
-    val key: String get() = if (analysisSource == "structured_model")
+    val key: String by lazy(LazyThreadSafetyMode.PUBLICATION) { if (analysisSource == "structured_model")
         listOf(analysisSource, topic, subject, dimension,
             record?.let { SemanticFieldKeys.conditions(conditions, it.timestamp, ZoneId.of(zoneId)) } ?: normalized(conditions),
             SemanticFieldKeys.stance(stance, subject, dimension),
             if (confirmed) "" else quote).joinToString("|") { normalized(it) }
         else "local_rules|" + if (ViewpointTimeline.label(quote) == "未识别" ||
-            conditionalQuote.containsMatchIn(quote)) normalized(quote) else ViewpointTimeline.label(quote)
-    val label: String get() = if (analysisSource == "structured_model") {
+            conditionalQuote.containsMatchIn(quote)) normalized(quote) else ViewpointTimeline.label(quote) }
+    val label: String by lazy(LazyThreadSafetyMode.PUBLICATION) { if (analysisSource == "structured_model") {
         listOf(topic.takeIf(String::isNotBlank), subject.takeIf(String::isNotBlank),
             dimension.takeIf(String::isNotBlank), conditions.takeIf(String::isNotBlank),
             stance.takeIf(String::isNotBlank), if (confirmed) null else "待确认")
             .filterNotNull().joinToString(" · ").ifBlank { "观点待确认" }
-    } else ViewpointTimeline.label(quote)
+    } else ViewpointTimeline.label(quote) }
 }
 data class ViewpointItem(val record: BrowseEvent, val label: String?, val quote: String?, val emotional: Boolean,
     val claims: List<ViewpointClaim> = emptyList(), val analysisSource: String = "local_rules",
@@ -53,6 +53,8 @@ object ViewpointTimeline {
     private val emotion = Regex("焦虑|恐慌|恐惧|绝望|完蛋|没有未来|毁掉")
     private val negatedEmotion = Regex("(?:不必|不用|无需|别|不要)[^，。；]{0,6}(?:焦虑|恐慌|恐惧|绝望)")
     private val predicate = Regex("应该|必须|需要|不能|独立|自主|焦虑|认为|觉得|导致|越来越|意味着|会|难|值得|自由")
+    private val expandedSuffix = Regex("(?:\\.\\.\\.|…)?\\s*展开[>〉]?\\s*$")
+    private val controlText = Regex("按钮|来自|回复|评论|图片[,，]")
     private fun workKey(item: ViewpointItem) = item.workIdentity
     private fun records(items: List<ViewpointItem>) = items.flatMap { it.records }
         .distinctBy { listOf(it.packageName, it.sourceType, it.id, it.timestamp) }
@@ -105,9 +107,9 @@ object ViewpointTimeline {
         }.map { ViewpointClaim(it.quote, it.topic, it.subject, it.dimension, it.stance, it.conditions,
             it.uncertainAttribution, it.analysisSource, event, zone.id) }
         val fallback = event.contentText.lines().map {
-            it.trim().replace(Regex("(?:\\.\\.\\.|…)?\\s*展开[>〉]?\\s*$"), "").trim()
+            it.trim().replace(expandedSuffix, "").trim()
         }.firstOrNull { it.length in 10..300 && predicate.containsMatchIn(it) &&
-            !Regex("按钮|来自|回复|评论|图片[,，]").containsMatchIn(it) }
+            !controlText.containsMatchIn(it) }
         return reportClaims.ifEmpty { fallback?.let { listOf(ViewpointClaim(it, record = event, zoneId = zone.id)) }.orEmpty() }
     }
 
@@ -127,9 +129,11 @@ object ViewpointTimeline {
             .groupBy { it.parentEventId }
         val workKeys = selected.zip(BrowseWorkKey.resolve(selected)).toMap()
         val observations = report?.takeIf { it.period == period.label }?.claims?.groupBy { it.eventId }.orEmpty()
-        val modelResults = semantics.groupBy { it.eventId }.mapValues { (_, values) ->
-            values.withIndex().maxWithOrNull(compareBy<IndexedValue<EventSemantics>> { it.value.analyzedAt }
-                .thenBy { it.index })!!.value
+        val modelResults = buildMap<Long, EventSemantics> {
+            semantics.forEach { candidate ->
+                if (get(candidate.eventId)?.let { it.analyzedAt > candidate.analyzedAt } != true)
+                    put(candidate.eventId, candidate)
+            }
         }
         val candidates = selected.associateWith { event ->
             val model = modelResults[event.id]?.takeIf { it.validFor(event) }

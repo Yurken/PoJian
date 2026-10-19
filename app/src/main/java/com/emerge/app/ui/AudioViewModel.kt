@@ -7,9 +7,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.emerge.app.EmergeApplication
-import com.emerge.app.audioanalysis.AudioInsightCodec
 import com.emerge.app.audioanalysis.TextServiceConfig
-import com.emerge.app.data.AudioSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -23,34 +21,22 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
     private val localMessage = MutableStateFlow<String?>(null)
     val alert = combine(localMessage, coordinator.message) { local, shared -> local ?: shared }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val sessions = combine(app.audioRepository.sessions, app.audioRepository.allTranscripts, coordinator.analyzing,
-        runtime.state.map { it.sessionId to (it.isCapturing && it.isPaused) }.distinctUntilChanged()) { sessions, transcripts, analyzing, paused ->
-        val grouped = transcripts.groupBy { it.sessionId }
-        val transcriptById = transcripts.associateBy { it.id }
-        val sessionById = sessions.associateBy { it.id }
-        sessions.map { session ->
-            val report = session.analysisJson?.let(AudioInsightCodec::decode)
-            val segments = grouped[session.id].orEmpty().sortedWith(compareBy({ it.offsetStartMillis }, { it.id }))
-            val savedSegments = segments.count { it.displayText.isNotBlank() }
-            AudioSessionUi(session.id, session.title,
-                if (session.source == AudioSource.IMPORT) "导入音频" else "应用录音",
-                session.startedAt, session.durationMillis,
-                segments.map { AudioSegmentUi(it.id, it.offsetStartMillis, it.offsetEndMillis, it.originalText, it.correctedText) },
-                if (paused.first == session.id && paused.second && session.status == "recording") "录音已暂停"
-                else audioTranscriptStatus(session.status, savedSegments), session.errorMessage, report?.method, report?.summary,
-                report?.claims.orEmpty().map { claim ->
-                    val source = transcriptById[claim.segmentId]
-                    val previous = (claim.historySegmentId ?: claim.comparedSegmentId)?.let(transcriptById::get)
-                    val previousSession = previous?.sessionId?.let(sessionById::get)
-                    AudioClaimUi(claim.claim, claim.evidence, claim.relation, claim.novelty,
-                        (claim.historyQuote ?: claim.comparedQuote)?.let { quote ->
-                            val time = previous?.offsetStartMillis?.div(1000)?.let { "%02d:%02d".format(it / 60, it % 60) }.orEmpty()
-                            "${if (claim.historyQuote != null) "重复依据原文" else "对照的历史材料（并非重复匹配）"} · ${previousSession?.title ?: "先前片段"} $time\n$quote"
-                        }, source?.offsetStartMillis, source?.offsetEndMillis)
-                }, session.id in analyzing,
-                sourcePackage = session.packageName.takeIf { session.source == AudioSource.PLAYBACK })
-        }
+    private val sourceSessions = app.audioRepository.sessions.distinctUntilChanged()
+        .shareIn(viewModelScope, SharingStarted.WhileSubscribed(5000, replayExpirationMillis = 0), replay = 1)
+    private val storedSessions = flow {
+        // The cache belongs to this subscription and is released when the content flow stops.
+        val reports = AudioSessionReportCache()
+        emitAll(combine(sourceSessions,
+            app.audioRepository.allTranscripts.distinctUntilChanged()) { sessions, transcripts ->
+            prepareAudioSessions(sessions, transcripts, reports.update(sessions))
+        })
+    }.flowOn(Dispatchers.Default)
+    val sessions = combine(storedSessions, coordinator.analyzing,
+        runtime.state.map { state -> state.sessionId.takeIf { state.isCapturing && state.isPaused } }
+            .distinctUntilChanged()) { content, analyzing, pausedSessionId ->
+        projectAudioSessions(content, analyzing, pausedSessionId)
     }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    private val sessionCount = sourceSessions.map { it.size }.distinctUntilChanged()
     private val runtimeUi = combine(runtime.state, coordinator.preparing, coordinator.lastText) { state, preparing, text ->
         val model = AudioModelUiState(when {
             state.isDownloading -> AudioModelStatus.DOWNLOADING
@@ -68,8 +54,8 @@ class AudioViewModel(application: Application) : AndroidViewModel(application) {
         }
         AudioUiState(model, task, message = state.error ?: state.status)
     }
-    val ui = combine(runtimeUi, sessions, config, coordinator.message, localMessage) { state, sessions, config, message, local ->
-        state.copy(sessionCount = sessions.size, message = local ?: message ?: state.message,
+    val ui = combine(runtimeUi, sessionCount, config, coordinator.message, localMessage) { state, count, config, message, local ->
+        state.copy(sessionCount = count, message = local ?: message ?: state.message,
             cloudLabel = if (config.enabled) "已启用" else "未启用 · 使用本地识别")
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AudioUiState())
 

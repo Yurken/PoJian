@@ -433,9 +433,10 @@ internal fun SwissTopicList(
     semantics: List<EventSemantics>,
     period: StatisticsPeriod,
     now: Long,
-    onTopic: (String) -> Unit
+    onTopic: (String) -> Unit,
+    viewpoints: Lazy<List<ViewpointBucket>>? = null
 ) {
-    val topics = remember(report) {
+    val topics = remember(report?.topicDigests) {
         report?.topicDigests.orEmpty()
             .groupBy { it.topic }
             .map { (name, digests) ->
@@ -444,7 +445,8 @@ internal fun SwissTopicList(
             .sortedByDescending { it.second }
             .take(8)
     }
-    val inputKey = remember(report, events, semantics, period, now) { Any() }
+    val zone = ZoneId.systemDefault()
+    val inputKey = remember(report?.claims, report?.period, topics, events, semantics, period, now, viewpoints, zone) { Any() }
     var failed by remember(inputKey) { mutableStateOf(false) }
     val prepared by produceState<Pair<Any, Map<String, List<ViewpointStanceShare>>>?>(null, inputKey) {
         value = null
@@ -452,7 +454,8 @@ internal fun SwissTopicList(
             value = inputKey to withContext(Dispatchers.Default) {
                 currentCoroutineContext().ensureActive()
                 if (topics.isEmpty()) emptyMap() else {
-                    val buckets = ViewpointTimeline.build(events, period, now, ZoneId.systemDefault(), report, semantics)
+                    val buckets = viewpoints?.value
+                        ?: ViewpointTimeline.build(events, period, now, zone, report, semantics)
                     val works = ViewpointTimeline.details(buckets.flatMap { it.items })
                     topics.associate { (name, _) ->
                         currentCoroutineContext().ensureActive()
