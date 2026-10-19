@@ -11,6 +11,17 @@ import org.junit.Test
 
 /** Actual report and alert consumers, with independently specified identities and expected relationships. */
 class EvidenceIdentityTest {
+    @Test fun identicalTextStillRequiresResolvedAndMatchingReferences() {
+        val text = "记录显示等待时间为20分钟"
+        val known = EvidenceIdentity(origins = listOf("记录甲"))
+        assertEquals(EvidenceRelation.REUSED, EvidenceIdentityComparator.compare(text, text, known, known))
+        for (identity in listOf(known.copy(unresolvedCase = true), known.copy(unresolvedReferences = true))) {
+            assertEquals(EvidenceRelation.UNRESOLVED, EvidenceIdentityComparator.compare(text, text, identity, identity))
+        }
+        assertEquals(EvidenceRelation.UNRESOLVED, EvidenceIdentityComparator.compare(text, text,
+            known, known.copy(origins = listOf("记录乙"))))
+    }
+
     private val now = Instant.parse("2026-10-11T12:00:00Z").toEpochMilli()
     private val zone = ZoneId.of("Asia/Shanghai")
     private val quote = "当前互联网招聘需求下降"

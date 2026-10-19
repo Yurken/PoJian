@@ -93,6 +93,7 @@ class CognitiveAnalyzer {
         val observations = mutableListOf<Pair<BrowseEvent, ClaimObservation>>()
         // Per-analysis index: rebuilding after edits/deletion cannot retain stale evidence dependencies.
         val historyByClaim = mutableMapOf<HistoryKey, MutableList<ClaimObservation>>()
+        val conditionKeys = java.util.IdentityHashMap<ClaimObservation, String>()
         val latestSemantics = semantics.groupBy { it.eventId }.mapValues { (_, versions) ->
             versions.withIndex().maxWithOrNull(compareBy<IndexedValue<EventSemantics>> { it.value.analyzedAt }
                 .thenBy { it.index })!!.value
@@ -165,8 +166,8 @@ class CognitiveAnalyzer {
                             (model || similarity(comparisonPart(it.quote), comparisonPart(quote)) >= 0.65)
                     }
                 // Filter scope before limiting recall; unrelated records cannot crowd out comparable history.
-                fun sameConditions(previous: ClaimObservation) = SemanticFieldKeys.conditions(previous.conditions, previous.timestamp, zone) ==
-                    SemanticFieldKeys.conditions(conditions, event.timestamp, zone)
+                val conditionKey = SemanticFieldKeys.conditions(conditions, event.timestamp, zone)
+                fun sameConditions(previous: ClaimObservation) = conditionKeys.getValue(previous) == conditionKey
                 val recalled = relatedCandidates().filter(::sameConditions).take(HISTORY_LIMIT + 1).toList()
                 val truncated = recalled.size > HISTORY_LIMIT
                 val comparableHistory = recalled.take(HISTORY_LIMIT)
@@ -210,7 +211,10 @@ class CognitiveAnalyzer {
                     if (within) window.durationMillis(event) else event.durationMillis.takeIf { window.durationKnown(event) },
                     details, subject, comparableHistory.map { it.eventId }.distinct(), truncated, dimension, stance, source)
                 observations += event to observation
-                if (!uncertain && subject.isNotBlank()) historyByClaim.getOrPut(historyKey) { mutableListOf() } += observation
+                if (!uncertain && subject.isNotBlank()) {
+                    conditionKeys[observation] = conditionKey
+                    historyByClaim.getOrPut(historyKey) { mutableListOf() } += observation
+                }
             }
         }
         val usableSet = usableEvents.toSet()

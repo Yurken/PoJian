@@ -7,6 +7,11 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 class SemanticFieldKeysTest {
+    @Test fun blankConditionsRetainTheirLiteralFrameAcrossDatesAndZones() {
+        assertEquals("r0:", SemanticFieldKeys.conditions(" \t\n", 0, ZoneId.of("UTC")))
+        assertEquals("r0:", SemanticFieldKeys.conditions("", 1792389600000L, ZoneId.of("Asia/Shanghai")))
+    }
+
     private val shanghai = ZoneId.of("Asia/Shanghai")
     private val utc = ZoneId.of("UTC")
     private fun at(value: String) = Instant.parse(value).toEpochMilli()

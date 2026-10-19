@@ -42,6 +42,9 @@ object EvidenceIdentityComparator {
     fun compare(current: String, previous: String, currentIdentity: EvidenceIdentity = identity(current),
         previousIdentity: EvidenceIdentity = identity(previous)): EvidenceRelation {
         if (currentIdentity.unresolvedReferences || previousIdentity.unresolvedReferences) return EvidenceRelation.UNRESOLVED
+        if (current == previous && currentIdentity == previousIdentity) {
+            return if (currentIdentity.unresolvedCase) EvidenceRelation.UNRESOLVED else EvidenceRelation.REUSED
+        }
         // Digits or direction words inside a person's label or a report title are not measured values.
         fun content(text: String, identity: EvidenceIdentity): String =
             (identity.actors + identity.origins).sortedByDescending { it.length }
