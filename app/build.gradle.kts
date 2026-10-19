@@ -108,8 +108,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 94
-        versionName = "0.6.27"
+        versionCode = 95
+        versionName = "0.6.28"
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
