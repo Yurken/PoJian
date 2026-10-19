@@ -1,6 +1,7 @@
 package com.emerge.app.data
 
 import androidx.room.Room
+import androidx.room.withTransaction
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
@@ -13,6 +14,11 @@ import com.emerge.app.analysis.ClaimPresentation
 import com.emerge.app.analysis.ImpactLevel
 import com.emerge.app.analysis.ImpactSignal
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
@@ -41,6 +47,72 @@ class SemanticsPersistenceTest {
         eventId = event.id, inputText = event.visibleText, analyzedAt = at,
         claims = listOf(ArgumentUnit(quote = "岗位正在减少", topic = "就业", subject = "岗位",
             dimension = "需求", stance = "减少", evidence = "招聘数量下降", uncertain = false)))
+
+    @Test fun pagedSnapshotKeepsEveryValidRowAndVersionOrderAcrossPageBoundaries() = runBlocking {
+        val db = database()
+        try {
+            val dao = db.browseEventDao()
+            val expected = mutableListOf<EventSemantics>()
+            db.withTransaction {
+                repeat(259) { index ->
+                    val row = BrowseEvent(packageName = "reader", timestamp = index.toLong(), eventType = 32,
+                        visibleText = "岗位正在减少，因为招聘数量下降")
+                    val event = row.copy(id = dao.insert(row))
+                    val result = semantics(event, (index % 7).toLong())
+                    val stored = SemanticsCodec.encode(result)
+                    // Include a corrupt row at the end of the first page.
+                    dao.putSemantics(if (index == 127) stored.copy(claimsJson = "invalid") else stored)
+                    if (index != 127) expected += result
+                }
+            }
+            assertEquals(expected.sortedWith(compareByDescending<EventSemantics> { it.analyzedAt }
+                .thenByDescending { it.eventId }), BrowseRepository(db).semantics.first())
+        } finally { db.close() }
+    }
+
+    @Test fun sameCountReanalysisAndDeletionRefreshAnActiveSnapshot() = runBlocking {
+        val db = database()
+        val repository = BrowseRepository(db)
+        val snapshots = Channel<List<EventSemantics>>(Channel.UNLIMITED)
+        val collector = launch { repository.semantics.collect { snapshots.send(it) } }
+        try {
+            withTimeout(10_000) {
+                assertTrue(snapshots.receive().isEmpty())
+                val event = encounter(repository)
+                val first = semantics(event, 3000)
+                assertTrue(repository.saveSemantics(event, first, repository.captureGeneration) { true })
+                assertEquals(listOf(first), snapshots.receive())
+                val replacement = first.copy(analyzedAt = 4000, claims = emptyList())
+                assertTrue(repository.saveSemantics(event, replacement, repository.captureGeneration) { true })
+                assertEquals(listOf(replacement), snapshots.receive())
+                db.browseEventDao().deleteEvent(event.id)
+                assertTrue(snapshots.receive().isEmpty())
+            }
+        } finally {
+            collector.cancelAndJoin()
+            snapshots.close()
+            db.close()
+        }
+    }
+
+    @Test fun collectorsReuseDecodedValuesButSameVersionEditsStillReplaceThem() = runBlocking {
+        val db = database()
+        try {
+            val repository = BrowseRepository(db)
+            val event = encounter(repository)
+            val first = semantics(event)
+            db.browseEventDao().putSemantics(SemanticsCodec.encode(first))
+            val loaded = repository.semantics.first().single()
+            assertSame(loaded, repository.semantics.first().single())
+            val changed = first.copy(claims = first.claims.map { it.copy(stance = "质疑") })
+            db.browseEventDao().putSemantics(SemanticsCodec.encode(changed))
+            assertEquals(changed, repository.semantics.first().single())
+            db.browseEventDao().putSemantics(SemanticsCodec.encode(changed).copy(claimsJson = "invalid"))
+            assertTrue(repository.semantics.first().isEmpty())
+            db.browseEventDao().deleteEvent(event.id)
+            assertTrue(repository.semantics.first().isEmpty())
+        } finally { db.close() }
+    }
 
     @Test fun resultSurvivesReopeningWithoutChangingVisitsOrDuration() = runBlocking {
         val name = "semantic-restart-${UUID.randomUUID()}.db"

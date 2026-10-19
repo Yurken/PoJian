@@ -7,8 +7,10 @@ import kotlinx.coroutines.flow.Flow
 interface BrowseEventDao {
     @Query("SELECT * FROM browse_events WHERE id = :id")
     suspend fun event(id: Long): BrowseEvent?
-    @Query("SELECT * FROM browse_semantics ORDER BY analyzedAt DESC, eventId DESC")
-    fun observeSemantics(): Flow<List<BrowseSemantic>>
+    @Query("SELECT COUNT(*) FROM browse_semantics")
+    fun observeSemanticsInvalidation(): Flow<Int>
+    @Query("SELECT * FROM browse_semantics WHERE :afterId IS NULL OR eventId > :afterId ORDER BY eventId LIMIT :limit")
+    suspend fun semanticsPage(afterId: Long?, limit: Int): List<BrowseSemantic>
     @Query("SELECT * FROM browse_semantics WHERE eventId = :eventId")
     suspend fun semanticsForEvent(eventId: Long): BrowseSemantic?
     @Insert(onConflict = OnConflictStrategy.REPLACE)

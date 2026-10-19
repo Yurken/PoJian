@@ -7,6 +7,7 @@ import com.emerge.app.capture.WorkIdentityExtractor
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import java.util.concurrent.atomic.AtomicLong
+import java.security.MessageDigest
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -15,10 +16,42 @@ class BrowseRepository(private val database: BrowseDatabase) {
     private val audio = database.audioDao()
     private val captureMutex = Mutex()
     private val deletionGeneration = AtomicLong()
+    private data class DecodedSemantic(val claimsHash: ByteArray, val value: EventSemantics)
+    // Accessed only inside Room's serialized transactions. UI and background
+    // monitoring collectors can share immutable results without sharing stale flows.
+    private val decodedSemantics = mutableMapOf<Long, DecodedSemantic>()
     val recentEvents = dao.observeRecent()
     val allEvents = dao.observeAll().onStart { repairAdjacentVisits() }
     val works = dao.observeWorks()
-    val semantics = dao.observeSemantics().map { rows -> rows.mapNotNull(SemanticsCodec::decode) }
+    // Keep only one page of raw JSON alongside the decoded snapshot. Room emits on
+    // table invalidation even when the count is unchanged (for example a reanalysis).
+    val semantics = dao.observeSemanticsInvalidation().map {
+        database.withTransaction {
+            val digest = MessageDigest.getInstance("SHA-256")
+            val snapshot = buildList {
+                var afterId: Long? = null
+                while (true) {
+                    val page = dao.semanticsPage(afterId, 128)
+                    if (page.isEmpty()) break
+                    for (row in page) {
+                        val hash = digest.digest(row.claimsJson.toByteArray(Charsets.UTF_8))
+                        val cached = decodedSemantics[row.eventId]
+                        val value = cached?.value?.takeIf {
+                            it.analyzedAt == row.analyzedAt && it.inputText == row.inputText &&
+                                it.inputKind == row.inputKind && cached.claimsHash.contentEquals(hash)
+                        } ?: SemanticsCodec.decode(row)
+                        if (value != null) {
+                            decodedSemantics[row.eventId] = DecodedSemantic(hash, value)
+                            add(value)
+                        }
+                    }
+                    afterId = page.last().eventId
+                }
+            }
+            decodedSemantics.keys.retainAll(snapshot.mapTo(hashSetOf()) { it.eventId })
+            snapshot.sortedWith(compareByDescending<EventSemantics> { it.analyzedAt }.thenByDescending { it.eventId })
+        }
+    }
     val count = dao.observeCount()
     private var repaired = false
 
