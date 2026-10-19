@@ -29,6 +29,25 @@ import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 class SemanticsPersistenceTest {
+    @Test fun continuationPageSeeksByPrimaryKeyInsteadOfRescanningHistory() = runBlocking {
+        var query: Pair<String, Array<Any?>>? = null
+        val db = Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java)
+            .setQueryCallback({ sql, args ->
+                if (sql.startsWith("SELECT") && sql.contains("browse_semantics")) query = sql to args.toTypedArray()
+            }, java.util.concurrent.Executor { it.run() }).build()
+        try {
+            db.browseEventDao().semanticsPage(20_000L, 128)
+            val (sql, args) = requireNotNull(query)
+            db.openHelper.readableDatabase.query(
+                "EXPLAIN QUERY PLAN $sql", args
+            ).use { cursor ->
+                val details = buildList { while (cursor.moveToNext()) add(cursor.getString(3)) }.joinToString(" ")
+                assertTrue(details, details.contains("SEARCH", ignoreCase = true))
+                assertFalse(details, details.contains("SCAN", ignoreCase = true))
+            }
+        } finally { db.close() }
+    }
+
     private val context get() = InstrumentationRegistry.getInstrumentation().targetContext
     private fun database(name: String? = null): BrowseDatabase =
         if (name == null) Room.inMemoryDatabaseBuilder(context, BrowseDatabase::class.java).build()
@@ -47,6 +66,45 @@ class SemanticsPersistenceTest {
         eventId = event.id, inputText = event.visibleText, analyzedAt = at,
         claims = listOf(ArgumentUnit(quote = "岗位正在减少", topic = "就业", subject = "岗位",
             dimension = "需求", stance = "减少", evidence = "招聘数量下降", uncertain = false)))
+
+    @Test fun recentQueueSnapshotMatchesFullHistoryEligibilityAndReflectsEdits() = runBlocking {
+        val db = database()
+        try {
+            val dao = db.browseEventDao()
+            val repository = BrowseRepository(db)
+            val now = 1_000_000_000L
+            val cutoff = now - 86_400_000L
+            val cases = listOf(
+                Triple(cutoff - 10, cutoff - 1, "accessibility"),
+                Triple(cutoff - 10, cutoff, "accessibility"),
+                Triple(cutoff - 10, cutoff + 1, "accessibility"),
+                Triple(now - 10, now, "accessibility"),
+                Triple(now - 10, now + 1, "accessibility"),
+                Triple(now + 1, 0L, "accessibility"),
+                Triple(now - 10, now, "audio_playback"),
+                Triple(now - 10, now, "screen_ocr"))
+            val rows = cases.map { (start, end, source) ->
+                val original = BrowseEvent(packageName = "reader", timestamp = start, endTimestamp = end,
+                    eventType = 32, visibleText = "岗位正在减少，因为招聘数量下降", sourceType = source)
+                original.copy(id = dao.insert(original))
+            }
+            dao.putSemantics(SemanticsCodec.encode(semantics(rows[3])))
+            val (recent, extracted) = repository.recentTextSnapshot(now)
+            assertEquals(setOf(rows[2].id, rows[3].id, rows[6].id), recent.map { it.id }.toSet())
+            assertEquals(listOf(rows[3].id), extracted.map { it.eventId })
+            fun pending(events: List<BrowseEvent>, values: List<EventSemantics>) =
+                com.emerge.app.monitoring.MonitorInputs.pendingTextBatches(events, values, setOf("reader"), now)
+            assertEquals(pending(repository.allEvents.first(), repository.semantics.first()), pending(recent, extracted))
+            val edited = rows[3].copy(visibleText = rows[3].visibleText + "，补充了新的观察")
+            dao.update(edited)
+            val changed = repository.recentTextSnapshot(now)
+            assertTrue(pending(changed.first, changed.second).flatten().any { it.id == edited.id })
+            dao.deleteEvent(edited.id)
+            val deleted = repository.recentTextSnapshot(now)
+            assertTrue(deleted.first.none { it.id == edited.id })
+            assertTrue(deleted.second.none { it.eventId == edited.id })
+        } finally { db.close() }
+    }
 
     @Test fun pagedSnapshotKeepsEveryValidRowAndVersionOrderAcrossPageBoundaries() = runBlocking {
         val db = database()

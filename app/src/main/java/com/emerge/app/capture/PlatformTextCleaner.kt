@@ -4,6 +4,11 @@ import java.text.Normalizer
 
 /** Remove complete control labels, never occurrences of a word inside a content sentence. */
 object PlatformTextCleaner {
+    // Classification depends only on the literal line. Keep a small bounded cache
+    // for repeated controls/captions across report, timeline and capture readers.
+    private val controlLines = object : LinkedHashMap<String, Boolean>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Boolean>?) = size > 1024
+    }
     private val labels = setOf("分享", "转发", "点赞", "未点赞", "喜欢", "赞", "已赞", "已点赞", "取消点赞", "收藏", "已收藏", "取消收藏",
         "关注", "已关注", "互相关注", "回关", "评论", "评论区", "全部评论", "查看评论", "写评论", "评论框",
         "直播", "直播中", "进入直播间", "去直播间", "推荐", "首页", "同城", "朋友", "消息", "我", "发现", "商城",
@@ -30,6 +35,14 @@ object PlatformTextCleaner {
         return value in labels || name in labels || counted.matches(value) || inputHint.matches(value)
     }
     fun isControlLine(text: String): Boolean {
+        if (text.length > 512) return classifyControlLine(text)
+        synchronized(controlLines) { controlLines[text]?.let { return it } }
+        val result = classifyControlLine(text)
+        synchronized(controlLines) { controlLines[text] = result }
+        return result
+    }
+
+    private fun classifyControlLine(text: String): Boolean {
         val line = Normalizer.normalize(text.trim(), Normalizer.Form.NFKC)
         if (label(line) || gallery.matches(line)) return true
         val parts = line.split(separators).filter(String::isNotBlank)
@@ -61,7 +74,12 @@ object PlatformTextCleaner {
             }
         }
         return lines.filterIndexed { index, _ -> index !in drop }
-            .map { it.replace(explicitControlSuffix, "").trimEnd() }.filter(String::isNotEmpty).joinToString("\n")
+            .map { line ->
+                // Every supported suffix contains one of these words. Ordinary
+                // prose need not allocate a regex matcher just to stay unchanged.
+                if (line.contains("展开") || line.contains("收起"))
+                    line.replace(explicitControlSuffix, "").trimEnd() else line
+            }.filter(String::isNotEmpty).joinToString("\n")
     }
 
     /** Keep neighboring control context until the complete window is filtered. */

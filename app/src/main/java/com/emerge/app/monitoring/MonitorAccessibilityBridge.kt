@@ -134,7 +134,7 @@ class MonitorAccessibilityBridge(private val service: AccessibilityService, priv
                     delay(60_000L - System.currentTimeMillis() % 60_000L)
                 }
             }
-            combine(app.repository.allEvents, app.repository.semantics, active, minute) { events, semantics, enabled, at ->
+            combine(app.observedEvents, app.observedSemantics, active, minute) { events, semantics, enabled, at ->
                 if (enabled) OverlayAnalysisInput(events, semantics, app.repository.captureGeneration, at) else null
             }.distinctUntilChanged { previous, current ->
                 when {

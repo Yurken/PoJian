@@ -11,7 +11,6 @@ import java.util.Locale
  * Relative calendar periods refer to the observation's time and zone, not analysis time.
  */
 object SemanticFieldKeys {
-    private val whitespace = Regex("\\s+")
     private val demandDimensions = setOf("岗位数量", "招聘岗位数量", "招聘数量", "岗位需求", "招聘需求",
         "招聘需求量", "岗位需求量")
     private val demandSubjects = Regex("^.*(?:招聘需求|招聘岗位)$")
@@ -111,6 +110,6 @@ object SemanticFieldKeys {
             end.atStartOfDay(zone).toEpochSecond()
     }
 
-    private fun literal(value: String) = value.trim().lowercase(Locale.ROOT).replace(whitespace, " ")
+    private fun literal(value: String) = LiteralWhitespace.collapse(value.trim().lowercase(Locale.ROOT))
     private fun frame(type: Char, value: String) = "$type${value.length}:$value"
 }

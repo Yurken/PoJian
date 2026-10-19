@@ -14,10 +14,9 @@ data class ViewpointClaim(val quote: String, val topic: String = "", val subject
     val evidence: String = "", val presentation: ClaimPresentation? = null,
     val inputKind: String = "", val analyzedAt: Long = 0) {
     private companion object {
-        val whitespace = Regex("\\s+")
         val conditionalQuote = Regex("如果|只有|除非|条件|反对|不支持|不应该|不需要")
     }
-    private fun normalized(value: String) = value.trim().replace(whitespace, " ").lowercase()
+    private fun normalized(value: String) = LiteralWhitespace.collapse(value.trim()).lowercase()
     val confirmed: Boolean get() = !uncertain && topic.isNotBlank() && subject.isNotBlank() && dimension.isNotBlank() && stance.isNotBlank()
     val key: String get() = if (analysisSource == "structured_model")
         listOf(analysisSource, topic, subject, dimension,

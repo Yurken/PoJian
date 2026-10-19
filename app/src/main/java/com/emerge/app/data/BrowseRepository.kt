@@ -31,19 +31,10 @@ class BrowseRepository(private val database: BrowseDatabase) {
             val snapshot = buildList {
                 var afterId: Long? = null
                 while (true) {
-                    val page = dao.semanticsPage(afterId, 128)
+                    val page = afterId?.let { dao.semanticsPage(it, 128) } ?: dao.firstSemanticsPage(128)
                     if (page.isEmpty()) break
                     for (row in page) {
-                        val hash = digest.digest(row.claimsJson.toByteArray(Charsets.UTF_8))
-                        val cached = decodedSemantics[row.eventId]
-                        val value = cached?.value?.takeIf {
-                            it.analyzedAt == row.analyzedAt && it.inputText == row.inputText &&
-                                it.inputKind == row.inputKind && cached.claimsHash.contentEquals(hash)
-                        } ?: SemanticsCodec.decode(row)
-                        if (value != null) {
-                            decodedSemantics[row.eventId] = DecodedSemantic(hash, value)
-                            add(value)
-                        }
+                        decode(row, digest)?.let(::add)
                     }
                     afterId = page.last().eventId
                 }
@@ -54,6 +45,31 @@ class BrowseRepository(private val database: BrowseDatabase) {
     }
     val count = dao.observeCount()
     private var repaired = false
+
+    private fun decode(row: BrowseSemantic, digest: MessageDigest): EventSemantics? {
+        val hash = digest.digest(row.claimsJson.toByteArray(Charsets.UTF_8))
+        val cached = decodedSemantics[row.eventId]
+        val value = cached?.value?.takeIf {
+            it.analyzedAt == row.analyzedAt && it.inputText == row.inputText &&
+                it.inputKind == row.inputKind && cached.claimsHash.contentEquals(hash)
+        } ?: SemanticsCodec.decode(row)
+        if (value != null) decodedSemantics[row.eventId] = DecodedSemantic(hash, value)
+        else decodedSemantics.remove(row.eventId)
+        return value
+    }
+
+    /** Fresh, bounded reads for the queue's existing 24-hour eligibility window. */
+    suspend fun recentTextSnapshot(now: Long): Pair<List<BrowseEvent>, List<EventSemantics>> {
+        repairAdjacentVisits()
+        return database.withTransaction {
+            val events = dao.recentTextEvents(now - 86_400_000L, now)
+            val digest = MessageDigest.getInstance("SHA-256")
+            val extracted = events.chunked(128).flatMap { page ->
+                dao.semanticsForEvents(page.map { it.id }).mapNotNull { decode(it, digest) }
+            }
+            events to extracted
+        }
+    }
 
     /** Conservative upgrade: preserve samples, never join across another work or an unknown gap. */
     internal suspend fun repairAdjacentVisits() = captureMutex.withLock { repairLocked() }
@@ -67,9 +83,9 @@ class BrowseRepository(private val database: BrowseDatabase) {
                     continue
                 }
                 // Identity repair must never erase a distinct viewing event or its samples.
-                val hint = WorkIdentityExtractor.extract(original.packageName, original.visibleText)
-                val key = hint.key(original.packageName)
-                if (key != null && original.identityMethod in setOf("unknown", "session_estimate")) {
+                if (original.identityMethod in setOf("unknown", "session_estimate")) {
+                    val hint = WorkIdentityExtractor.extract(original.packageName, original.visibleText)
+                    val key = hint.key(original.packageName) ?: continue
                     dao.insertWork(ObservedWork(key, original.packageName, hint.title, hint.author, hint.method,
                         original.timestamp, hint.evidence, hint.nativeId))
                     original.workKey?.takeIf { it != key }?.let { oldKey ->

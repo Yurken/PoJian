@@ -9,10 +9,17 @@ interface BrowseEventDao {
     suspend fun event(id: Long): BrowseEvent?
     @Query("SELECT COUNT(*) FROM browse_semantics")
     fun observeSemanticsInvalidation(): Flow<Int>
-    @Query("SELECT * FROM browse_semantics WHERE :afterId IS NULL OR eventId > :afterId ORDER BY eventId LIMIT :limit")
-    suspend fun semanticsPage(afterId: Long?, limit: Int): List<BrowseSemantic>
+    @Query("SELECT * FROM browse_semantics ORDER BY eventId LIMIT :limit")
+    suspend fun firstSemanticsPage(limit: Int): List<BrowseSemantic>
+    @Query("SELECT * FROM browse_semantics WHERE eventId > :afterId ORDER BY eventId LIMIT :limit")
+    suspend fun semanticsPage(afterId: Long, limit: Int): List<BrowseSemantic>
     @Query("SELECT * FROM browse_semantics WHERE eventId = :eventId")
     suspend fun semanticsForEvent(eventId: Long): BrowseSemantic?
+    @Query("SELECT * FROM browse_semantics WHERE eventId IN (:eventIds)")
+    suspend fun semanticsForEvents(eventIds: List<Long>): List<BrowseSemantic>
+    @Query("SELECT * FROM browse_events WHERE sourceType IN ('accessibility','audio_playback') " +
+        "AND MAX(timestamp,endTimestamp) > :after AND MAX(timestamp,endTimestamp) <= :now ORDER BY timestamp DESC, id DESC")
+    suspend fun recentTextEvents(after: Long, now: Long): List<BrowseEvent>
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun putSemantics(semantics: BrowseSemantic)
     @Query("DELETE FROM browse_semantics WHERE eventId = :eventId AND analyzedAt = :analyzedAt AND inputText = :inputText")

@@ -16,10 +16,9 @@ data class TopicDigest(val key: String, val topic: String, val subject: String,
 }
 
 object TopicDigests {
-    private val whitespace = Regex("\\s+")
     private data class Entry(val claim: ClaimObservation, val work: String)
     private fun key(vararg fields: String) = fields.joinToString("") { "${it.length}:$it" }
-    private fun normalized(value: String) = value.trim().lowercase(java.util.Locale.ROOT).replace(whitespace, " ")
+    private fun normalized(value: String) = LiteralWhitespace.collapse(value.trim().lowercase(java.util.Locale.ROOT))
 
     /** A view over retained material; counts are supporting works, never independent sources. */
     fun build(claims: List<ClaimObservation>, events: List<BrowseEvent>, zone: ZoneId): List<TopicDigest> {

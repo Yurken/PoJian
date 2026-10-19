@@ -158,7 +158,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
                 app.audioCoordinator.settings.config) { configuration, enabled, packages, service ->
                 ExposureSettings(configuration, enabled, packages, service)
             }
-            combine(app.repository.allEvents, app.repository.semantics, settings) { rows, semantics, configuration ->
+            combine(app.observedEvents, app.observedSemantics, settings) { rows, semantics, configuration ->
                 Triple(rows, semantics, configuration)
             }.collect { (rows, semantics, configuration) ->
                 val events = rows.associateBy { it.id }
@@ -216,8 +216,10 @@ class MonitorRuntime(private val app: EmergeApplication) {
         val inputEpoch = epoch.get()
         val generation = app.repository.captureGeneration
         val pending = tasks.observeInputStates().first().filterValues { it == "queued" || it == "running" }.keys
-        val batches = MonitorInputs.pendingTextBatches(app.repository.allEvents.first().filter { it.id !in pending },
-            app.repository.semantics.first(), app.captureSettings.allowedPackages.value, System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+        val (events, extracted) = app.repository.recentTextSnapshot(now)
+        val batches = MonitorInputs.pendingTextBatches(events.filter { it.id !in pending },
+            extracted, app.captureSettings.allowedPackages.value, now)
         for (snapshots in batches) {
             if (inputEpoch != epoch.get() || service != app.audioCoordinator.settings.config.value) return
             val last = snapshots.last()

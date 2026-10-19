@@ -10,6 +10,28 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisibilityIntervalsTest {
+    @Test fun repeatedWindowQueriesDoNotReuseIntervalsFromEditedRecordsOrOtherWindows() {
+        val window = ObservationWindow(1000, 6000, ZoneId.of("UTC"))
+        val original = BrowseEvent(7, "reader", 1000, 32, "原文", endTimestamp = 5000,
+            durationMillis = 4000, sampleCount = 2, visibilityIntervals = "v1;1000,5000,4000,m")
+        repeat(3) {
+            assertEquals(4000L, window.durationMillis(original))
+            assertEquals(VisibilityRegion.MAIN, window.slices(original).single().region)
+        }
+        val edited = original.copy(durationMillis = 2000, visibilityIntervals = "v1;3000,5000,2000,c")
+        assertEquals(2000L, window.durationMillis(edited))
+        assertEquals(VisibilityRegion.COMMENTS, window.slices(edited).single().region)
+        val damaged = edited.copy(visibilityIntervals = "invalid")
+        repeat(3) {
+            assertNull(window.durationMillis(damaged))
+            assertEquals(0L, window.slices(damaged).sumOf { it.durationMillis })
+        }
+        val later = ObservationWindow(4000, 6000, ZoneId.of("Asia/Shanghai"))
+        assertEquals(1000L, later.durationMillis(original))
+        assertEquals(8, later.slices(original).single().hour)
+        assertEquals(4000L, window.durationMillis(original))
+    }
+
     private val zone = ZoneId.of("Asia/Shanghai")
     private val hour = ZonedDateTime.of(2026, 10, 11, 12, 0, 0, 0, zone).toInstant().toEpochMilli()
     private fun hint(page: WorkPage) = WorkHint("同一作品的足够长的配文", "作者甲", page = page)

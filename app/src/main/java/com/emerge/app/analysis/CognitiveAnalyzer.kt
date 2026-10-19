@@ -56,7 +56,6 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
 
 class CognitiveAnalyzer {
     private companion object {
-        val whitespace = Regex("\\s+")
         val sentenceBoundary = Regex("[\\n。！？]+")
         val numericLabel = Regex("^[0-9.,万千\\s:+/-]+$")
         const val HISTORY_LIMIT = 120
@@ -67,6 +66,8 @@ class CognitiveAnalyzer {
         val dimension: String = "", val stance: String = "", val source: String = "local_rules")
     private data class HistoryKey(val source: String, val topic: String, val subject: String,
         val dimension: String, val stance: String)
+    private data class EvidenceKey(val text: String, val actors: List<String>, val origins: List<String>,
+        val date: java.time.LocalDate)
     private val topics = linkedMapOf(
         "就业与职场" to listOf("就业", "求职", "招聘", "岗位", "裁员", "秋招", "春招", "面试", "职场", "薪资", "工资", "程序员"),
         "教育与升学" to listOf("考研", "保研", "升学", "院校", "高考", "大学", "专业", "留学", "学历", "学费"),
@@ -97,6 +98,11 @@ class CognitiveAnalyzer {
         // Per-analysis index: rebuilding after edits/deletion cannot retain stale evidence dependencies.
         val historyByClaim = mutableMapOf<HistoryKey, MutableList<ClaimObservation>>()
         val conditionKeys = java.util.IdentityHashMap<ClaimObservation, String>()
+        // Evidence parsing depends on literal references and the observation's
+        // calendar date. Keep this bounded and local so revisions cannot go stale.
+        val evidenceCache = object : LinkedHashMap<EvidenceKey, List<EvidenceFragment>>(64, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<EvidenceKey, List<EvidenceFragment>>?) = size > 256
+        }
         val latestSemantics = semantics.groupBy { it.eventId }.mapValues { (_, versions) ->
             versions.withIndex().maxWithOrNull(compareBy<IndexedValue<EventSemantics>> { it.value.analyzedAt }
                 .thenBy { it.index })!!.value
@@ -149,8 +155,12 @@ class CognitiveAnalyzer {
             // A valid empty model result is an analyzed event, not an invitation to invent a fallback claim.
             val candidates = structured?.claims?.map { claim ->
                 Candidate(claim.topic.trim().ifBlank { "未分类" }, claim.quote, claim.subject.trim(),
-                    claim.evidence.takeIf { it.isNotEmpty() }?.let { evidenceFragments(it,
-                        EvidenceIdentityComparator.identity(it, claim.evidenceActors, claim.evidenceOrigins), event.timestamp, zone) }.orEmpty(),
+                    claim.evidence.takeIf { it.isNotEmpty() }?.let { text ->
+                        val key = EvidenceKey(text, claim.evidenceActors, claim.evidenceOrigins,
+                            Instant.ofEpochMilli(event.timestamp).atZone(zone).toLocalDate())
+                        evidenceCache.getOrPut(key) { evidenceFragments(text,
+                            EvidenceIdentityComparator.identity(text, claim.evidenceActors, claim.evidenceOrigins), event.timestamp, zone) }
+                    }.orEmpty(),
                     claim.conditions.trim(), claim.uncertain || claim.topic.isBlank() || claim.subject.isBlank() ||
                         claim.dimension.isBlank() || claim.stance.isBlank(), claim.dimension.trim(), claim.stance.trim(),
                     "structured_model")
@@ -280,7 +290,7 @@ class CognitiveAnalyzer {
     private fun clean(event: BrowseEvent): List<String> {
         if (event.packageName.contains("launcher") || event.packageName == "com.android.systemui") return emptyList()
         return event.contentText.split(sentenceBoundary)
-            .map { it.trim().replace(whitespace, " ") }.filter { line ->
+            .map { LiteralWhitespace.collapse(it.trim()) }.filter { line ->
                 line.length >= 8 && line !in uiLabels && !numericLabel.matches(line) &&
                     !line.startsWith("http")
             }.distinct().take(100)
@@ -302,7 +312,7 @@ class CognitiveAnalyzer {
         Candidate(topic, quote, subject(quote), evidence, conditions, attributionMarker.containsMatchIn(quote))
     }
 
-    private fun fieldKey(value: String) = value.lowercase().replace(whitespace, " ").trim()
+    private fun fieldKey(value: String) = LiteralWhitespace.collapse(value.lowercase()).trim()
 
     private fun sameClaimGroup(first: ClaimObservation, next: ClaimObservation, zone: ZoneId): Boolean {
         if (first.analysisSource != next.analysisSource) return false

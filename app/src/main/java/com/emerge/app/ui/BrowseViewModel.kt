@@ -32,8 +32,10 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     private val preferences = app.getSharedPreferences("report_preferences", Application.MODE_PRIVATE)
     val events = app.repository.recentEvents.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val count = app.repository.count.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
-    val allEvents = app.repository.allEvents.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-    val semantics = app.repository.semantics.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val allEvents = app.observedEvents.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    private val semanticsLoaded = MutableStateFlow(false)
+    private val semanticsState = MutableStateFlow<List<EventSemantics>>(emptyList())
+    val semantics = semanticsState.asStateFlow()
     val analysisStatuses = app.monitorTasks.observeInputStates()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val captureEnabled = app.captureSettings.enabled
@@ -77,7 +79,15 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
 
     init {
         viewModelScope.launch {
-            combine(allEvents, semantics, analysisStatuses) { events, extracted, statuses -> Triple(events, extracted, statuses) }.collect {
+            app.observedSemantics.collect {
+                semanticsState.value = it
+                semanticsLoaded.value = true
+            }
+        }
+        viewModelScope.launch {
+            combine(allEvents, semantics, analysisStatuses, semanticsLoaded) { events, extracted, statuses, loaded ->
+                if (loaded) Triple(events, extracted, statuses) else null
+            }.filterNotNull().collect {
                 invalidate("记录已更新，正在整理回顾", cancelAnalysis = false, clearReport = false)
                 scheduleAnalysis()
             }
@@ -162,7 +172,7 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     private fun scheduleAnalysis(immediate: Boolean = false) {
-        if (!analysisState.value.active || pendingMutations > 0) return
+        if (!analysisState.value.active || pendingMutations > 0 || !semanticsLoaded.value) return
         pendingAnalysis = true
         if (analysisJob?.isActive == true) return
         analysisJob = viewModelScope.launch {

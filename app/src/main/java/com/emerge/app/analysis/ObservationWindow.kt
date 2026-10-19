@@ -15,6 +15,10 @@ data class SessionSlice(val start: Long, val end: Long, val durationMillis: Long
     val region: VisibilityRegion? = null)
 
 class ObservationWindow(val start: Long, val end: Long, val zone: ZoneId) {
+    // Window-local identity keys avoid hashing large texts and never survive edits,
+    // deletion or a change in time zone/window. Invalid intervals are cached too.
+    private val intervalCache = java.util.IdentityHashMap<BrowseEvent, List<VisibilityInterval>?>()
+    private val sliceCache = java.util.IdentityHashMap<BrowseEvent, List<SessionSlice>>()
     companion object {
         fun forPeriod(period: StatisticsPeriod, now: Long, zone: ZoneId): ObservationWindow {
             val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
@@ -24,12 +28,17 @@ class ObservationWindow(val start: Long, val end: Long, val zone: ZoneId) {
         }
     }
 
-    private fun exactIntervals(event: BrowseEvent): List<VisibilityInterval>? = event.visibilityIntervals?.let { encoded ->
-        VisibilityIntervals.decode(encoded)?.takeIf { intervals ->
-            VisibilityIntervals.duration(intervals) == event.durationMillis && intervals.all {
-                it.start >= event.timestamp && it.end <= event.endTimestamp
+    private fun exactIntervals(event: BrowseEvent): List<VisibilityInterval>? {
+        if (intervalCache.containsKey(event)) return intervalCache[event]
+        val result = event.visibilityIntervals?.let { encoded ->
+            VisibilityIntervals.decode(encoded)?.takeIf { intervals ->
+                VisibilityIntervals.duration(intervals) == event.durationMillis && intervals.all {
+                    it.start >= event.timestamp && it.end <= event.endTimestamp
+                }
             }
         }
+        intervalCache[event] = result
+        return result
     }
 
     fun durationKnown(event: BrowseEvent): Boolean = event.sampleCount > 0 && event.durationMillis >= 0 &&
@@ -52,6 +61,10 @@ class ObservationWindow(val start: Long, val end: Long, val zone: ZoneId) {
     }
 
     fun slices(event: BrowseEvent): List<SessionSlice> {
+        return sliceCache.getOrPut(event) { computeSlices(event) }
+    }
+
+    private fun computeSlices(event: BrowseEvent): List<SessionSlice> {
         if (!contains(event)) return emptyList()
         if (event.visibilityIntervals != null) {
             val intervals = exactIntervals(event).takeIf { durationKnown(event) }
