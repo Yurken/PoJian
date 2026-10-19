@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.analysis.CognitiveReport
+import com.emerge.app.audio.AudioRuntimeState
 import com.emerge.app.monitoring.*
 import com.emerge.app.ui.*
 import com.emerge.app.ui.theme.EmergeTheme
@@ -68,10 +69,7 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     val audioModel: AudioViewModel = viewModel()
     val monitor by app.monitor.state.collectAsStateWithLifecycle()
     val monitorConfig by app.monitor.config.collectAsStateWithLifecycle()
-    val audioState by audioModel.ui.collectAsStateWithLifecycle()
-    val audioSessions by audioModel.sessions.collectAsStateWithLifecycle()
     val audioConfig by audioModel.config.collectAsStateWithLifecycle()
-    val audioRuntime by audioModel.runtime.state.collectAsStateWithLifecycle()
     val audioAlert by audioModel.alert.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val screenScope = rememberCoroutineScope()
@@ -112,6 +110,19 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     var showCaptureTools by rememberSaveable { mutableStateOf(false) }
     var showAudioRecords by rememberSaveable { mutableStateOf(false) }
     var audioDetailId by rememberSaveable { mutableStateOf<String?>(null) }
+    val needsAudioContent = tab == 3 || tab == 4 || showAudioRecords || audioDetailId != null || showCaptureTools
+    val audioSessions = if (tab == 3 || showAudioRecords || audioDetailId != null) {
+        val rows by audioModel.sessions.collectAsStateWithLifecycle()
+        rows
+    } else emptyList()
+    val audioState = if (needsAudioContent) {
+        val state by audioModel.ui.collectAsStateWithLifecycle()
+        state
+    } else AudioUiState()
+    val audioRuntime = if (needsAudioContent) {
+        val state by audioModel.runtime.state.collectAsStateWithLifecycle()
+        state
+    } else AudioRuntimeState()
     // 网关与模型配置统一在服务端管理台维护，App 不再提供设置入口（保留声明以便恢复）。
     // var showCloud by rememberSaveable { mutableStateOf(false) }
     val showCloud = false
@@ -143,10 +154,15 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     LaunchedEffect(all, period) {
         while (true) { now = System.currentTimeMillis(); model.refreshReportWindow(now); delay(60_000) }
     }
-    val statistics by produceState(calculateStatistics(emptyList(), period, now), all, period, now) {
-        val snapshotNow = now
-        value = withContext(Dispatchers.Default) { calculateStatistics(all, period, snapshotNow) }
+    val statisticsKey = remember(all, period, now) { Any() }
+    val statisticsVisible = tab == 2 && !showAudioRecords
+    val preparedStatistics by produceState<Pair<Any, BrowseStatistics>?>(null, statisticsKey, statisticsVisible) {
+        if (statisticsVisible && value?.first !== statisticsKey) {
+            value = statisticsKey to withContext(Dispatchers.Default) { calculateStatistics(all, period, now) }
+        }
     }
+    val emptyStatistics = remember(period, now) { calculateStatistics(emptyList(), period, now) }
+    val statistics = preparedStatistics?.takeIf { it.first === statisticsKey }?.second ?: emptyStatistics
     val appNames = remember(availableApps) { availableApps.associate { it.packageName to it.label } }
     val selectedApps = remember(allowed, appNames) { allowed.sorted().map { CaptureApp(it, appNames[it] ?: it) } }
     val audioActions = rememberAudioActions(audioModel, selectedApps) { tab = 4; showCaptureTools = false; showApps = true }
@@ -226,7 +242,8 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
                     }, contentModifier, audioSettingsContent = {
                         SwissSpeechModelSettings(audioState, audioModel::downloadModel, audioModel.runtime::cancelDownload)
                     }, transcriptContent = {
-                        AudioTranscriptSettings(audioSessions, onOpenRecords = { showAudioRecords = true },
+                        val transcripts by audioModel.sessions.collectAsStateWithLifecycle()
+                        AudioTranscriptSettings(transcripts, onOpenRecords = { showAudioRecords = true },
                             onSession = { audioDetailId = it.id }, embedded = true)
                     }, updateContent = { com.emerge.app.update.UpdateSettingsSection(embedded = true) },
                     onSaveStorageRetention = { days ->

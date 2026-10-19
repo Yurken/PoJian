@@ -59,16 +59,18 @@ internal fun swissTopicTimelineData(buckets: List<TopicTimeBucket>, checkCancell
 
 @Composable
 internal fun SwissTopicTimeline(events: List<BrowseEvent>, semantics: List<EventSemantics>, period: StatisticsPeriod,
-    now: Long, appNames: Map<String, String>, report: CognitiveReport? = null, onTopic: (String) -> Unit = {}) {
+    now: Long, appNames: Map<String, String>, report: CognitiveReport? = null, onTopic: (String) -> Unit = {},
+    viewpoints: Lazy<List<ViewpointBucket>>? = null) {
     val zone = ZoneId.systemDefault()
-    val request = remember(events, semantics, period, now, report, zone) { Any() }
+    val request = remember(events, semantics, period, now, report?.claims, report?.period, zone, viewpoints) { Any() }
     var failed by remember(request) { mutableStateOf(false) }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     val prepared by produceState<Pair<Any, SwissTopicTimelineData>?>(null, request) {
         value = null
         try {
             value = request to withContext(Dispatchers.Default) {
-                val buckets = TopicTimeline.build(events, period, now, zone, report, semantics)
+                val buckets = viewpoints?.let { TopicTimeline.fromViewpoints(it.value) }
+                    ?: TopicTimeline.build(events, period, now, zone, report, semantics)
                 val task = currentCoroutineContext()
                 task.ensureActive()
                 swissTopicTimelineData(buckets) { task.ensureActive() }

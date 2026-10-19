@@ -55,7 +55,7 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private data class SwissViewpointsData(
+internal data class SwissViewpointsData(
     val workCount: Int,
     val topics: List<String>,
     val shares: List<ViewpointStanceShare>,
@@ -66,25 +66,29 @@ private data class SwissViewpointsData(
     val concentrations: List<TopicConcentration>
 )
 
-private fun prepareSwissViewpoints(
+internal data class SwissViewpointsIndex(
+    val works: List<ViewpointItem>,
+    val topics: List<String>,
+    val week: List<ViewpointBucket>,
+    val requests: List<Pair<TopicDigest, SupplementRequest>>,
+    val repeatedRecords: Set<Long>,
+    val concentrations: List<TopicConcentration>
+)
+
+internal fun prepareSwissViewpoints(
     events: List<BrowseEvent>,
     semantics: List<EventSemantics>,
     report: CognitiveReport?,
     period: StatisticsPeriod,
     now: Long,
-    zone: ZoneId,
-    selectedTopic: String?
-): SwissViewpointsData {
+    zone: ZoneId
+): SwissViewpointsIndex {
     val buckets = ViewpointTimeline.build(events, period, now, zone, report, semantics)
     val works = ViewpointTimeline.details(buckets.flatMap { it.items })
-    val topics = (works.flatMap { it.claims }.map { it.topic }.filter(String::isNotBlank) + listOfNotNull(selectedTopic)).distinct()
-    val selected = swissTopicItems(works, selectedTopic)
-    val groups = ViewpointTimeline.groups(selected)
-    val shares = viewpointSpectrum(ViewpointDistribution.topics(groups))
-    val candidates = groups.filter { it.items.any { item -> item.claims.any { claim -> claim.quote.isNotBlank() } } }
-        .sortedByDescending { it.items.size }
-    val week = ViewpointTimeline.build(events, StatisticsPeriod.WEEK, now, zone, semantics = semantics)
-    val trend = week.map { swissStanceDay(it, selectedTopic, zone) }
+    val topics = works.flatMap { it.claims }.map { it.topic }.filter(String::isNotBlank).distinct()
+    // Weekly trend intentionally excludes report-only local claims, even when the selected period is WEEK.
+    val week = if (period == StatisticsPeriod.WEEK && report == null) buckets
+        else ViewpointTimeline.build(events, StatisticsPeriod.WEEK, now, zone, semantics = semantics)
     val byId = events.associateBy { it.id }
     val repeatedRecords = report?.claims.orEmpty().filter { claim ->
         val event = byId[claim.eventId]
@@ -95,11 +99,7 @@ private fun prepareSwissViewpoints(
                 }
             }
     }.map { it.eventId }.toSet()
-    val repeatedWorks = candidates.associate { group ->
-        group.key to group.items.count { item -> item.records.any { it.id in repeatedRecords } }
-    }
     val requests = report?.topicDigests.orEmpty()
-        .filter { selectedTopic == null || it.topic == selectedTopic || it.subject == selectedTopic }
         .mapNotNull { topic ->
             val viewpoint = topic.viewpoints.firstOrNull() ?: return@mapNotNull null
             val known = viewpoint.observations.filter { claim ->
@@ -117,8 +117,22 @@ private fun prepareSwissViewpoints(
                 known.map { SupplementKnownArgument(it.quote, it.evidenceDetails.firstOrNull()?.text.orEmpty()) }
             )
         }
-    return SwissViewpointsData(selected.size, topics, shares, candidates, trend, requests, repeatedWorks,
-        TopicConcentrations.analyze(works).filter { selectedTopic == null || it.topic == selectedTopic })
+    return SwissViewpointsIndex(works, topics, week, requests, repeatedRecords, TopicConcentrations.analyze(works))
+}
+
+internal fun filterSwissViewpoints(index: SwissViewpointsIndex, selectedTopic: String?, zone: ZoneId): SwissViewpointsData {
+    val selected = swissTopicItems(index.works, selectedTopic)
+    val groups = ViewpointTimeline.groups(selected)
+    val shares = viewpointSpectrum(ViewpointDistribution.topics(groups))
+    val candidates = groups.filter { it.items.any { item -> item.claims.any { claim -> claim.quote.isNotBlank() } } }
+        .sortedByDescending { it.items.size }
+    val repeatedWorks = candidates.associate { group ->
+        group.key to group.items.count { item -> item.records.any { it.id in index.repeatedRecords } }
+    }
+    return SwissViewpointsData(selected.size, (index.topics + listOfNotNull(selectedTopic)).distinct(), shares, candidates,
+        index.week.map { swissStanceDay(it, selectedTopic, zone) },
+        index.requests.filter { (topic, _) -> selectedTopic == null || topic.topic == selectedTopic || topic.subject == selectedTopic },
+        repeatedWorks, index.concentrations.filter { selectedTopic == null || it.topic == selectedTopic })
 }
 
 @Composable
@@ -138,16 +152,26 @@ internal fun SwissViewpointsScreen(
 ) {
     val zone = remember { ZoneId.systemDefault() }
     val scopedReport = report?.takeIf { it.period == period.label }
-    val inputKey = remember(events, semantics, scopedReport, period, now, selectedTopic) { Any() }
+    val sourceKey = remember(events, semantics, scopedReport?.claims, scopedReport?.topicDigests,
+        scopedReport?.generatedAt, scopedReport?.start, scopedReport?.end, period, now, zone) { Any() }
+    val indexed by produceState<Pair<Any, SwissViewpointsIndex>?>(null, sourceKey) {
+        value = sourceKey to withContext(Dispatchers.Default) {
+            prepareSwissViewpoints(events, semantics, scopedReport, period, now, zone)
+        }
+    }
+    val source = indexed?.takeIf { it.first === sourceKey }?.second
+    val inputKey = remember(sourceKey, source, selectedTopic) { Any() }
     val prepared by produceState<Pair<Any, SwissViewpointsData>?>(null, inputKey) {
-        value = inputKey to withContext(Dispatchers.Default) {
-            prepareSwissViewpoints(events, semantics, scopedReport, period, now, zone, selectedTopic)
+        source?.let { index ->
+            value = inputKey to withContext(Dispatchers.Default) {
+                filterSwissViewpoints(index, selectedTopic, zone)
+            }
         }
     }
     val data = prepared?.takeIf { it.first === inputKey }?.second
     // Retain the full topic strip during filtering; shrinking it clamps its scroll offset to zero.
     // Statistics below still require the current input key, so no stale result is shown as current.
-    val topics = (prepared?.second?.topics.orEmpty() + listOfNotNull(selectedTopic)).distinct()
+    val topics = (indexed?.second?.topics.orEmpty() + listOfNotNull(selectedTopic)).distinct()
     val shares = data?.shares.orEmpty()
     val candidates = data?.candidates.orEmpty()
     val trend = data?.trend.orEmpty()
@@ -155,7 +179,7 @@ internal fun SwissViewpointsScreen(
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     var groupKey by remember(period, selectedTopic) { mutableStateOf<String?>(null) }
     val selectedGroup = candidates.firstOrNull { it.key == groupKey }
-    val detailInput = remember(selectedGroup, events, semantics, scopedReport) { Any() }
+    val detailInput = remember(selectedGroup, events, semantics, scopedReport?.claims) { Any() }
     val groupDetail by produceState<Pair<Any, SwissViewpointDetails>?>(null, detailInput) {
         value = null
         selectedGroup?.let { group ->

@@ -311,7 +311,14 @@ private fun RecordingMaterials(events: List<BrowseEvent>, report: CognitiveRepor
             (screen.workKey != null && event.workKey == screen.workKey && event.packageName == screen.packageName) }
             .map { it.id }.toSet() }.orEmpty()
     }
-    val claims = report?.claims.orEmpty().filter { it.eventId in related }.distinctBy { it.quote }
+    val claims = remember(report?.claims, related) {
+        report?.claims.orEmpty().asSequence().filter { it.eventId in related }
+            .distinctBy { it.quote }.take(3).toList()
+    }
+    val speech = remember(events, related) {
+        events.filter { it.id in related && it.sourceType.startsWith("audio_") }
+            .takeIf { it.isNotEmpty() }?.joinToString("\n") { it.contentText }
+    }
     WhiteCard(Modifier.testTag("recording-materials")) {
         SectionTitle("观点与依据")
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.background) {
@@ -330,7 +337,7 @@ private fun RecordingMaterials(events: List<BrowseEvent>, report: CognitiveRepor
             }
         }
         if (claims.isEmpty()) Text("暂无分析结果", color = Muted, style = MaterialTheme.typography.bodySmall)
-        else claims.take(3).forEach { claim ->
+        else claims.forEach { claim ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(claim.quote, style = MaterialTheme.typography.bodyMedium)
                 claim.evidenceDetails.take(2).forEach { evidence ->
@@ -340,10 +347,9 @@ private fun RecordingMaterials(events: List<BrowseEvent>, report: CognitiveRepor
                 }
             }
         }
-        val speech = events.filter { it.id in related && it.sourceType.startsWith("audio_") }
-        if (speech.isNotEmpty()) {
+        if (speech != null) {
             Text("关联语音", color = Muted, style = MaterialTheme.typography.labelMedium)
-            Text(speech.joinToString("\n") { it.contentText }, style = MaterialTheme.typography.bodySmall,
+            Text(speech, style = MaterialTheme.typography.bodySmall,
                 maxLines = 4, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -352,7 +358,12 @@ private fun RecordingMaterials(events: List<BrowseEvent>, report: CognitiveRepor
 @Composable
 private fun RecordingTranscriptStream(state: AudioUiState, sessions: List<AudioSessionUi>, paused: Boolean) {
     val active = state.task?.phase == AudioTaskPhase.CAPTURING && !paused
-    val recent = remember(sessions) { sessions.sortedByDescending { it.createdAt }.take(3) }
+    val recentSegments = remember(sessions) {
+        sessions.sortedByDescending { it.createdAt }.take(3).flatMap { session ->
+            session.segments.filter { (it.correctedText ?: it.originalText).isNotBlank() }
+                .takeLast(3).map { session to it }
+        }
+    }
     WhiteCard(Modifier.testTag("recording-transcript-stream")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text("实时语音转写", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
@@ -366,21 +377,18 @@ private fun RecordingTranscriptStream(state: AudioUiState, sessions: List<AudioS
                     modifier = Modifier.weight(1f).testTag("audio-live-transcript"))
             }
         }
-        val hasSaved = recent.any { session -> session.segments.any { (it.correctedText ?: it.originalText).isNotBlank() } }
-        if (!hasSaved && state.task?.partialText.isNullOrBlank())
+        if (recentSegments.isEmpty() && state.task?.partialText.isNullOrBlank())
             Text(if (active) "等待转写…" else "暂无转写记录", color = Muted, style = MaterialTheme.typography.bodySmall)
-        recent.forEach { session ->
-            session.segments.filter { (it.correctedText ?: it.originalText).isNotBlank() }.takeLast(3).forEach { segment ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(audioTimestamp(segment.startMillis), color = Muted,
-                        style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        SourceAppText(session.sourcePackage,
-                            session.sourcePackage?.let { name -> appsLabel(name) } ?: session.sourceLabel,
-                            style = MaterialTheme.typography.labelSmall)
-                        Text(segment.correctedText ?: segment.originalText, style = MaterialTheme.typography.bodySmall,
-                            maxLines = 4, overflow = TextOverflow.Ellipsis)
-                    }
+        recentSegments.forEach { (session, segment) ->
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(audioTimestamp(segment.startMillis), color = Muted,
+                    style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    SourceAppText(session.sourcePackage,
+                        session.sourcePackage?.let { name -> appsLabel(name) } ?: session.sourceLabel,
+                        style = MaterialTheme.typography.labelSmall)
+                    Text(segment.correctedText ?: segment.originalText, style = MaterialTheme.typography.bodySmall,
+                        maxLines = 4, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

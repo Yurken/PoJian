@@ -19,7 +19,9 @@ import androidx.compose.ui.unit.sp
 import com.emerge.app.analysis.AnalysisState
 import com.emerge.app.analysis.CognitiveReport
 import com.emerge.app.analysis.EventSemantics
+import com.emerge.app.analysis.ViewpointTimeline
 import com.emerge.app.data.BrowseEvent
+import java.time.ZoneId
 
 @Composable
 fun OverviewScreen(
@@ -49,6 +51,11 @@ fun OverviewScreen(
     onReports: () -> Unit = {}
 ) {
     val report = analysis.report?.takeIf { !analysis.stale && it.period == period.label }
+    val zone = ZoneId.systemDefault()
+    // Retain the topic snapshot across lazy card disposal; build it only in the background producer.
+    val topicViewpoints = remember(rawEvents, semantics, period, now, report?.claims, report?.period, zone) {
+        lazy { ViewpointTimeline.build(rawEvents, period, now, zone, report, semantics) }
+    }
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -87,7 +94,7 @@ fun OverviewScreen(
 
         // 05 / 关注话题
         item(key = "topics") {
-            SwissTopicTimeline(rawEvents, semantics, period, now, appNames, report, onTopic)
+            SwissTopicTimeline(rawEvents, semantics, period, now, appNames, report, onTopic, topicViewpoints)
         }
 
         // 底部报告与采集引导区

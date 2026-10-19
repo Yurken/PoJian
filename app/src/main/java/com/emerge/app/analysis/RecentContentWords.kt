@@ -110,23 +110,28 @@ private fun recentConceptRecords(events: List<BrowseEvent>, period: StatisticsPe
         }.toList()
 }
 
-private fun latestSemantics(semantics: List<EventSemantics>): Map<Long, EventSemantics> =
-    semantics.withIndex().groupBy { it.value.eventId }.mapValues { (_, versions) ->
-        versions.maxWith(compareBy<IndexedValue<EventSemantics>> { it.value.analyzedAt }.thenBy { it.index }).value
+private fun latestSemantics(semantics: List<EventSemantics>): Map<Long, EventSemantics> = buildMap {
+    semantics.forEach { candidate ->
+        if (get(candidate.eventId)?.let { it.analyzedAt > candidate.analyzedAt } != true)
+            put(candidate.eventId, candidate)
     }
+}
+
+private val conceptWhitespace = Regex("[\\p{Z}\\s]+")
+private val betweenChineseCharacters = Regex("(?<=[\\u3400-\\u9FFF]) (?=[\\u3400-\\u9FFF])")
 
 private fun cleanConcept(value: String): String? {
     val text = Normalizer.normalize(value, Normalizer.Form.NFKC).trim()
         .trim('"', '\'', '“', '”', '「', '」', '《', '》').trim()
-        .replace(Regex("[\\p{Z}\\s]+"), " ")
+        .replace(conceptWhitespace, " ")
     if (text.codePointCount(0, text.length) !in 2..24 || text.none(Char::isLetter) ||
         value.any { it in "\n\r。！？!?；;" } || conceptKey(text) in missingConcepts) return null
     return text
 }
 
 private fun conceptKey(text: String): String = Normalizer.normalize(text, Normalizer.Form.NFKC)
-    .lowercase(Locale.ROOT).trim().replace(Regex("[\\p{Z}\\s]+"), " ")
-    .replace(Regex("(?<=[\\u3400-\\u9FFF]) (?=[\\u3400-\\u9FFF])"), "")
+    .lowercase(Locale.ROOT).trim().replace(conceptWhitespace, " ")
+    .replace(betweenChineseCharacters, "")
 
 private fun containsConcept(specific: String, general: String): Boolean =
     if (general.any { it in '\u3400'..'\u9FFF' }) specific.contains(general)

@@ -57,20 +57,8 @@ internal fun swissHistoryPage(records: List<BrowseEvent>, requestedIndex: Int): 
 
 /** Display-only filtering. A missing or invalid analysis never hides retained content. */
 internal fun swissHistoryRecords(events: List<BrowseEvent>, semantics: List<EventSemantics>,
-    report: CognitiveReport?, packageName: String?, keyword: String?): List<BrowseEvent> {
-    val needle = keyword.orEmpty().trim()
-    val model = semantics.groupBy { it.eventId }.mapValues { (_, rows) -> rows.maxBy { it.analyzedAt } }
-    val observed = report?.claims.orEmpty().groupBy { it.eventId }
-    return events.filter { event ->
-        (packageName == null || event.packageName == packageName) && (needle.isBlank() ||
-            event.contentText.contains(needle, ignoreCase = true) ||
-            model[event.id]?.takeIf { it.validFor(event) }?.claims.orEmpty().any {
-                listOf(it.topic, it.subject, it.quote, it.evidence).any { text -> text.contains(needle, ignoreCase = true) }
-            } || observed[event.id].orEmpty().filter { it.packageName == event.packageName && event.visibleText.contains(it.quote) }.any {
-                listOf(it.topic, it.subject, it.quote).any { text -> text.contains(needle, ignoreCase = true) }
-            })
-    }.sortedWith(compareByDescending<BrowseEvent> { it.timestamp }.thenByDescending { it.id })
-}
+    report: CognitiveReport?, packageName: String?, keyword: String?): List<BrowseEvent> =
+    filterSwissHistory(prepareSwissHistory(events, semantics, report), packageName, keyword).records
 
 internal fun swissHistoryMatches(event: BrowseEvent, report: CognitiveReport?, events: List<BrowseEvent>): List<EvidenceHistoryMatch> {
     val byId = events.associateBy { it.id }
@@ -81,21 +69,62 @@ internal fun swissHistoryMatches(event: BrowseEvent, report: CognitiveReport?, e
         }.distinct()
 }
 
-private data class SwissHistoryData(val records: List<BrowseEvent>, val model: Map<Long, EventSemantics>,
+internal data class SwissHistoryData(val records: List<BrowseEvent>, val model: Map<Long, EventSemantics>,
     val matches: Map<Long, List<EvidenceHistoryMatch>>)
 
-private fun swissHistoryData(events: List<BrowseEvent>, semantics: List<EventSemantics>, report: CognitiveReport?,
-    packageName: String?, keyword: String?): SwissHistoryData {
-    val records = swissHistoryRecords(events, semantics, report, packageName, keyword)
-    val byId = events.associateBy { it.id }
-    val matches = report?.claims.orEmpty().filter { claim -> byId[claim.eventId]?.let {
-        it.packageName == claim.packageName && it.visibleText.contains(claim.quote)
-    } == true }.groupBy { it.eventId }.mapValues { (id, claims) ->
-        val event = byId.getValue(id)
-        claims.flatMap { it.evidenceDetails }.filter { event.visibleText.contains(it.text) }.flatMap { it.historyMatches }
-            .filter { match -> byId[match.eventId]?.let { it.timestamp < event.timestamp && it.visibleText.contains(match.quote) } == true }.distinct()
+internal class SwissHistoryEntry(val event: BrowseEvent, private val semantic: EventSemantics?,
+    private val observations: List<ClaimObservation>) {
+    val content: String by lazy(LazyThreadSafetyMode.PUBLICATION) { event.contentText }
+    val keywords: List<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        semantic?.takeIf { it.validFor(event) }?.claims.orEmpty().flatMap {
+            listOf(it.topic, it.subject, it.quote, it.evidence)
+        } + observations.filter { it.packageName == event.packageName && event.visibleText.contains(it.quote) }
+            .flatMap { listOf(it.topic, it.subject, it.quote) }
     }
-    return SwissHistoryData(records, semantics.groupBy { it.eventId }.mapValues { (_, rows) -> rows.maxBy { it.analyzedAt } }, matches)
+}
+
+internal data class SwissHistoryIndex(val entries: List<SwissHistoryEntry>, val model: Map<Long, EventSemantics>,
+    val matches: Map<Long, List<EvidenceHistoryMatch>>)
+
+internal fun prepareSwissHistory(events: List<BrowseEvent>, semantics: List<EventSemantics>,
+    report: CognitiveReport?): SwissHistoryIndex {
+    val model = buildMap<Long, EventSemantics> {
+        semantics.forEach { candidate ->
+            val previous = get(candidate.eventId)
+            if (previous == null || candidate.analyzedAt > previous.analyzedAt) put(candidate.eventId, candidate)
+        }
+    }
+    val byId = events.associateBy { it.id }
+    val observed = report?.claims.orEmpty().groupBy { it.eventId }
+    val matches = buildMap {
+        observed.forEach { (id, claims) ->
+            val event = byId[id] ?: return@forEach
+            val valid = claims.filter { it.packageName == event.packageName && event.visibleText.contains(it.quote) }
+            if (valid.isNotEmpty()) put(id, valid.flatMap { it.evidenceDetails }
+                .filter { event.visibleText.contains(it.text) }.flatMap { it.historyMatches }
+                .filter { match -> byId[match.eventId]?.let { it.timestamp < event.timestamp && it.visibleText.contains(match.quote) } == true }.distinct())
+        }
+    }
+    val entries = events.sortedWith(compareByDescending<BrowseEvent> { it.timestamp }.thenByDescending { it.id }).map { event ->
+        SwissHistoryEntry(event, model[event.id], observed[event.id].orEmpty())
+    }
+    return SwissHistoryIndex(entries, model, matches)
+}
+
+internal fun filterSwissHistory(index: SwissHistoryIndex, packageName: String?, keyword: String?,
+    query: String = "", appNames: Map<String, String> = emptyMap()): SwissHistoryData {
+    val needle = keyword.orEmpty().trim()
+    val search = query.trim()
+    val records = index.entries.filter { entry ->
+        val event = entry.event
+        (packageName == null || event.packageName == packageName) &&
+            (needle.isBlank() || entry.content.contains(needle, ignoreCase = true) ||
+                entry.keywords.any { it.contains(needle, ignoreCase = true) }) &&
+            (search.isBlank() || entry.content.contains(search, ignoreCase = true) ||
+                event.packageName.contains(search, ignoreCase = true) ||
+                (appNames[event.packageName] ?: swissKnownApps[event.packageName]).orEmpty().contains(search, ignoreCase = true))
+    }.map { it.event }
+    return SwissHistoryData(records, index.model, index.matches)
 }
 
 internal val swissKnownApps = linkedMapOf(
@@ -120,17 +149,19 @@ internal fun SwissHistoryScreen(events: List<BrowseEvent>, semantics: List<Event
     val scope = rememberCoroutineScope()
     val apps = remember(events, appNames) { swissKnownApps + events.map { it.packageName }.distinct()
         .filterNot { it in swissKnownApps }.associateWith { appNames[it] ?: it } }
-    val inputKey = remember(events, semantics, report, appFilter, keyword, query, appNames) { Any() }
+    val sourceKey = remember(events, semantics, report?.claims) { Any() }
+    val indexed by produceState<Pair<Any, SwissHistoryIndex>?>(null, sourceKey) {
+        value = null
+        value = sourceKey to withContext(Dispatchers.Default) { prepareSwissHistory(events, semantics, report) }
+    }
+    val source = indexed?.takeIf { it.first === sourceKey }?.second
+    val inputKey = remember(sourceKey, source, appFilter, keyword, query, appNames) { Any() }
     val prepared by produceState<Pair<Any, SwissHistoryData>?>(null, inputKey) {
         value = null
-        value = inputKey to withContext(Dispatchers.Default) {
-            val source = swissHistoryData(events, semantics, report, appFilter, keyword)
-            val search = query.trim()
-            source.copy(records = source.records.filter { event ->
-                search.isBlank() || event.contentText.contains(search, ignoreCase = true) ||
-                    event.packageName.contains(search, ignoreCase = true) ||
-                    (appNames[event.packageName] ?: swissKnownApps[event.packageName]).orEmpty().contains(search, ignoreCase = true)
-            })
+        source?.let { index ->
+            value = inputKey to withContext(Dispatchers.Default) {
+                filterSwissHistory(index, appFilter, keyword, query, appNames)
+            }
         }
     }
     val data = prepared?.takeIf { it.first === inputKey }?.second
@@ -286,7 +317,7 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
     val analyzed = remember(attached, semantics) { attached.flatMap { row ->
         semantics.filter { it.eventId == row.id }.maxByOrNull { it.analyzedAt }?.takeIf { it.validFor(row) }?.claims.orEmpty()
     }.distinct() }
-    val observations = remember(attached, report) { report?.claims.orEmpty().filter { claim ->
+    val observations = remember(attached, report?.claims) { report?.claims.orEmpty().filter { claim ->
         attached.any { it.id == claim.eventId && it.packageName == claim.packageName && it.visibleText.contains(claim.quote) }
     } }
     val evidence = remember(analyzed, observations, attached) {
@@ -296,7 +327,7 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
             .distinctBy { it.text }
     }
     val emotions = analyzed.flatMap { it.presentation?.emotions.orEmpty() }.distinct()
-    val matches = remember(event, events, report) { swissHistoryMatches(event, report, events) }
+    val matches = remember(event, events, report?.claims) { swissHistoryMatches(event, report, events) }
     val numberStyle = MaterialTheme.typography.labelLarge.copy(fontFamily = FontFamily.Monospace,
         fontFeatureSettings = "tnum")
     val numberMeasurer = rememberTextMeasurer()
