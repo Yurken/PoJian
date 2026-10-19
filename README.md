@@ -9,7 +9,7 @@
 
 录音、转写与画面采样只是材料入口，不是产品主角。
 
-**当前版本 0.6.28** · Android 10+ · [更新日志](docs/CHANGELOG.md)
+**当前版本 0.6.29** · Android 10+ · [更新日志](docs/CHANGELOG.md)
 
 <p align="center">
   <a href="docs/brand/poster/pojian-intro-20261012-landscape-v1.png">
