@@ -23,6 +23,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
 import com.emerge.app.analysis.repeatedEvidenceShare
+import com.emerge.app.analysis.newFactMetric
 import java.util.Locale
 
 @Composable
@@ -31,6 +32,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
     val exposure = report?.periodExposure
     val primary = exposure?.primary
     val repeat = repeatedEvidenceShare(state, period)
+    val newFacts = remember(report?.claims) { report?.claims?.let(::newFactMetric) }
     val fraction = primary?.share?.toFloat()
     val theme = fraction?.let { computeCocoonTheme(it * 100) }
     val accent = theme?.let { Color(it.colorArgb) } ?: DesignTokens.Emerald
@@ -221,8 +223,8 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
                 VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                 SwissCount(
                     label = "新增事实",
-                    value = "未核实",
-                    modifier = Modifier.weight(1f)
+                    value = newFacts?.display ?: "—",
+                    modifier = Modifier.weight(1f).testTag("cocoon-new-facts")
                 )
                 VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                 SwissCount(

@@ -30,6 +30,7 @@ from emerge_server import Config, ClientError, UpstreamError, NoRedirect, decode
 from claim_presentation import validate_presentation
 from fact_check_cache import FactCheckCache
 from information_supplement import canonical_source_url
+from source_provenance import validate_provenance
 try:
     from server import admin  # imported as part of the server package
 except ImportError:
@@ -175,6 +176,9 @@ check_quote 可去掉无关态度、情绪、铺垫和重复修辞，但必须�
 evidence_actors 只记录这条 evidence 中明确的案例当事对象，evidence_origins 只记录这条 evidence 中明确提及的原始材料名称。
 两列均为字符串列表，每列最多4项，每项1至80字、非空、不重复，必须逐字连续出现在本条 evidence 中；不能拼接跨片段名称或从其他声明补齐。
 不得用作者、发布者或主张对象代替案例当事对象；身份或原始材料不明时使用空列表。列出身份不等于证明不同案例或材料相互独立，不自动判断独立性。
+每条claim增加 source_provenance：{"complete":false,"sources":[]}。sources最多4项，每项为 {"producer":"实际产生原始信息的实名机构或对象，最多80字","material":"可辨识的具体材料名称，最多80字","kind":"primary/secondary/unknown","basis":"本条evidence中支持来源关系的完整连续原文，最多500字","upstream":["明确引用的上游材料名称"]}。所有名称必须逐字出现在basis，basis必须逐字出现在本条evidence；不能补造、拼接、借用其他声明或用平台/发帖账号代替原始来源。
+primary仅用于原文明示具名产生者独立/自行/自主调查、采样、采集、采访、测量、实验、实测、统计或一手采访/现场实测，且没有引用上游材料或否定、传闻、声称等不确定性；不能仅凭“发布报告”、材料名不同或机构不同判断独立。secondary用于明确转载/引用，upstream保留共同原始材料；关系不能确定用unknown。upstream最多4项且不重复，primary必须为空，secondary不得为空。同一产生者和材料只列一次。
+complete仅在本条evidence中全部来源都已覆盖且无遗漏时为true；没有足够来源信息时保持false。原始采集依据必须保留否定、引用、条件和不确定语气，不能裁剪后升级为primary。没有可辨识材料或产生者时sources为空，不猜测。来源关系仅描述已保留文本，不代表外部事实已经核实。
 每条声明增加 presentation，结构如下：{"category":"教育/生活/求职/就业/体育/健康/消费/科技/家庭/公共议题/其他之一","viewpoint":"忠实于主要内容的具体观点短语，保留否定和关键条件，最多48字，不用领域名代替观点","anxiety":{"level":"unknown/low/medium/high","reason":"焦虑或紧迫表达对反复接触者的潜在影响及限制，最多60字","evidence":"本次可见输入中的连续原文，最多80字"},"cocoon":{"level":"unknown/low/medium/high","reason":"若长期只接触该类说法，可能收窄视角的机制及条件，最多60字","evidence":"连续原文，最多80字"},"cognition":{"level":"unknown/low/medium/high","reason":"绝对化、以偏概全等表达可能影响判断的机制及限制，最多60字","evidence":"连续原文，最多80字"},"suggestions":["1至2条结合内容的可执行建议，每条最多60字"]}。
 这些等级仅评价内容表达的潜在作用，不是心理测量或事实真假。不能因题材、作者、立场、女性独立等价值选择或出现“焦虑”一词就判高；区分缓解焦虑、引用、反驳与煽动恐惧。缺乏依据用 unknown，不能把缺少证据当作 low；非 unknown 必须提供本次输入中支持判定的连续引文。没有用户接触序列，不能断言用户已经焦虑或已经形成茧房。建议可包括核对适用条件、比较不同来源及相反论据、停止重复刷取，不能把虚构数据当事实或给出临床结论。
 presentation 可增加 emotions 列表，标注当前内容传达的情绪，最多3种且类别不重复。每项结构为 {"category":"anxiety/anger/fear/sadness/joy/neutral之一","level":"low/medium/high/unknown","evidence":"支持此内容情绪的本次输入连续原文，最多300字","trigger":"内容中明确出现的诱因连续原文，最多300字；未明确时省略此字段"}。neutral 只能单独出现；仅能明确判断为中性时使用，缺少材料不能当作中性，没有可支持的情绪标注时省略 emotions 字段。level 是内容表达的强度，无法判断时为 unknown。不得诊断用户，不得把题材、浏览行为或单个情绪词当作用户情绪；引用、否定、反讽和安抚内容须结合上下文，不得编造诱因或从其他作品补齐。
@@ -1476,6 +1480,11 @@ def validate_extraction(result: dict, source: dict) -> tuple[str, list[dict]]:
                     len(set(values)) != len(values)):
                 raise UpstreamError("Invalid argument evidence identities")
             clean[key] = list(values)
+        if "source_provenance" in row:
+            try:
+                clean["source_provenance"] = validate_provenance(row["source_provenance"], clean["evidence"], available)
+            except ValueError as error:
+                raise UpstreamError(str(error)) from error
         if "presentation" in row:
             try:
                 clean["presentation"] = validate_presentation(row["presentation"], available)

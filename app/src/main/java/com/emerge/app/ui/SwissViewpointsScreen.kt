@@ -63,7 +63,8 @@ internal data class SwissViewpointsData(
     val trend: List<SwissStanceDay>,
     val requests: List<Pair<TopicDigest, SupplementRequest>>,
     val repeatedWorks: Map<String, Int>,
-    val concentrations: List<TopicConcentration>
+    val concentrations: List<TopicConcentration>,
+    val independentSources: EvidenceMetric = EvidenceMetric(0, 0, 0)
 )
 
 internal data class SwissViewpointsIndex(
@@ -72,7 +73,8 @@ internal data class SwissViewpointsIndex(
     val week: List<ViewpointBucket>,
     val requests: List<Pair<TopicDigest, SupplementRequest>>,
     val repeatedRecords: Set<Long>,
-    val concentrations: List<TopicConcentration>
+    val concentrations: List<TopicConcentration>,
+    val sources: List<TopicSourceRecord> = emptyList()
 )
 
 internal fun prepareSwissViewpoints(
@@ -117,7 +119,8 @@ internal fun prepareSwissViewpoints(
                 known.map { SupplementKnownArgument(it.quote, it.evidenceDetails.firstOrNull()?.text.orEmpty()) }
             )
         }
-    return SwissViewpointsIndex(works, topics, week, requests, repeatedRecords, TopicConcentrations.analyze(works))
+    return SwissViewpointsIndex(works, topics, week, requests, repeatedRecords, TopicConcentrations.analyze(works),
+        sourceRecords(works, semantics))
 }
 
 internal fun filterSwissViewpoints(index: SwissViewpointsIndex, selectedTopic: String?, zone: ZoneId): SwissViewpointsData {
@@ -132,7 +135,8 @@ internal fun filterSwissViewpoints(index: SwissViewpointsIndex, selectedTopic: S
     return SwissViewpointsData(selected.size, (index.topics + listOfNotNull(selectedTopic)).distinct(), shares, candidates,
         index.week.map { swissStanceDay(it, selectedTopic, zone) },
         index.requests.filter { (topic, _) -> selectedTopic == null || topic.topic == selectedTopic || topic.subject == selectedTopic },
-        repeatedWorks, index.concentrations.filter { selectedTopic == null || it.topic == selectedTopic })
+        repeatedWorks, index.concentrations.filter { selectedTopic == null || it.topic == selectedTopic },
+        sourceMetric(index.sources, selected, selectedTopic))
 }
 
 @Composable
@@ -286,8 +290,8 @@ internal fun SwissViewpointsScreen(
                         VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                         SwissViewpointMetric(
                             label = "独立来源",
-                            value = "未核实",
-                            modifier = Modifier.weight(1f)
+                            value = data?.independentSources?.display ?: "—",
+                            modifier = Modifier.weight(1f).testTag("viewpoints-independent-sources")
                         )
                     }
                 }

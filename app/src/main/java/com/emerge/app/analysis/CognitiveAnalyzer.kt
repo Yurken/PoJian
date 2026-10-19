@@ -28,7 +28,8 @@ data class ClaimObservation(val eventId: Long, val timestamp: Long, val packageN
     val subject: String = "",
     val comparedHistoryEventIds: List<Long> = emptyList(),
     val historyComparisonTruncated: Boolean = false,
-    val dimension: String = "", val stance: String = "", val analysisSource: String = "local_rules")
+    val dimension: String = "", val stance: String = "", val analysisSource: String = "local_rules",
+    val sourceRecord: SourceRecord? = null)
 data class ClaimGroup(val topic: String, val quote: String, val observations: List<ClaimObservation>)
 data class TopicCount(val topic: String, val count: Int)
 data class HourlyReview(val hour: Int, val recordCount: Int, val durationMillis: Long,
@@ -64,7 +65,8 @@ class CognitiveAnalyzer {
     }
     private data class Candidate(val topic: String, val quote: String, val subject: String,
         val evidence: List<EvidenceFragment>, val conditions: String, val uncertain: Boolean,
-        val dimension: String = "", val stance: String = "", val source: String = "local_rules")
+        val dimension: String = "", val stance: String = "", val source: String = "local_rules",
+        val sourceRecord: SourceRecord? = null)
     private data class HistoryKey(val source: String, val topic: String, val subject: String,
         val dimension: String, val stance: String)
     private data class EvidenceKey(val text: String, val actors: List<String>, val origins: List<String>,
@@ -94,6 +96,7 @@ class CognitiveAnalyzer {
         val window = ObservationWindow.forPeriod(period, now, zone)
         // Retained earlier history is compared in browsing order, never in analysis completion order.
         val ordered = events.filter { it.timestamp <= now }.sortedWith(compareBy<BrowseEvent> { it.timestamp }.thenBy { it.id })
+        val eventsById = ordered.associateBy { it.id }
         val selected = ordered.filter { window.contains(it) }
         val observations = mutableListOf<Pair<BrowseEvent, ClaimObservation>>()
         // Per-analysis index: rebuilding after edits/deletion cannot retain stale evidence dependencies.
@@ -164,7 +167,11 @@ class CognitiveAnalyzer {
                     }.orEmpty(),
                     claim.conditions.trim(), claim.uncertain || claim.topic.isBlank() || claim.subject.isBlank() ||
                         claim.dimension.isBlank() || claim.stance.isBlank(), claim.dimension.trim(), claim.stance.trim(),
-                    "structured_model")
+                    "structured_model", SourceRecord(event.id, claim.evidence, claim.sourceProvenance.takeIf {
+                        event.sourceType !in setOf("screen_ocr", "visual_model", "audio_playback") ||
+                            eventsById[event.parentEventId]?.let { parent -> parent.sourceType == "accessibility" &&
+                                parent.packageName == event.packageName && parent.workKey == event.workKey } == true
+                    }))
             } ?: localCandidates(lines, event.timestamp, zone)
             candidates.forEach { candidate ->
                 val (topic, quote, subject, evidence, conditions, uncertain, dimension, stance, source) = candidate
@@ -223,7 +230,8 @@ class CognitiveAnalyzer {
                 val observation = ClaimObservation(event.id, event.timestamp, event.packageName, topic, quote,
                     details.map { it.text }, conditions, uncertain, increment, comparable?.eventId ?: related?.eventId,
                     if (within) window.durationMillis(event) else event.durationMillis.takeIf { window.durationKnown(event) },
-                    details, subject, comparableHistory.map { it.eventId }.distinct(), truncated, dimension, stance, source)
+                    details, subject, comparableHistory.map { it.eventId }.distinct(), truncated, dimension, stance, source,
+                    candidate.sourceRecord?.let { if (uncertain) it.copy(provenance = null) else it })
                 observations += event to observation
                 if (!uncertain && subject.isNotBlank()) {
                     conditionKeys[observation] = conditionKey
@@ -232,7 +240,6 @@ class CognitiveAnalyzer {
             }
         }
         val usableSet = usableEvents.toSet()
-        val eventsById = ordered.associateBy { it.id }
         fun contactId(id: Long): Long? = eventsById[id]?.let {
             if (it.sourceType in setOf("screen_ocr", "visual_model", "audio_playback")) it.parentEventId else it.id
         }

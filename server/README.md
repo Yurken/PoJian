@@ -62,6 +62,10 @@ python server/monitor_server.py
 
 从 App 0.5.22 起，每个 claim 可包含 `presentation`：大主题、精炼观点、焦虑/茧房/认知三类内容潜在影响的等级、理由、连续原文证据及建议。缺字段兼容旧数据；不完整或错属引文的扩展拒绝通过。等级是内容信号，不能断言观看者已经焦虑或形成茧房；颜色结合时长由客户端计算。协议、合成来源隔离与边界见[主题观点数据说明](../docs/VIEWPOINT_TOPICS.md)。部署该能力必须同时更新 `monitor_server.py` 与 `claim_presentation.py`；项目部署脚本已整体打包 server 目录。历史结果不会自动补齐，需要在现有授权边界内取得新的分析响应。
 
+来源统计扩展：`source_provenance` 为可选对象，包含 `complete` 和最多 4 个 `sources`。每项保留 `producer`、`material`、`kind`（primary/secondary/unknown）、连续原文 `basis`、最多 4 个 `upstream` 材料锚点。服务端和 Android 同时验证名称及引文归属；只有明示实名产生者原始采集且无否定、传闻、假设、计划或引用依赖的材料可作为根。客户端沿材料引用关系解析根，合并共同材料/产生者，循环与缺失上游保持未知；不同平台、账号或网址不增加独立来源。数值描述保留文本中的来源关系识别，不是外部真实性认证。`N+` 表示已识别数与尚未判断的材料并存，`未核实` 表示没有可确认计数，`—` 表示没有可统计记录。新增事实仅统计与可比较历史相比新增的事实类片段，首次出现/条件变化/历史不足不会当作已确认新增；与真假核查相互独立。
+
+此扩展需同时发布包含统计接入的客户端和包含 `source_provenance.py` 的服务端，现有部署脚本会整体打包 server 目录。不会自动发送历史原文重分析，也不会给旧结果补造来源；缺少字段的历史结果继续兼容，重新取得有效分析响应后参与新统计。JSON 导出保留可确认数、未知记录数和来源原文。
+
 事实核查故障修复部署：更新 `server/monitor_server.py` 后重启既有后端服务，保留当前模型／Tavily 密钥与运行配置。Qwen3.8 Flash／Max 的 JSON 请求显式使用非思考模式；整条 Monitor 处理预算为 110 秒，与既有 120 秒代理超时错开。旧 APK 可直接接收修复后的服务端响应；客户端超时余量和取证失败重试需安装包含相应修改的新 APK。历史失败记录不会被伪装为成功，需要对原材料重新发起核查。模型模式依据：[阿里云深度思考文档](https://www.alibabacloud.com/help/en/model-studio/deep-thinking)。
 
 开启事实核查时，声明抽取预算为 45 秒，取证阶段最多 40 秒，给证据分析预留至少 25 秒；未核查的纯语义请求仍可使用完整 110 秒。Tavily 先搜索最多 4 个链接（15 秒），再对这些链接调用 Extract（HTTP 等待最多 20 秒，供应商提取预算最多 12 秒）；接受部分正文成功，仍拒绝摘要、未搜索到的网址及不匹配的引文。正文读取会按剩余预算缩短 socket 等待时间。该拆分遵循 [Tavily Search 最佳实践](https://docs.tavily.com/documentation/best-practices/best-practices-search) 与 [Extract API](https://docs.tavily.com/documentation/api-reference/endpoint/extract)，不保证所有站点都能取得正文。

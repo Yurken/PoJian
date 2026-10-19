@@ -21,6 +21,7 @@ object SemanticsCodec {
                 put("evidence_actors", JSONArray(claim.evidenceActors))
                 put("evidence_origins", JSONArray(claim.evidenceOrigins))
                 claim.presentation?.let { put("presentation", ClaimPresentationCodec.encode(it)) }
+                claim.sourceProvenance?.let { put("source_provenance", SourceProvenanceCodec.encode(it)) }
             }) }
         }
         return BrowseSemantic(semantics.eventId, semantics.inputText, semantics.analyzedAt,
@@ -47,7 +48,8 @@ object SemanticsCodec {
                 conditions = string("conditions"), uncertain = claim.get("uncertain") as? Boolean
                     ?: error("Invalid uncertainty flag"), evidenceActors = anchors("evidence_actors"),
                 evidenceOrigins = anchors("evidence_origins"),
-                presentation = if (claim.has("presentation")) ClaimPresentationCodec.decode(claim.getJSONObject("presentation")) else null)
+                presentation = if (claim.has("presentation")) ClaimPresentationCodec.decode(claim.getJSONObject("presentation")) else null,
+                sourceProvenance = if (claim.has("source_provenance")) SourceProvenanceCodec.decode(claim.getJSONObject("source_provenance")) else null)
         }
         EventSemantics(row.eventId, row.inputText, row.analyzedAt, claims, row.inputKind).also { result ->
             // Validate stored shape and verbatim evidence against the saved input. The consumer
