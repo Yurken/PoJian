@@ -554,7 +554,9 @@ class MonitorRuntime(private val app: EmergeApplication) {
         mutableState.update { it.copy(findings = MonitorFactResults.upsert(it.findings, finding)) }
         prefs.edit().putString("findings", JSONArray().apply { state.value.findings.forEach { put(encode(it)) } }.toString()).apply()
     }
-    @Synchronized fun invalidate(clearSemantics: Boolean = true) {
+    // Deletion invalidates derived comparisons, not independent extractions for retained records.
+    // Room cascades remove only the deleted inputs; full-history deletion clears all rows itself.
+    @Synchronized fun invalidate(clearSemantics: Boolean = false) {
         epoch.incrementAndGet(); connection?.disconnect()
         synchronized(cache) { cache.clear() }; exposureJob?.cancel()
         mutableState.update { it.copy(findings = emptyList(), busy = false, notice = "材料已更新，旧核查与比对结果已清除") }

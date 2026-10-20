@@ -24,6 +24,36 @@ import org.junit.runner.RunWith
 /** The real HTTP consumer, Room and report pipeline; all responses are local fixtures. */
 @RunWith(AndroidJUnit4::class)
 class MonitorSemanticsIntegrationTest {
+    @Test fun invalidatingPartialDeletionKeepsUnrelatedOlderAnalysis() = runBlocking {
+        val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as EmergeApplication
+        val oldCloud = app.audioCoordinator.settings.config.value
+        val ids = mutableListOf<Long>()
+        try {
+            app.audioCoordinator.settings.save(oldCloud.copy(enabled = false), true)
+            val now = System.currentTimeMillis()
+            repeat(2) { index ->
+                val row = BrowseEvent(packageName = "com.example.deletionfixture", timestamp = now - (index + 2) * 86_400_000L,
+                    eventType = 0, visibleText = "招聘岗位正在减少，因为招聘数量同比减少20%", workKey = "deletion-fixture-$index-$now")
+                val id = app.repository.record(row)
+                ids += id
+                val event = row.copy(id = id)
+                assertTrue(app.repository.saveSemantics(event, EventSemantics(id, event.visibleText, now,
+                    listOf(ArgumentUnit("招聘岗位正在减少", "就业", "招聘岗位", "数量", "减少",
+                        "招聘数量同比减少20%", uncertain = false)), "text"), app.repository.captureGeneration) { true })
+            }
+            // The same invalidation used by the UI must never erase another record's stored extraction.
+            app.monitor.invalidate()
+            app.repository.deleteEvent(ids.first())
+            withTimeout(5000) { app.repository.allEvents.first { rows -> rows.none { it.id == ids.first() } } }
+            val retained = app.repository.semantics.first().filter { it.eventId in ids }
+            assertEquals(listOf(ids.last()), retained.map { it.eventId })
+            assertEquals("招聘岗位", retained.single().claims.single().subject)
+        } finally {
+            ids.forEach { app.repository.deleteEvent(it) }
+            app.audioCoordinator.settings.save(oldCloud, true)
+        }
+    }
+
     @Test fun sampledCloudResultsFlowIntoReportsChartsAndDeletionRebuildsHistory() = runBlocking {
         val app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as EmergeApplication
         val settings = app.audioCoordinator.settings
