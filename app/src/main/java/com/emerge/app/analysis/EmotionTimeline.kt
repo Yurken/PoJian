@@ -2,6 +2,7 @@ package com.emerge.app.analysis
 
 import com.emerge.app.data.BrowseEvent
 import com.emerge.app.data.contentText
+import com.emerge.app.ui.StatisticsPeriod
 import java.math.BigInteger
 import java.time.Instant
 import java.time.ZoneId
@@ -41,9 +42,9 @@ object EmotionTimeline {
     private data class TimedTone(val slice: SessionSlice, val tone: EmotionTone, val id: Long)
 
     fun analyze(events: List<BrowseEvent>, semantics: List<EventSemantics>, now: Long,
-        zone: ZoneId = ZoneId.systemDefault()): List<EmotionHour> {
-        val start = now - 24 * 3_600_000L
-        val window = ObservationWindow(start, now, zone)
+        zone: ZoneId = ZoneId.systemDefault(), period: StatisticsPeriod = StatisticsPeriod.HOURS24): List<EmotionHour> {
+        val window = ObservationWindow.forPeriod(period, now, zone)
+        val start = window.start
         val primary = events.filter { it.sourceType == "accessibility" && window.contains(it) &&
             !it.packageName.contains("launcher") && it.packageName != "com.android.systemui" }
         val latest = semantics.withIndex().groupBy { it.value.eventId }.mapValues { (_, versions) ->
@@ -61,13 +62,17 @@ object EmotionTimeline {
         val keys = primary.zip(BrowseWorkKey.resolve(primary)).associate { it.first.id to it.second }
         val result = mutableListOf<EmotionHour>()
         var cursor = start
-        while (cursor < now) {
-            val nextHour = Instant.ofEpochMilli(cursor).atZone(zone).truncatedTo(ChronoUnit.HOURS)
-                .plusHours(1).toInstant().toEpochMilli()
-            val end = minOf(nextHour, now)
+        // Include today's zero-length bucket at midnight, consistently with the other daily charts.
+        while (cursor < now || period.dailyBuckets && cursor == now) {
+            val local = Instant.ofEpochMilli(cursor).atZone(zone)
+            val nextBoundary = if (period.dailyBuckets) local.toLocalDate().plusDays(1)
+                .atStartOfDay(zone).toInstant().toEpochMilli()
+            else local.truncatedTo(ChronoUnit.HOURS).plusHours(1).toInstant().toEpochMilli()
+            val end = minOf(nextBoundary, now)
             val hour = ObservationWindow(cursor, end, zone)
             fun belongs(slice: SessionSlice) = if (slice.end > slice.start) slice.start < end && slice.end > cursor
-                else slice.start >= cursor && (slice.start < end || end == now && slice.start == end)
+                else slice.start >= cursor && (slice.start < end || end == now && slice.start == end &&
+                    (!period.dailyBuckets || nextBoundary > now || cursor == now))
             val visits = primary.filter { slices.getValue(it.id).any(::belongs) }
             val available = visits.associate { parent -> parent.id to material.getValue(parent.id).filter {
                 it.event.id == parent.id || hour.slices(it.event).any(::belongs)
@@ -95,7 +100,10 @@ object EmotionTimeline {
             }
             result += EmotionHour(cursor, end, durations(timed), posts,
                 visits.filter { !window.durationKnown(it) }.map { keys.getValue(it.id) }.distinct().size)
-            cursor = end
+            if (end == now) {
+                // At midnight the preceding day excludes the point at now; it belongs to today's bucket.
+                if (period.dailyBuckets && nextBoundary == now && cursor < now) cursor = now else break
+            } else cursor = end
         }
         return result
     }
@@ -115,14 +123,20 @@ object EmotionTimeline {
      * prefer the most recently started observation; source id breaks ties deterministically. */
     private fun durations(timed: List<TimedTone>): Map<EmotionTone, Long> {
         val valid = timed.filter { it.slice.end > it.slice.start && it.slice.durationMillis > 0 }
+            .sortedBy { it.slice.start }
         val boundaries = valid.flatMap { listOf(it.slice.start, it.slice.end) }.distinct().sorted()
         val totals = mutableMapOf<EmotionTone, Long>()
+        val priority = Comparator<TimedTone> { a, b ->
+            val density = BigInteger.valueOf(a.slice.durationMillis).multiply(BigInteger.valueOf(b.slice.end - b.slice.start))
+                .compareTo(BigInteger.valueOf(b.slice.durationMillis).multiply(BigInteger.valueOf(a.slice.end - a.slice.start)))
+            if (density != 0) density else compareValuesBy(a, b, { it.slice.start }, { it.id })
+        }
+        val active = java.util.PriorityQueue(priority.reversed())
+        var index = 0
         boundaries.zipWithNext().forEach { (start, end) ->
-            val owner = valid.filter { it.slice.start <= start && it.slice.end >= end }.maxWithOrNull { a, b ->
-                val density = BigInteger.valueOf(a.slice.durationMillis).multiply(BigInteger.valueOf(b.slice.end - b.slice.start))
-                    .compareTo(BigInteger.valueOf(b.slice.durationMillis).multiply(BigInteger.valueOf(a.slice.end - a.slice.start)))
-                if (density != 0) density else compareValuesBy(a, b, { it.slice.start }, { it.id })
-            } ?: return@forEach
+            while (index < valid.size && valid[index].slice.start <= start) active.add(valid[index++])
+            while (active.peek()?.let { it.slice.end <= start } == true) active.poll()
+            val owner = active.peek() ?: return@forEach
             val duration = BigInteger.valueOf(end - start).multiply(BigInteger.valueOf(owner.slice.durationMillis))
                 .divide(BigInteger.valueOf(owner.slice.end - owner.slice.start)).toLong()
             totals[owner.tone] = (totals[owner.tone] ?: 0L) + duration

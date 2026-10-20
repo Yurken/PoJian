@@ -70,7 +70,7 @@ fun OverviewScreen(
 
         // 02 / 内容情绪时间线、时段详情与情绪统计。
         item(key = "emotion-timeline") {
-            SwissEmotionTimeline(rawEvents, semantics, now, appNames) {
+            SwissEmotionTimeline(rawEvents, semantics, now, appNames, period) {
                 SwissEmotionSummary(report)
             }
         }

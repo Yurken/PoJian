@@ -67,7 +67,10 @@ def prepare(source, destination):
                     for child in list(root):
                         if child.get("name") in {"token", "endpoint"}:
                             root.remove(child)
-                    preference(root, "enabled", "boolean", False)
+                    # The old device's encrypted token is not portable. Use the same
+                    # configured gateway credential as a normal signed build instead.
+                    preference(root, "enabled", "boolean", True)
+                    preference(root, "demo_online_migrated", "boolean", True)
                 elif name == "local_storage":
                     preference(root, "retention_days", "int", 0)
                     # Keep the full snapshot instead of trimming it on first launch.
@@ -89,7 +92,7 @@ def prepare(source, destination):
             "tables": counts, "thumbnails": len(thumbnails),
             "snapshotBytes": output.stat().st_size,
             "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
-            "changes": ["Capture disabled", "Cloud credentials removed and cloud disabled",
+            "changes": ["Capture disabled", "Device-bound cloud credentials removed; bundled gateway enabled",
                         "Device-bound queue payloads removed; unfinished tasks cancelled",
                         "Automatic retention disabled", "Original timestamps preserved"],
         }

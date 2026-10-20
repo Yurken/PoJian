@@ -60,6 +60,12 @@ class EmergeApplication : Application() {
         super.onCreate()
         if (BuildConfig.BUNDLED_DEMO_DATA) {
             com.emerge.app.data.DemoSnapshotInstaller.install(dataDir) { assets.open("demo-snapshot.zip") }
+            // Also restore online analysis when upgrading the earlier offline demo,
+            // without reimporting its database or resetting later user choices.
+            val service = getSharedPreferences("audio_analysis", MODE_PRIVATE)
+            if (!service.getBoolean("demo_online_migrated", false)) {
+                check(service.edit().putBoolean("enabled", true).putBoolean("demo_online_migrated", true).commit())
+            }
         }
         // The accessibility service and audio ingestion continue to publish while the Activity is backgrounded.
         monitor

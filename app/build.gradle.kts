@@ -114,8 +114,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 97
-        versionName = "0.6.30"
+        versionCode = 98
+        versionName = "0.6.31"
         buildConfigField("boolean", "BUNDLED_DEMO_DATA", hasDemoSnapshot.toString())
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
@@ -128,8 +128,9 @@ android {
         val localServiceProperties = Properties().apply {
             rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use { load(it) }
         }
-        val pojianServiceToken = if (hasDemoSnapshot) "" else providers.gradleProperty("pojian.serviceToken").orNull
+        val pojianServiceToken = providers.gradleProperty("pojian.serviceToken").orNull
             ?: localServiceProperties.getProperty("pojian.serviceToken", "")
+        require(!hasDemoSnapshot || pojianServiceToken.isNotEmpty()) { "Online demo requires a configured service token" }
         require(pojianServiceToken.length <= 512 && pojianServiceToken.all { it.code in 33..126 }) { "Invalid service token format" }
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")

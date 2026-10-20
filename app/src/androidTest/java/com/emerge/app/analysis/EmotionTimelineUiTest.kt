@@ -67,6 +67,35 @@ class EmotionTimelineUiTest {
         compose.onAllNodesWithText("2篇").assertCountEquals(3)
     }
 
+    @Test fun changingPeriodRecomputesTimelineAndResetsSelection() {
+        val now = start + 12 * 3_600_000L
+        val older = event.copy(timestamp = start - 2 * 86_400_000L,
+            endTimestamp = start - 2 * 86_400_000L + 60_000, durationMillis = 60_000, sampleCount = 1)
+        var period by mutableStateOf(StatisticsPeriod.HOURS24)
+        compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
+            Column(Modifier.width(360.dp).verticalScroll(rememberScrollState())) {
+                SwissEmotionTimeline(listOf(older), emptyList(), now, emptyMap(), period)
+            }
+        } } }
+        fun awaitLabel(label: String) {
+            compose.waitUntil(10_000) {
+                compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty()
+            }
+            compose.onNodeWithTag("swiss-emotion-period").assertTextEquals(label)
+        }
+        awaitLabel("近24小时")
+        compose.onNodeWithTag("swiss-emotion-plot").assertContentDescriptionContains("0篇", substring = true)
+        compose.runOnIdle { period = StatisticsPeriod.WEEK }
+        awaitLabel(StatisticsPeriod.WEEK.label)
+        compose.onNodeWithTag("swiss-emotion-plot").assertContentDescriptionContains("1篇", substring = true)
+        compose.onNodeWithTag("swiss-emotion-plot").performTouchInput { click(center) }
+        compose.onNodeWithTag("swiss-emotion-next").performScrollTo().assertContentDescriptionEquals("下一天")
+        compose.runOnIdle { period = StatisticsPeriod.MONTH }
+        awaitLabel(StatisticsPeriod.MONTH.label)
+        compose.onNodeWithTag("swiss-emotion-details").assertDoesNotExist()
+        compose.onNodeWithTag("swiss-emotion-plot").assertContentDescriptionContains("1篇", substring = true)
+    }
+
     @Test fun largeTextKeepsEvidenceAndConcentrationAccessible() {
         compose.runOnUiThread { compose.activity.setContent { EmergeTheme {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 2f)) {
