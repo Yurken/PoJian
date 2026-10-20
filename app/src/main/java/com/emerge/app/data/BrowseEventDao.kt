@@ -63,8 +63,8 @@ interface BrowseEventDao {
     // Audio is evicted as a whole session first. Never cascade a partial transcript session.
     @Query("""SELECT e.id, e.timestamp FROM browse_events e
         WHERE e.parentEventId IS NULL AND e.audioSessionId IS NULL
-        AND e.id != COALESCE((SELECT id FROM browse_events
-            WHERE sourceType='accessibility' AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1), -1)
+        AND (:beforeTimestamp IS NOT NULL OR e.id != COALESCE((SELECT id FROM browse_events
+            WHERE sourceType='accessibility' AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1), -1))
         AND NOT EXISTS (SELECT 1 FROM browse_events child WHERE child.parentEventId=e.id AND child.audioSessionId IS NOT NULL)
         AND (:beforeTimestamp IS NULL OR (
             MAX(e.timestamp,e.endTimestamp) < :beforeTimestamp

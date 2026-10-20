@@ -48,9 +48,9 @@ interface AudioDao {
 
     @Query("""SELECT s.id,s.startedAt FROM audio_sessions s
         WHERE s.status IN ('completed','failed','cancelled')
-        AND NOT EXISTS (SELECT 1 FROM browse_events e WHERE e.audioSessionId=s.id
+        AND (:beforeTimestamp IS NOT NULL OR NOT EXISTS (SELECT 1 FROM browse_events e WHERE e.audioSessionId=s.id
             AND e.parentEventId=(SELECT id FROM browse_events WHERE sourceType='accessibility'
-                AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1))
+                AND parentEventId IS NULL ORDER BY timestamp DESC,id DESC LIMIT 1)))
         AND (:beforeTimestamp IS NULL OR (
             s.startedAt < :beforeTimestamp
             AND NOT EXISTS (SELECT 1 FROM browse_events e WHERE e.audioSessionId=s.id

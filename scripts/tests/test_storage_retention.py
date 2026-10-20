@@ -62,6 +62,16 @@ class StorageRetentionQueryTest(unittest.TestCase):
         self.db.execute("DELETE FROM browse_events WHERE id=1")
         self.assertIsNone(self.oldest_visit(None))
 
+    def test_period_cleanup_includes_the_last_expired_visit(self):
+        self.assertIsNone(self.oldest_visit(9100))
+        self.assertEqual((99, 9000), self.oldest_visit(9101))
+        self.assertIsNone(self.oldest_visit(None))
+
+    def test_recent_sample_still_protects_the_last_visit(self):
+        self.db.execute("INSERT INTO browse_samples VALUES(99,10000)")
+        self.assertIsNone(self.oldest_visit(10000))
+        self.assertEqual((99, 9000), self.oldest_visit(10001))
+
     def test_completed_audio_at_boundary_is_not_expired(self):
         self.db.execute("INSERT INTO audio_sessions VALUES('boundary',1000,'completed')")
         self.assertIsNone(self.oldest_audio(1000))
@@ -75,10 +85,18 @@ class StorageRetentionQueryTest(unittest.TestCase):
         self.visit(1, 1000, audio="recent-event")
         self.assertEqual(("expired", 400), self.oldest_audio(1000))
 
-    def test_latest_visit_keeps_its_completed_audio(self):
+    def test_capacity_keeps_latest_audio_but_expired_audio_can_be_removed(self):
         self.db.execute("INSERT INTO audio_sessions VALUES('latest',100,'completed')")
         self.visit(1, 100, parent=99, audio="latest")
+        self.assertIsNone(self.oldest_audio(None))
+        self.assertEqual(("latest", 100), self.oldest_audio(10000))
+
+    def test_latest_audio_with_recent_transcript_is_not_expired(self):
+        self.db.execute("INSERT INTO audio_sessions VALUES('latest',100,'completed')")
+        self.visit(1, 100, parent=99, audio="latest")
+        self.db.execute("INSERT INTO audio_transcripts VALUES('latest',10000)")
         self.assertIsNone(self.oldest_audio(10000))
+        self.assertEqual(("latest", 100), self.oldest_audio(10001))
 
 
 if __name__ == "__main__":
