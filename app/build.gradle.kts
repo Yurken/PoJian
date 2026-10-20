@@ -114,8 +114,8 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 98
-        versionName = "0.6.31"
+        versionCode = 99
+        versionName = "0.6.32"
         buildConfigField("boolean", "BUNDLED_DEMO_DATA", hasDemoSnapshot.toString())
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
