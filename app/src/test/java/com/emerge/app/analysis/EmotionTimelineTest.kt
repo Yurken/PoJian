@@ -1,6 +1,7 @@
 package com.emerge.app.analysis
 
 import com.emerge.app.data.BrowseEvent
+import com.emerge.app.ui.StatisticsPeriod
 import org.junit.Assert.*
 import org.junit.Test
 import java.time.Instant
@@ -108,5 +109,69 @@ class EmotionTimelineTest {
         assertEquals(30_000L, hours.first().durationMillis)
         assertEquals(30_000L, hours.last().durationMillis)
         assertEquals(60_000L, hours.sumOf { it.durationMillis })
+    }
+
+    @Test fun selectedPeriodControlsRecordsAndUsesSevenOrThirtyDailyBuckets() {
+        val at = now + 12 * 3_600_000L
+        val day = 24 * 3_600_000L
+        val events = listOf(event(1, at - 3_600_000), event(2, at - 2 * day),
+            event(3, at - 6 * day), event(4, at - 15 * day),
+            event(5, at - 40 * day), event(6, at + 60_000))
+        val semantics = events.map { semantic(it) }
+        listOf(
+            Triple(StatisticsPeriod.HOURS24, 24, setOf(1L)),
+            Triple(StatisticsPeriod.WEEK, 7, setOf(1L, 2L, 3L)),
+            Triple(StatisticsPeriod.MONTH, 30, setOf(1L, 2L, 3L, 4L))
+        ).forEach { (period, count, ids) ->
+            val buckets = EmotionTimeline.analyze(events, semantics, at, zone, period)
+            assertEquals(count, buckets.size)
+            assertEquals(ids, buckets.flatMap { it.posts }.map { it.event.id }.toSet())
+            assertEquals(ids.size * 60_000L, buckets.sumOf { it.durationMillis })
+            assertEquals(ObservationWindow.forPeriod(period, at, zone).start, buckets.first().start)
+            assertEquals(at, buckets.last().end)
+        }
+    }
+
+    @Test fun dailyBucketsSplitAcrossMidnightAndDeduplicateRevisitedWorks() {
+        val at = now + 12 * 3_600_000L
+        val crossing = event(1, now - 60_000, 120_000)
+        val revisit = event(2, now + 120_000, key = crossing.workKey!!)
+        val buckets = EmotionTimeline.analyze(listOf(crossing, revisit),
+            listOf(semantic(crossing), semantic(revisit)), at, zone, StatisticsPeriod.WEEK)
+        assertEquals(60_000L, buckets[buckets.lastIndex - 1].durationMillis)
+        assertEquals(120_000L, buckets.last().durationMillis)
+        assertEquals(1, buckets.last().workCount)
+        assertEquals(1, buckets.last().posts.size)
+    }
+
+    @Test fun daylightSavingUsesCalendarDaysAndConservesMeasuredTime() {
+        val localZone = ZoneId.of("America/New_York")
+        val at = Instant.parse("2026-03-10T12:00:00Z").toEpochMilli()
+        val event = event(1, Instant.parse("2026-03-08T05:00:00Z").toEpochMilli(), 23 * 3_600_000L)
+        val buckets = EmotionTimeline.analyze(listOf(event), listOf(semantic(event)), at, localZone, StatisticsPeriod.WEEK)
+        assertEquals(7, buckets.size)
+        val springDay = buckets.single { it.start == event.timestamp }
+        assertEquals(23 * 3_600_000L, springDay.end - springDay.start)
+        assertEquals(event.durationMillis, buckets.sumOf { it.durationMillis })
+    }
+
+    @Test fun midnightPointBelongsOnlyToTodaysBucket() {
+        val point = event(1, now, 0).copy(sampleCount = 0)
+        val buckets = EmotionTimeline.analyze(listOf(point), emptyList(), now, zone, StatisticsPeriod.WEEK)
+        assertEquals(7, buckets.size)
+        assertEquals(now, buckets.last().start)
+        assertEquals(1, buckets.last().workCount)
+        assertEquals(1, buckets.sumOf { it.workCount })
+    }
+
+    @Test fun overlapOwnerPrefersDensityThenLatestStart() {
+        val first = event(1, start, 120_000)
+        val dense = event(2, start + 30_000, 60_000)
+        val lowDensity = event(3, start + 30_000, 60_000).copy(durationMillis = 30_000)
+        val buckets = analyze(listOf(first, dense, lowDensity),
+            listOf(semantic(first), semantic(dense, EmotionCategory.JOY), semantic(lowDensity, EmotionCategory.NEUTRAL)))
+        assertEquals(60_000L, buckets.first().durations[EmotionTone.NEGATIVE])
+        assertEquals(60_000L, buckets.first().durations[EmotionTone.POSITIVE])
+        assertEquals(120_000L, buckets.sumOf { it.durationMillis })
     }
 }

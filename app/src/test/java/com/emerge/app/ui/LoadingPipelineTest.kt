@@ -76,5 +76,11 @@ class LoadingPipelineTest {
         assertTrue(words.any { it.text == "技术应用1" && it.recordCount == 100 })
         val emotion = measured("emotion") { EmotionTimeline.analyze(events, semantics, now, zone) }
         assertEquals(40, emotion.flatMap { it.posts }.map { it.workIdentity }.distinct().size)
+        val monthlyEmotion = measured("emotion-month") {
+            EmotionTimeline.analyze(events, semantics, now, zone, StatisticsPeriod.MONTH)
+        }
+        assertEquals(30, monthlyEmotion.size)
+        assertEquals(1200, monthlyEmotion.flatMap { it.posts }.map { it.workIdentity }.distinct().size)
+        assertEquals(1200 * 30_000L, monthlyEmotion.sumOf { it.durationMillis })
     }
 }

@@ -22,6 +22,12 @@ require(r2Uri.scheme == "https" && !r2Uri.host.isNullOrBlank() &&
     "Invalid public R2 URL"
 }
 val publicUpdateManifestUrl = "$r2PublicBaseUrl/updates/latest.json"
+// Private snapshots stay outside source control and are only included by an explicit local build.
+val demoSnapshotDir = providers.gradleProperty("pojian.demoSnapshotDir").orNull?.let { rootProject.file(it) }
+val hasDemoSnapshot = demoSnapshotDir != null
+if (demoSnapshotDir != null) {
+    require(demoSnapshotDir.resolve("demo-snapshot.zip").isFile) { "Missing demo-snapshot.zip" }
+}
 
 // Both local builds and CI use the same private key; no temporary debug fallback.
 val signingProperties = Properties().apply {
@@ -100,7 +106,7 @@ android {
         getByName("debug") { signingConfig = signingConfigs.getByName("pojian") }
         getByName("release") {
             signingConfig = signingConfigs.getByName("pojian")
-            buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$publicUpdateManifestUrl\"")
+            buildConfigField("String", "UPDATE_MANIFEST_URL", if (hasDemoSnapshot) "\"\"" else "\"$publicUpdateManifestUrl\"")
         }
     }
     defaultConfig {
@@ -108,8 +114,9 @@ android {
         applicationId = "com.zhiheng.app"
         minSdk = 29
         targetSdk = 34
-        versionCode = 96
-        versionName = "0.6.29"
+        versionCode = 99
+        versionName = "0.6.32"
+        buildConfigField("boolean", "BUNDLED_DEMO_DATA", hasDemoSnapshot.toString())
         // Optional smaller package for a known device; default APK keeps all upstream ABIs.
         providers.gradleProperty("emergeAbi").orNull?.let { selectedAbi ->
             require(selectedAbi in setOf("arm64-v8a", "armeabi-v7a", "x86", "x86_64")) { "Unsupported emergeAbi: $selectedAbi" }
@@ -123,6 +130,7 @@ android {
         }
         val pojianServiceToken = providers.gradleProperty("pojian.serviceToken").orNull
             ?: localServiceProperties.getProperty("pojian.serviceToken", "")
+        require(!hasDemoSnapshot || pojianServiceToken.isNotEmpty()) { "Online demo requires a configured service token" }
         require(pojianServiceToken.length <= 512 && pojianServiceToken.all { it.code in 33..126 }) { "Invalid service token format" }
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
@@ -138,6 +146,7 @@ android {
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
     sourceSets.getByName("test").java.srcDir(rootProject.file("evaluation/kotlin"))
+    demoSnapshotDir?.let { sourceSets.getByName("main").assets.srcDir(it) }
 }
 
 // Uses the normal unit-test runtime, but invokes a dataset evaluator rather than a model or Android device.
