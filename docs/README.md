@@ -7,6 +7,7 @@
 | [更新日志](CHANGELOG.md) | 0.4.2 至 0.5.0 的功能、修正、验证与限制，以及早期设计对齐和语音集成记录 |
 | [最新产品需求](PRD-Multimodal.md) | 按《第一章2.0》整理的功能、统计边界、实施结果、研究差距与验收场景 |
 | [设计与实现对照](IMPLEMENTATION.md) | 当前实现、设计目标与剩余差距 |
+| [下一阶段开发计划](superpowers/plans/2026-10-20-next-development.md) | HTTP 稳定性、设备数据生命周期验收、真实模型评测的顺序与完成条件 |
 | [实时监测架构](REALTIME_MONITORING.md) | 运行链路、权限、提醒、证据和成本边界 |
 | [作品与观看统计](WORK_VISITS.md) | 计数口径、身份限制、停留区间与真机核对方法 |
 | [离线标注评测](OFFLINE_QUALITY_EVALUATION.md) | 数据协议、评测命令、指标分母与真实标注流程 |
