@@ -146,3 +146,32 @@ class FastTextConfigTests(unittest.TestCase):
         runtime.update({"vision_model": "vision", "vision_key": "vision-key"})
         with self.assertRaises(legacy.ClientError):
             runtime.update({"text_url": "https://other.example.org/v1", "text_key": "new-text-key"})
+
+    def test_environment_vision_cannot_inherit_text_key_at_another_origin(self):
+        for key_fields in ({}, {"EMERGE_VISION_API_KEY": ""}):
+            env = {"EMERGE_VISION_URL": "https://other.example.org/v1",
+                   "EMERGE_VISION_MODEL": "vision", **key_fields}
+            with self.subTest(key_fields=key_fields), patch.dict(monitor.os.environ, env, clear=True):
+                runtime = monitor.RuntimeConfig(self.config, monitor.Options.from_env(self.config), ":memory:")
+                self.assertEqual("", runtime.provider_settings(True)[1])
+                self.assertFalse(runtime.vision_configured)
+                self.assertFalse(runtime.masked_settings()["vision"]["configured"])
+
+    def test_environment_same_origin_vision_inherits_current_text_key(self):
+        for url_fields in ({}, {"EMERGE_VISION_URL": "https://example.org:443/vision"}):
+            env = {"EMERGE_VISION_MODEL": "vision", **url_fields}
+            with self.subTest(url_fields=url_fields), patch.dict(monitor.os.environ, env, clear=True):
+                runtime = monitor.RuntimeConfig(self.config, monitor.Options.from_env(self.config), ":memory:")
+                self.assertEqual(self.config.upstream_key, runtime.provider_settings(True)[1])
+                self.assertTrue(runtime.vision_configured)
+                runtime.update({"text_key": "updated-text-key"})
+                self.assertEqual("updated-text-key", runtime.provider_settings(True)[1])
+
+    def test_environment_vision_can_use_its_explicit_key_at_another_origin(self):
+        env = {"EMERGE_VISION_URL": "https://other.example.org/v1",
+               "EMERGE_VISION_MODEL": "vision", "EMERGE_VISION_API_KEY": "explicit-vision-key"}
+        with patch.dict(monitor.os.environ, env, clear=True):
+            runtime = monitor.RuntimeConfig(self.config, monitor.Options.from_env(self.config), ":memory:")
+            self.assertEqual(("https://other.example.org/v1/chat/completions", "explicit-vision-key", "vision"),
+                             runtime.provider_settings(True))
+            self.assertTrue(runtime.vision_configured)

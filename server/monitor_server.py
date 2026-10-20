@@ -227,7 +227,7 @@ class Options:
     @classmethod
     def from_env(cls, config: Config) -> "Options":
         value = cls(os.getenv("EMERGE_VISION_URL", config.upstream_url), os.getenv("EMERGE_VISION_MODEL", ""),
-                    os.getenv("EMERGE_VISION_API_KEY", config.upstream_key), os.getenv("TAVILY_API_KEY", ""),
+                    os.getenv("EMERGE_VISION_API_KEY", ""), os.getenv("TAVILY_API_KEY", ""),
                     int(os.getenv("EMERGE_MONITOR_DAILY_LIMIT", "200")),
                     os.getenv("EMERGE_ADMIN_USER", "admin")[:60], os.getenv("EMERGE_ADMIN_PASSWORD", "")[:200])
         if not endpoint_ok(value.vision_url) or not 1 <= value.daily_limit <= 10000:
