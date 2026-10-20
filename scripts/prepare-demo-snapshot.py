@@ -5,6 +5,7 @@ Input must include databases/zhiheng.db and any accompanying WAL. Never point th
 at a live database. The original backup is preserved; no personal files belong in Git.
 """
 import argparse
+from contextlib import closing
 import hashlib
 import json
 from pathlib import Path
@@ -34,8 +35,8 @@ def prepare(source, destination):
     with tempfile.TemporaryDirectory(prefix="pojian-demo-") as temporary:
         database = Path(temporary) / "zhiheng.db"
         original = source / "databases/zhiheng.db"
-        with sqlite3.connect(original.resolve().as_uri() + "?mode=ro", uri=True) as src:
-            with sqlite3.connect(database) as db:
+        with closing(sqlite3.connect(original.resolve().as_uri() + "?mode=ro", uri=True)) as src:
+            with closing(sqlite3.connect(database)) as db:
                 src.backup(db)  # Includes committed WAL content without modifying the original backup.
                 assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
                 assert db.execute("PRAGMA user_version").fetchone() == (9,)
