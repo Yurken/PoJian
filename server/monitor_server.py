@@ -1591,9 +1591,13 @@ def analyze_monitor(source: dict, providers: Providers, fact_cache: FactCheckCac
 def make_handler(config: Config, options: Options, budget: DailyBudget, providers: Providers | None = None,
                  stats: admin.Stats | None = None, runtime: RuntimeConfig | None = None,
                  updates: AppUpdateSource | None = None):
-    parent = legacy_handler(config, stats)
     slots = threading.BoundedSemaphore(config.concurrency)
     runtime = runtime or RuntimeConfig(config, options, ":memory:")
+    def audio_config():
+        url, key, model = runtime.provider_settings(False)
+        return Config(url, model, key, config.service_token, config.timeout, config.concurrency)
+    parent = legacy_handler(config, stats, resolve_config=audio_config,
+                            request_slots=slots, reserve_request=budget.reserve)
     providers = providers or Providers(config, runtime)
     statistics = stats or admin.Stats()
     fact_diagnostics = FactCheckDiagnostics()

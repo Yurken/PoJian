@@ -50,7 +50,7 @@ python server/monitor_server.py
 - `POST /config/update`（仅监测服务，须管理登录会话）：更新生效中的文字/视觉/检索配置与每日限额，校验后原子写入状态目录的 `runtime-config.json`（0600）并即时生效，无需重启；密钥字段留空表示保持不变，接口换源时须显式提供对应密钥。
 - `POST /config/profile/save|apply|delete`（须管理登录会话）：命名保存当前配置、应用或删除已保存配置（最多 10 套）；应用后即时生效。接口响应与 `/status` 中的密钥始终只显示尾四位。
 - `POST /monitor`：Bearer 令牌认证；`version=1`、`id`、`kind=text/audio/frame`、`text`、`captured_at`、`check_facts`；画面额外传 `image`（JPEG base64，不接受外部图片 URL）。
-- `POST /analyze`：旧的转写与历史比较协议保持不变。
+- `POST /analyze`：旧的转写与历史比较协议和服务令牌保持不变；在监测网关中每次读取当前文字模型配置，与 `/monitor`、`/capture-cleanup`、`/information-supplement` 共用并发池和每日请求额度。未授权、非法输入及未配置模型不扣额度，已调用上游的失败请求仍计入额度。独立启动的旧服务保留原有行为。
 
 文字最多 6000 字，JPEG 最多 180 KiB，整个请求最多 512 KiB。客户端只上传当前可见画面采样，不自动抓取分享链接。每次抽取最多三条声明，最多对一条事实声明执行外部搜索和证据对齐；其他候选返回 `not_checked` 并说明预算。总体处理设有截止时间和并发上限。
 

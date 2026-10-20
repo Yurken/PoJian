@@ -11,6 +11,7 @@ import threading
 import time
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Callable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
@@ -215,8 +216,12 @@ def request_upstream(config: Config, sources: dict) -> dict:
         raise UpstreamError("Upstream returned invalid JSON") from None
 
 
-def make_handler(config: Config, stats: admin.Stats | None = None):
-    slots = threading.BoundedSemaphore(config.concurrency)
+def make_handler(config: Config, stats: admin.Stats | None = None, *,
+                 resolve_config: Callable[[], Config] | None = None,
+                 request_slots=None, reserve_request: Callable[[], bool] | None = None):
+    # The monitor gateway supplies its live configuration and shared resource limits.
+    # Standalone legacy deployments keep their existing configuration and protocol.
+    slots = request_slots if request_slots is not None else threading.BoundedSemaphore(config.concurrency)
 
     class Handler(BaseHTTPRequestHandler):
         server_version = "PojianTextService/1"
@@ -296,7 +301,8 @@ def make_handler(config: Config, stats: admin.Stats | None = None):
             authorization = self.headers.get_all("Authorization", [])
             if len(authorization) != 1 or not hmac.compare_digest(authorization[0].encode("utf-8"), ("Bearer " + config.service_token).encode("utf-8")):
                 return self.send_json(401, {"error": "Invalid service token"})
-            if not config.model_configured:
+            active_config = resolve_config() if resolve_config is not None else config
+            if not active_config.model_configured:
                 return self.send_json(503, {"error": "Model API is not configured"})
             if self.headers.get("Transfer-Encoding"):
                 return self.send_json(400, {"error": "Chunked requests are not supported"})
@@ -320,7 +326,9 @@ def make_handler(config: Config, stats: admin.Stats | None = None):
                     sources = validate_input(decode_json(raw))
                 except (ValueError, UnicodeError, RecursionError) as error:
                     raise ClientError("Invalid request JSON or transcript fields") from error
-                self.send_json(200, request_upstream(config, sources))
+                if reserve_request is not None and not reserve_request():
+                    return self.send_json(429, {"error": "Daily monitor request budget exhausted"})
+                self.send_json(200, request_upstream(active_config, sources))
             except ClientError:
                 self.send_json(400, {"error": "Invalid request JSON or transcript fields"})
             except UpstreamError as error:
