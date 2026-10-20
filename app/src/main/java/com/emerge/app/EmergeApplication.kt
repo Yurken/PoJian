@@ -58,6 +58,9 @@ class EmergeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.BUNDLED_DEMO_DATA) {
+            com.emerge.app.data.DemoSnapshotInstaller.install(dataDir) { assets.open("demo-snapshot.zip") }
+        }
         // The accessibility service and audio ingestion continue to publish while the Activity is backgrounded.
         monitor
         workThumbnails

@@ -102,7 +102,9 @@ private fun EmergeScreen(discoveryRequest: Int, onOpenSettings: () -> Unit) {
     var selectedTopic by rememberSaveable { mutableStateOf<String?>(null) }
     var showReports by rememberSaveable { mutableStateOf(false) }
     var showFindings by rememberSaveable { mutableStateOf(false) }
-    var period by rememberSaveable { mutableStateOf(StatisticsPeriod.HOURS24) }
+    var period by rememberSaveable {
+        mutableStateOf(if (BuildConfig.BUNDLED_DEMO_DATA) StatisticsPeriod.MONTH else StatisticsPeriod.HOURS24)
+    }
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var confirmClear by remember { mutableStateOf(false) }
     var showApps by rememberSaveable { mutableStateOf(false) }
