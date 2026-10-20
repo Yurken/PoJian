@@ -75,8 +75,14 @@
 # 客户端：单元测试 + Debug 包
 ./gradlew :app:testDebugUnitTest :app:assembleDebug
 
+# 仅运行 JVM 单元测试（不打包，无需签名密钥）
+./gradlew :app:testDebugUnitTest -x :app:verifySigningIdentity
+
 # 服务端：网关测试
 python -m unittest discover -s server/tests -v
+
+# 存储保留周期回归
+python -m unittest discover -s scripts/tests -p test_storage_retention.py -v
 
 # 监测核心回归
 bash scripts/check-monitor-core.sh
@@ -88,12 +94,12 @@ bash scripts/check-monitor-core.sh
 
 ## 发布与分发
 
-- **CI 流水线**：GitHub Actions「Build APK」在主分支或 `dev/**` 修改构建相关文件时自动执行，产出仅含 `arm64-v8a` 的 Release APK，并在上传前校验架构与固定签名；该安装包要求 64 位 ARM Android 系统。主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），同时在本仓库 GitHub Release 备份同一份 APK 与版本元数据，GitHub Release 不参与 R2 的三版本清理。
+- **CI 流水线**：GitHub Actions「Build APK」在 PR，以及主分支或 `dev/**` 修改客户端、服务端、评估数据、部署配置、脚本或构建配置时自动执行。先检查完整服务端测试、存储保留周期查询和 Android JVM 单元测试，任一失败即阻止 APK 构建；PR 仅运行检查。分支构建在检查通过后产出仅含 `arm64-v8a` 的 Release APK，并在上传前校验架构与固定签名；该安装包要求 64 位 ARM Android 系统。主分支存在指向当前提交的 `v<versionName>` Tag 时发布到 Cloudflare R2（APK、可选增量包与 `updates/latest.json`），同时在本仓库 GitHub Release 备份同一份 APK 与版本元数据，GitHub Release 不参与 R2 的三版本清理。
 - **版本与 Tag 规则**：每次已授权的推送递增 `versionName` 补丁位与 `versionCode`，并创建同名附注 Tag 一并推送。
 - **下载渠道**：从 [R2 更新清单](https://pub-6ad0b56b335240c696618fb628a56ef5.r2.dev/updates/latest.json) 的 `apkUrl` 下载最新 APK；也可在 **Actions → 成功运行 → Artifacts** 下载（保留 14 天）。R2 上传并校验成功后只保留最近 3 个版本。旧版需手动安装首个 R2 版本一次。
 - **历史签名说明**：本地与 CI 自 0.5.4 起共用固定签名，可连续覆盖升级；更早版本使用已丢失的临时签名，无法保证直接覆盖，请在验证数据备份前保留旧应用。
 
-CI 需要仓库 Secret `POJIAN_SERVICE_TOKEN` 及[四项签名 Secrets](docs/ANDROID_SIGNING.md)，缺失即停止构建；模型与检索密钥仅保存在服务端。
+CI 的 APK 构建需要仓库 Secret `POJIAN_SERVICE_TOKEN` 及[四项签名 Secrets](docs/ANDROID_SIGNING.md)，缺失即停止构建；独立测试作业不使用这些 Secrets。模型与检索密钥仅保存在服务端。
 
 ## 数据与隐私
 

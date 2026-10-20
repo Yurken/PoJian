@@ -2,20 +2,20 @@ name: Build APK
 
 on:
   workflow_dispatch:
+  pull_request:
   push:
     branches: [main, 'dev/**']
     paths:
       - 'app/**'
+      - 'server/**'
+      - 'evaluation/**'
+      - 'deploy/**'
       - 'gradle/**'
       - 'gradlew'
+      - 'gradlew.bat'
       - '*.gradle.kts'
       - 'gradle.properties'
-      - 'scripts/*android-signing*'
-      - 'scripts/verify-apk-signing.py'
-      - 'scripts/tests/test_android_signing.py'
-      - 'scripts/apk_delta.py'
-      - 'scripts/publish_r2.py'
-      - 'scripts/tests/test_r2_updates.py'
+      - 'scripts/**'
       - '.github/workflows/build-apk.yml'
 
 permissions:
@@ -27,7 +27,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  server-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test server
+        run: python -m unittest discover -s server/tests -v
+
+      - name: Test storage retention queries
+        run: python -m unittest discover -s scripts/tests -p test_storage_retention.py -v
+
+  android-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android SDK packages
+        run: sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+
+      # JVM tests do not create an APK or use the release signing identity.
+      - name: Test Android JVM code
+        run: bash ./gradlew :app:testDebugUnitTest -x :app:verifySigningIdentity --no-daemon --console=plain
+
+      - name: Upload JVM test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-unit-test-reports-${{ github.run_number }}
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          if-no-files-found: warn
+          retention-days: 14
+
   apk:
+    needs: [server-tests, android-tests]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
