@@ -221,7 +221,7 @@ class Options:
     search_key: str = ""
     daily_limit: int = 200
     admin_user: str = "admin"
-    # Console login password; empty means the service token is used (see make_handler).
+    # Independent console credential. Missing/shared credentials disable admin login only.
     admin_password: str = ""
 
     @classmethod
@@ -561,7 +561,7 @@ class RuntimeConfig:
     @property
     def vision_configured(self) -> bool:
         with self._lock:
-            return bool(self._vision["model"]) and bool(self._vision["key"] or self._text["key"])
+            return bool(self._vision["model"]) and bool(self._resolve_fast_text(self._text, self._vision)[1])
 
     @property
     def retrieval_configured(self) -> bool:
@@ -579,8 +579,7 @@ class RuntimeConfig:
             if image:
                 if not self._vision["model"]:
                     return None
-                return (normalize_endpoint(self._vision["url"] or self._text["url"]),
-                        self._vision["key"] or self._text["key"], self._vision["model"])
+                return self._resolve_fast_text(self._text, self._vision)
             return (normalize_endpoint(self._text["url"]), self._text["key"], self._text["model"])
 
     @staticmethod
@@ -665,12 +664,16 @@ class RuntimeConfig:
             raise ClientError("视觉接口必须是有效的 HTTPS 地址")
         if not endpoint_ok(fast["url"] or text["url"]):
             raise ClientError("快速文本接口必须是有效的 HTTPS 地址")
-        if (self._fast_text["key"] and fast["key"] and not fields.get("fast_text_key", "").strip()
-                and endpoint_origin(self._fast_text["url"] or self._text["url"])
-                != endpoint_origin(fast["url"] or text["url"])):
-            raise ClientError("接口变更后请重新填写快速文本密钥")
+        for name, previous, updated in (
+                ("text", self._text, text), ("fast_text", self._fast_text, fast), ("vision", self._vision, vision)):
+            if (previous["key"] and updated["key"] and not fields.get(name + "_key", "").strip()
+                    and endpoint_origin(previous["url"] or self._text["url"])
+                    != endpoint_origin(updated["url"] or text["url"])):
+                raise ClientError("接口变更后请重新填写对应密钥")
         if fast["url"] and not fast["key"] and not self._resolve_fast_text(text, fast)[1] and text["key"]:
             raise ClientError("请填写快速文本密钥")
+        if vision["model"] and not vision["key"] and text["key"] and not self._resolve_fast_text(text, vision)[1]:
+            raise ClientError("请填写视觉密钥")
         self._text, self._fast_text, self._vision, self._search_keys, self._daily_limit = text, fast, vision, search_keys, limit
         self._source = "env" if self._path == ":memory:" else "runtime"
         self._persist()
@@ -749,7 +752,7 @@ class RuntimeConfig:
                               "overrides": {"url": self._fast_text["url"], "model": self._fast_text["model"]}},
                 "vision": {"url": self._vision["url"] or self._text["url"], "model": self._vision["model"],
                            "api_key": admin.mask_secret(self._vision["key"]),
-                           "configured": bool(self._vision["model"]) and bool(self._vision["key"] or self._text["key"])},
+                           "configured": bool(self._vision["model"]) and bool(self._resolve_fast_text(self._text, self._vision)[1])},
                 "retrieval": {"provider": "Tavily Search" if self._search_keys else "模型联网搜索（enable_search）",
                               "api_key": admin.mask_secret(self._search_keys[0] if self._search_keys else ""),
                               "key_count": len(self._search_keys),
@@ -1598,7 +1601,9 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
     sessions = admin.Sessions()
     throttle = admin.LoginThrottle()
     admin_user = options.admin_user or "admin"
-    admin_password = options.admin_password or config.service_token
+    admin_password = options.admin_password
+    admin_configured = bool(admin_password) and not hmac.compare_digest(
+        admin_password.encode("utf-8"), config.service_token.encode("utf-8"))
 
     class Handler(parent):
         server_version = "PojianMonitorService/1"
@@ -1627,7 +1632,7 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
             return values[0][7:]
 
         def _console_authorized(self) -> bool:
-            return self._authorized() or sessions.valid(self._session_token())
+            return admin_configured and sessions.valid(self._session_token())
 
         def _login_endpoint(self):
             ip = self.client_address[0]
@@ -1639,6 +1644,8 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
                 return self.send_json(error.status, {"error": str(error)})
             except ClientError:
                 return self.send_json(400, {"error": "Invalid login request"})
+            if not admin_configured:
+                return self.send_json(503, {"error": "请配置独立的管理密码"})
             user, password = payload.get("user"), payload.get("password")
             matched = isinstance(user, str) and isinstance(password, str) and \
                 hmac.compare_digest(user.encode("utf-8"), admin_user.encode("utf-8")) and \

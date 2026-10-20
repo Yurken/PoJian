@@ -506,6 +506,7 @@ class StatusPageTests(unittest.TestCase):
     def setUp(self):
         self.config = legacy.Config("https://example.org/v1/chat/completions", "fixture-model", "sk-test-secret-key", "test-token")
         self.provider = FakeProviders(); self.budget = m.DailyBudget(":memory:", 5)
+        self.provider.options = m.Options(search_key="test-key", admin_password="status-console-password")
         self.stats = m.admin.Stats()
         self.server = m.ThreadingHTTPServer(("127.0.0.1", 0), m.make_handler(self.config, self.provider.options, self.budget, self.provider, stats=self.stats))
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True); self.thread.start()
@@ -523,7 +524,10 @@ class StatusPageTests(unittest.TestCase):
         return status, data
 
     def status_body(self):
-        status, data = self.call("/status", method="GET")
+        status, login = self.call("/admin/login", token=None,
+                                  body={"user": "admin", "password": "status-console-password"})
+        self.assertEqual(status, 200)
+        status, data = self.call("/status", token=json.loads(login)["token"], method="GET")
         self.assertEqual(status, 200)
         return json.loads(data)
 
@@ -581,9 +585,10 @@ class StatusPageTests(unittest.TestCase):
         self.assertEqual(self.call("/monitor")[0], 200)
         self.assertEqual(self.status_body()["settings"]["budget_used_today"], 1)
 
-    def test_status_requires_service_token(self):
+    def test_status_requires_admin_session(self):
         self.assertEqual(self.call("/status", token=None, method="GET")[0], 401)
         self.assertEqual(self.call("/status", token="wrong", method="GET")[0], 401)
+        self.assertEqual(self.call("/status", token="test-token", method="GET")[0], 401)
 
     def test_snapshot_returns_full_recent_buffer(self):
         for _ in range(60):
@@ -599,7 +604,8 @@ class ConfigApiTests(unittest.TestCase):
         self.config = legacy.Config("https://example.org/v1/chat/completions", "fixture-model",
                                     "sk-test-secret-key", "test-token")
         self.options = m.Options(vision_url="https://example.org/vision", vision_model="vision-model",
-                                 vision_key="vision-secret", search_key="tavily-secret", daily_limit=7)
+                                 vision_key="vision-secret", search_key="tavily-secret", daily_limit=7,
+                                 admin_password="config-console-password")
         self.runtime_path = os.path.join(self.directory.name, "runtime-config.json")
         self.runtime = m.RuntimeConfig(self.config, self.options, self.runtime_path)
         self.budget = m.DailyBudget(":memory:", self.runtime.daily_limit)
@@ -607,12 +613,17 @@ class ConfigApiTests(unittest.TestCase):
                                             m.make_handler(self.config, self.options, self.budget, runtime=self.runtime))
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
+        status, login = self.call("/admin/login", {"user": "admin", "password": "config-console-password"}, token=None)
+        self.assertEqual(status, 200)
+        self.admin_session = login["token"]
 
     def tearDown(self):
         self.server.shutdown(); self.server.server_close(); self.thread.join()
         self.budget.close(); self.directory.cleanup()
 
-    def call(self, path, body=None, token="test-token", method="POST"):
+    def call(self, path, body=None, token="admin-session", method="POST"):
+        if token == "admin-session":
+            token = self.admin_session
         connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
         headers = {"Content-Type": "application/json"}
         if token is not None:
@@ -684,7 +695,7 @@ class ConfigApiTests(unittest.TestCase):
             status, body = self.call("/config/test", {"target": "fast_text"})
             self.assertEqual(200, status)
             self.assertTrue(body["ok"])
-            self.assertEqual(200, self.call("/capture-cleanup", {"version": 1, "text": "真实正文"})[0])
+            self.assertEqual(200, self.call("/capture-cleanup", {"version": 1, "text": "真实正文"}, token="test-token")[0])
             self.assertEqual(2, post.call_count)
             for sent in post.call_args_list:
                 self.assertEqual("https://fast.example.org/v1/chat/completions", sent.args[0])
@@ -819,6 +830,25 @@ class AdminConsoleTests(unittest.TestCase):
     def login(self, user="ops", password="console-password-1"):
         return self.request("/admin/login", {"user": user, "password": password})
 
+    def test_service_token_cannot_manage_but_still_analyzes(self):
+        before = self.runtime.masked_settings()
+        for path, payload in (
+            ("/status", None),
+            ("/config/update", {"daily_limit": 9999}),
+            ("/config/profile/save", {"name": "client"}),
+            ("/config/profile/apply", {"name": "client"}),
+            ("/config/profile/delete", {"name": "client"}),
+            ("/config/test", {"target": "text"}),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(401, self.request(path, payload, token=self.config.service_token,
+                    method="GET" if path == "/status" else "POST")[0])
+        self.assertEqual(before, self.runtime.masked_settings())
+        self.assertEqual(401, self.login(password=self.config.service_token)[0])
+        with patch.object(m, "analyze_monitor", return_value={"claims": []}) as analyze:
+            self.assertEqual(200, self.request("/monitor", request_data(), token=self.config.service_token)[0])
+            analyze.assert_called_once()
+
     def test_login_issues_session_for_console_endpoints(self):
         status, body = self.login()
         self.assertEqual(status, 200)
@@ -845,10 +875,16 @@ class AdminConsoleTests(unittest.TestCase):
         self.assertEqual(self.request("/status", token=session, method="GET")[0], 200)
         self.assertEqual(self.request("/admin/logout", {}, token=session)[0], 200)
         self.assertEqual(self.request("/status", token=session, method="GET")[0], 401)
-        self.assertEqual(self.request("/status", token="test-token", method="GET")[0], 200)
+        self.assertEqual(self.request("/status", token="test-token", method="GET")[0], 401)
 
-    def test_default_password_falls_back_to_service_token(self):
-        options = m.Options()
+    def test_missing_admin_password_never_falls_back_to_service_token(self):
+        self.check_disabled_login("")
+
+    def test_admin_password_cannot_reuse_service_token(self):
+        self.check_disabled_login(self.config.service_token)
+
+    def check_disabled_login(self, password):
+        options = m.Options(admin_password=password)
         runtime = m.RuntimeConfig(self.config, options, ":memory:")
         budget = m.DailyBudget(":memory:", 5)
         server = m.ThreadingHTTPServer(("127.0.0.1", 0), m.make_handler(self.config, options, budget, runtime=runtime))
@@ -862,8 +898,8 @@ class AdminConsoleTests(unittest.TestCase):
                                    {"Content-Type": "application/json"})
                 reply = connection.getresponse(); status, data = reply.status, reply.read(); connection.close()
                 return status, json.loads(data)
-            self.assertEqual(login("admin", "test-token")[0], 200)
-            self.assertEqual(login("admin", "wrong")[0], 401)
+            self.assertEqual(login("admin", "test-token")[0], 503)
+            self.assertEqual(login("admin", "wrong")[0], 503)
         finally:
             server.shutdown(); server.server_close(); thread.join(); budget.close()
 

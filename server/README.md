@@ -39,7 +39,7 @@ python server/monitor_server.py
 
 - `GET /health`：存活检查，保留旧协议，公开。
 - `GET /capabilities`：返回监测协议以及视觉、检索是否配置；这是配置状态，不是效果验证；公开。
-- `GET /status`：只读运行状态 JSON，含请求计数、状态码分布、各接口平均/最大耗时、今日额度用量与脱敏后的 API 设置；**须 Bearer 服务令牌**，不返回完整密钥和请求内容。
+- `GET /status`：只读运行状态 JSON，含请求计数、状态码分布、各接口平均/最大耗时、今日额度用量与脱敏后的 API 设置；**监测网关须 Bearer 管理登录会话**，不返回完整密钥和请求内容。
 - `GET /status` 的 `fact_checks` 按抽取、检索、证据分析、引文校验阶段统计错误类型，也统计正常结论；不记录声明、网页内容或提供方原始响应，重启后计数清零。
 - `GET /status` 的 `provider_calls` 保留最近 100 次上游调用的阶段、密钥序号（从 0 开始）、耗时、等待预算、错误码、实际上游 HTTP 状态及结果数量；本地网络超时的 HTTP 状态为空。不包含密钥、查询、网址和正文；序号对应调用时的配置顺序，修改配置后不能当作同一密钥的永久标识。
 - `GET /app-update`：应用内自动更新的 JSON 清单（`versionCode`、`versionName`、`apkUrl`、`sha256`），由服务端用 `EMERGE_APP_UPDATE_TOKEN` 从私有仓库的最新 GitHub Release 代理生成，60 秒缓存；公开，不携带也不接受服务令牌。
@@ -47,8 +47,8 @@ python server/monitor_server.py
 
 配置 `EMERGE_APP_UPDATE_PUBLIC_REPO=baijiamin/PoJian-Releases` 后，网关匿名读取公开下载仓库的 Release，返回具体版本的 APK 地址，下载端点重定向至公开仓库，不再转发 APK。旧版 R2 配置保留兼容，但公开仓库配置优先。配置见 [公开 APK 发布](../docs/PUBLIC_APK_RELEASES.md)。
 - `GET /admin`：自包含的中文管理台页面（令牌登录后可用），每 5 秒轮询 `/status`；纯旧服务 `emerge_server.py` 同样提供这两个入口，但只含文字模型信息、无配置管理。
-- `POST /config/update`（仅监测服务，须令牌）：更新生效中的文字/视觉/检索配置与每日限额，校验后原子写入状态目录的 `runtime-config.json`（0600）并即时生效，无需重启；密钥字段留空表示保持不变。
-- `POST /config/profile/save|apply|delete`（须令牌）：命名保存当前配置、应用或删除已保存配置（最多 10 套）；应用后即时生效。接口响应与 `/status` 中的密钥始终只显示尾四位。
+- `POST /config/update`（仅监测服务，须管理登录会话）：更新生效中的文字/视觉/检索配置与每日限额，校验后原子写入状态目录的 `runtime-config.json`（0600）并即时生效，无需重启；密钥字段留空表示保持不变，接口换源时须显式提供对应密钥。
+- `POST /config/profile/save|apply|delete`（须管理登录会话）：命名保存当前配置、应用或删除已保存配置（最多 10 套）；应用后即时生效。接口响应与 `/status` 中的密钥始终只显示尾四位。
 - `POST /monitor`：Bearer 令牌认证；`version=1`、`id`、`kind=text/audio/frame`、`text`、`captured_at`、`check_facts`；画面额外传 `image`（JPEG base64，不接受外部图片 URL）。
 - `POST /analyze`：旧的转写与历史比较协议保持不变。
 
@@ -84,7 +84,7 @@ python server/monitor_server.py
 
 模型和检索服务会收到必要的请求内容，使用自己的 API 不代表没有第三方传输。服务不写请求正文、截图或密钥日志；仍应妥善配置反向代理日志、访问权限和保留策略。外部文档、截图和转写都被当作不可信数据；提示词约束不是已证明的提示注入防御。
 
-管理台与 `/status`、`/config` 接口使用服务令牌或管理台登录会话鉴权（`Authorization: Bearer …`），页面登录态仅保存在浏览器会话中。管理台使用账号密码登录（`POST /admin/login`，`EMERGE_ADMIN_USER` / `EMERGE_ADMIN_PASSWORD`，未设置密码时回退为服务令牌；会话 12 小时过期，连续 5 次失败锁定 30 秒）。页面保存的模型密钥写入状态目录的 `runtime-config.json`（0600，优先级高于环境变量）；任何接口都不回传完整密钥。`POST /config/test` 可对文字、视觉、检索分别做连通性测试（真实调用一次提供方，返回延迟或错误）。服务令牌请使用足够长且随机的值（建议 20 字符以上），它保护分析接口，也是管理台密码的默认值。
+监测网关的 `/status`、`/config` 接口仅接受管理台登录会话（`Authorization: Bearer …`），不接受客户端服务令牌。管理台使用账号密码登录（`POST /admin/login`，`EMERGE_ADMIN_USER` / `EMERGE_ADMIN_PASSWORD`）；密码为空或与服务令牌相同时，管理登录返回 `503`，分析接口仍正常工作。会话仅保存在浏览器会话中，12 小时过期，连续 5 次失败锁定 30 秒。升级时保留既有 `EMERGE_SERVICE_TOKEN` 原值，旧 APK 的分析请求继续使用它；仅需另行配置独立管理密码。页面保存的模型密钥写入状态目录的 `runtime-config.json`（0600，优先级高于环境变量）；任何接口都不回传完整密钥。`POST /config/test` 可对文字、视觉、检索分别做连通性测试（真实调用一次提供方，返回延迟或错误）。模型接口换源不会默默携带旧密钥，须显式填写新接口的密钥。
 
 ## 测试
 

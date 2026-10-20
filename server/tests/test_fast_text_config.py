@@ -118,5 +118,31 @@ class FastTextConfigTests(unittest.TestCase):
         runtime.update({"fast_text_key": "fast-key"})
         with self.assertRaises(legacy.ClientError):
             runtime.update({"text_url": "https://other.example.org/v1"})
-        runtime.update({"text_url": "https://other.example.org/v1", "fast_text_key": "-"})
+        runtime.update({"text_url": "https://other.example.org/v1", "text_key": "new-text-key", "fast_text_key": "-"})
         self.assertEqual(runtime.provider_settings(False), runtime.fast_text_settings())
+
+    def test_text_and_vision_keys_require_replacement_on_origin_change(self):
+        for section in ("text", "vision"):
+            with self.subTest(section=section):
+                runtime = self.load()
+                runtime.update({f"{section}_url": "https://original.example.org/v1",
+                                f"{section}_key": "original-key", f"{section}_model": "fixture"})
+                original = runtime.provider_settings(section == "vision")
+                with self.assertRaises(legacy.ClientError):
+                    runtime.update({f"{section}_url": "https://other.example.org/v1"})
+                self.assertEqual(original, runtime.provider_settings(section == "vision"))
+                runtime.update({f"{section}_url": "https://original.example.org:443/other"})
+                self.assertEqual("original-key", runtime.provider_settings(section == "vision")[1])
+                runtime.update({f"{section}_url": "https://other.example.org/v1", f"{section}_key": "replacement-key"})
+                self.assertEqual("replacement-key", runtime.provider_settings(section == "vision")[1])
+
+    def test_vision_cannot_inherit_text_key_at_another_origin(self):
+        runtime = self.load()
+        with self.assertRaises(legacy.ClientError):
+            runtime.update({"vision_model": "vision", "vision_url": "https://other.example.org/v1"})
+
+    def test_inherited_vision_endpoint_cannot_move_its_explicit_key(self):
+        runtime = self.load()
+        runtime.update({"vision_model": "vision", "vision_key": "vision-key"})
+        with self.assertRaises(legacy.ClientError):
+            runtime.update({"text_url": "https://other.example.org/v1", "text_key": "new-text-key"})
