@@ -24,13 +24,17 @@ object SemanticsCodec {
                 claim.sourceProvenance?.let { put("source_provenance", SourceProvenanceCodec.encode(it)) }
             }) }
         }
+        val stored = semantics.semanticV2?.let { JSONObject().put("version", 2).put("claims", claims)
+            .put("semantic_v2", SemanticV2Codec.encode(it)).toString() } ?: claims.toString()
         return BrowseSemantic(semantics.eventId, semantics.inputText, semantics.analyzedAt,
-            claims.toString(), semantics.inputKind)
+            stored, semantics.inputKind)
     }
 
     fun decode(row: BrowseSemantic): EventSemantics? = runCatching {
         require(row.claimsJson.length <= 131_072)
-        val json = JSONArray(row.claimsJson)
+        val envelope = if (row.claimsJson.trimStart().startsWith("{")) JSONObject(row.claimsJson) else null
+        if (envelope != null) require(envelope.get("version") == 2)
+        val json = envelope?.getJSONArray("claims") ?: JSONArray(row.claimsJson)
         require(json.length() <= 3)
         val claims = (0 until json.length()).map { index ->
             val claim = json.getJSONObject(index)
@@ -51,11 +55,15 @@ object SemanticsCodec {
                 presentation = if (claim.has("presentation")) ClaimPresentationCodec.decode(claim.getJSONObject("presentation")) else null,
                 sourceProvenance = if (claim.has("source_provenance")) SourceProvenanceCodec.decode(claim.getJSONObject("source_provenance")) else null)
         }
-        EventSemantics(row.eventId, row.inputText, row.analyzedAt, claims, row.inputKind).also { result ->
+        EventSemantics(row.eventId, row.inputText, row.analyzedAt, claims, row.inputKind,
+            envelope?.let { SemanticV2Codec.decode(it.getJSONObject("semantic_v2")) }).also { result ->
             // Validate stored shape and verbatim evidence against the saved input. The consumer
             // must still call validFor with the current event to reject later text revisions.
             require(result.validFor(BrowseEvent(id = row.eventId, packageName = "", timestamp = 0,
                 eventType = 0, visibleText = row.inputText)))
         }
     }.getOrNull()
+
+    fun decodeV2(payload: JSONObject, event: BrowseEvent, analyzedAt: Long = System.currentTimeMillis()): EventSemantics =
+        SemanticV2Codec.forEvent(payload, event, analyzedAt)
 }

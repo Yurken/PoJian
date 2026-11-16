@@ -231,7 +231,20 @@ private fun HelpDialog(title: String, body: String, onDismiss: () -> Unit) {
 
 /** Selectable source excerpt with a leading brand accent that grows with the text. */
 @Composable
-internal fun QuoteBlock(text: String, modifier: Modifier = Modifier, fromAudio: Boolean = false) {
+internal fun QuoteBlock(text: String, modifier: Modifier = Modifier, fromAudio: Boolean = false,
+    highlights: List<String> = emptyList()) {
+    val highlightColor = MaterialTheme.colorScheme.primaryContainer
+    val source = androidx.compose.ui.text.buildAnnotatedString {
+        append(text)
+        highlights.filter(String::isNotBlank).distinct().forEach { span ->
+            var start = text.indexOf(span)
+            while (start >= 0) {
+                addStyle(androidx.compose.ui.text.SpanStyle(background = highlightColor,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold), start, start + span.length)
+                start = text.indexOf(span, start + span.length)
+            }
+        }
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topEnd = 10.dp, bottomEnd = 10.dp),
@@ -244,7 +257,7 @@ internal fun QuoteBlock(text: String, modifier: Modifier = Modifier, fromAudio: 
             SelectionContainer(Modifier.weight(1f).padding(horizontal = 14.dp, vertical = 10.dp)) {
                 AudioSourceContent(fromAudio) {
                     Text(
-                        text = text,
+                        text = source,
                         style = MaterialTheme.typography.bodyMedium,
                         lineHeight = 22.sp
                     )

@@ -5,6 +5,8 @@ import android.view.accessibility.AccessibilityNodeInfo
 
 /** Ephemeral structural scan. Input values are never read, retained or logged. */
 internal object PagePrivacyGuard {
+    fun sanitizeForCloud(text: String): Pair<String, Int> = CloudTextPrivacy.sanitize(text)
+
     data class Result(val payment: Boolean, val inputVisible: Boolean, val complete: Boolean) {
         val blockText get() = payment || !complete
         val blockImage get() = blockText || inputVisible

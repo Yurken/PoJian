@@ -5,7 +5,7 @@ import java.util.Locale
 data class EvidenceMetric(val known: Int, val unknown: Int, val total: Int) {
     val display: String get() = when {
         total == 0 -> "—"
-        known == 0 && unknown > 0 -> "未核实"
+        known == 0 && unknown > 0 -> "待分析"
         unknown > 0 -> "$known+"
         else -> known.toString()
     }
@@ -19,6 +19,13 @@ fun CognitiveReport.independentSources(): EvidenceMetric = independentSourceMetr
 
 /** Count retained FACT fragments compared with history; FIRST and changed scope remain unassessed. */
 fun newFactMetric(claims: List<ClaimObservation>): EvidenceMetric {
+    val secure = claims.filter { it.semanticFacts != null }
+    if (secure.isNotEmpty()) {
+        val confirmed = secure.flatMap { it.semanticFacts.orEmpty() }.groupBy { factKey(it.factPoint) }
+        val legacy = newFactMetric(claims.filter { it.semanticFacts == null })
+        return EvidenceMetric(confirmed.values.count { versions -> versions.any { !it.isCoveredByHistory } } + legacy.known,
+            legacy.unknown, claims.size)
+    }
     data class Key(val content: String, val actors: List<String>, val origins: List<String>, val scope: String)
     val facts = claims.flatMap { claim -> claim.evidenceDetails.filter { it.type == EvidenceType.FACT }.map { claim to it } }
         .groupBy { (_, fragment) -> Key(EvidenceTextCanonicalizer.canonicalize(fragment.comparisonText).trim(),

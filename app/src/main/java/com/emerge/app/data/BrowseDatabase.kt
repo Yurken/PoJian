@@ -3,9 +3,14 @@ package com.emerge.app.data
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
-@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class, WorkThumbnail::class, WorkOriginal::class], version = 9, exportSchema = true)
+@Database(entities = [BrowseEvent::class, AudioSession::class, AudioTranscript::class, ObservedWork::class, BrowseSample::class, BrowseSemantic::class, MonitorTask::class, MonitorTaskInput::class, WorkThumbnail::class, WorkOriginal::class, DailyTopicRollupEntity::class, RollupContribution::class, RollupFact::class, RollupDirty::class, RollupMetadata::class], version = 10, exportSchema = true)
 abstract class BrowseDatabase : RoomDatabase() {
     companion object {
+        val MIGRATION_9_10 = object : androidx.room.migration.Migration(9, 10) {
+            override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                DailyTopicRollupSchema.create(db)
+            }
+        }
         val MIGRATION_8_9 = object : androidx.room.migration.Migration(8, 9) {
             override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
                 db.execSQL("""CREATE TABLE work_originals (workKey TEXT NOT NULL PRIMARY KEY,
@@ -99,6 +104,7 @@ abstract class BrowseDatabase : RoomDatabase() {
             }
         }
     }
+    abstract fun dailyTopicRollupDao(): DailyTopicRollupDao
     abstract fun browseEventDao(): BrowseEventDao
     abstract fun workThumbnailDao(): WorkThumbnailDao
     abstract fun workOriginalDao(): WorkOriginalDao

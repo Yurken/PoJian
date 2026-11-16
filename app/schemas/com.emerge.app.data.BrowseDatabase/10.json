@@ -1,0 +1,1269 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 10,
+    "identityHash": "52e47aae52ecca71a7d7521afb5808d5",
+    "entities": [
+      {
+        "tableName": "browse_events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `packageName` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `eventType` INTEGER NOT NULL, `visibleText` TEXT NOT NULL, `endTimestamp` INTEGER NOT NULL DEFAULT 0, `durationMillis` INTEGER NOT NULL DEFAULT 0, `sampleCount` INTEGER NOT NULL DEFAULT 0, `sourceType` TEXT NOT NULL DEFAULT 'accessibility', `audioSessionId` TEXT DEFAULT NULL, `mediaStartMillis` INTEGER NOT NULL DEFAULT 0, `mediaEndMillis` INTEGER NOT NULL DEFAULT 0, `workKey` TEXT DEFAULT NULL, `identityMethod` TEXT NOT NULL DEFAULT 'unknown', `visibilityIntervals` TEXT DEFAULT NULL, `parentEventId` INTEGER DEFAULT NULL, FOREIGN KEY(`audioSessionId`) REFERENCES `audio_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`parentEventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventType",
+            "columnName": "eventType",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visibleText",
+            "columnName": "visibleText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endTimestamp",
+            "columnName": "endTimestamp",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "durationMillis",
+            "columnName": "durationMillis",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sampleCount",
+            "columnName": "sampleCount",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "sourceType",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'accessibility'"
+          },
+          {
+            "fieldPath": "audioSessionId",
+            "columnName": "audioSessionId",
+            "affinity": "TEXT",
+            "notNull": false,
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "mediaStartMillis",
+            "columnName": "mediaStartMillis",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "mediaEndMillis",
+            "columnName": "mediaEndMillis",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "workKey",
+            "columnName": "workKey",
+            "affinity": "TEXT",
+            "notNull": false,
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "identityMethod",
+            "columnName": "identityMethod",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'unknown'"
+          },
+          {
+            "fieldPath": "visibilityIntervals",
+            "columnName": "visibilityIntervals",
+            "affinity": "TEXT",
+            "notNull": false,
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "parentEventId",
+            "columnName": "parentEventId",
+            "affinity": "INTEGER",
+            "notNull": false,
+            "defaultValue": "NULL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_browse_events_audioSessionId",
+            "unique": false,
+            "columnNames": [
+              "audioSessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_browse_events_audioSessionId` ON `${TABLE_NAME}` (`audioSessionId`)"
+          },
+          {
+            "name": "index_browse_events_parentEventId",
+            "unique": false,
+            "columnNames": [
+              "parentEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_browse_events_parentEventId` ON `${TABLE_NAME}` (`parentEventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "audio_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "audioSessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "parentEventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "audio_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `packageName` TEXT NOT NULL, `source` TEXT NOT NULL, `title` TEXT NOT NULL, `startedAt` INTEGER NOT NULL, `status` TEXT NOT NULL DEFAULT 'created', `generation` INTEGER NOT NULL DEFAULT 0, `durationMillis` INTEGER NOT NULL DEFAULT 0, `errorMessage` TEXT DEFAULT NULL, `analysisJson` TEXT DEFAULT NULL, `contentVersion` INTEGER NOT NULL DEFAULT 0, `modelId` TEXT NOT NULL DEFAULT 'zipformer-zh-14M-2023-02-23/int8', PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "startedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'created'"
+          },
+          {
+            "fieldPath": "generation",
+            "columnName": "generation",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "durationMillis",
+            "columnName": "durationMillis",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "errorMessage",
+            "columnName": "errorMessage",
+            "affinity": "TEXT",
+            "notNull": false,
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "analysisJson",
+            "columnName": "analysisJson",
+            "affinity": "TEXT",
+            "notNull": false,
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "contentVersion",
+            "columnName": "contentVersion",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "modelId",
+            "columnName": "modelId",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'zipformer-zh-14M-2023-02-23/int8'"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_audio_sessions_packageName",
+            "unique": false,
+            "columnNames": [
+              "packageName"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audio_sessions_packageName` ON `${TABLE_NAME}` (`packageName`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "audio_transcripts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `sessionId` TEXT NOT NULL, `browseEventId` INTEGER NOT NULL, `offsetStartMillis` INTEGER NOT NULL, `offsetEndMillis` INTEGER NOT NULL, `originalText` TEXT NOT NULL, `correctedText` TEXT DEFAULT NULL, `createdAt` INTEGER NOT NULL, FOREIGN KEY(`sessionId`) REFERENCES `audio_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`browseEventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "browseEventId",
+            "columnName": "browseEventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "offsetStartMillis",
+            "columnName": "offsetStartMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "offsetEndMillis",
+            "columnName": "offsetEndMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originalText",
+            "columnName": "originalText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "correctedText",
+            "columnName": "correctedText",
+            "affinity": "TEXT",
+            "notNull": false,
+            "defaultValue": "NULL"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_audio_transcripts_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_audio_transcripts_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_audio_transcripts_browseEventId",
+            "unique": true,
+            "columnNames": [
+              "browseEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_audio_transcripts_browseEventId` ON `${TABLE_NAME}` (`browseEventId`)"
+          },
+          {
+            "name": "index_audio_transcripts_sessionId_offsetStartMillis_offsetEndMillis",
+            "unique": true,
+            "columnNames": [
+              "sessionId",
+              "offsetStartMillis",
+              "offsetEndMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_audio_transcripts_sessionId_offsetStartMillis_offsetEndMillis` ON `${TABLE_NAME}` (`sessionId`, `offsetStartMillis`, `offsetEndMillis`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "audio_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "browseEventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "observed_works",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`workKey` TEXT NOT NULL, `packageName` TEXT NOT NULL, `title` TEXT NOT NULL, `author` TEXT NOT NULL, `identityMethod` TEXT NOT NULL, `firstSeenAt` INTEGER NOT NULL, `identityEvidence` TEXT NOT NULL DEFAULT 'legacy', `nativeId` TEXT NOT NULL DEFAULT '', PRIMARY KEY(`workKey`))",
+        "fields": [
+          {
+            "fieldPath": "workKey",
+            "columnName": "workKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "author",
+            "columnName": "author",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "identityMethod",
+            "columnName": "identityMethod",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "firstSeenAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "identityEvidence",
+            "columnName": "identityEvidence",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "'legacy'"
+          },
+          {
+            "fieldPath": "nativeId",
+            "columnName": "nativeId",
+            "affinity": "TEXT",
+            "notNull": true,
+            "defaultValue": "''"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "workKey"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "browse_samples",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `visitId` INTEGER NOT NULL, `capturedAt` INTEGER NOT NULL, `eventType` INTEGER NOT NULL, `visibleText` TEXT NOT NULL, FOREIGN KEY(`visitId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visitId",
+            "columnName": "visitId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventType",
+            "columnName": "eventType",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "visibleText",
+            "columnName": "visibleText",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_browse_samples_visitId",
+            "unique": false,
+            "columnNames": [
+              "visitId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_browse_samples_visitId` ON `${TABLE_NAME}` (`visitId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "visitId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "browse_semantics",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` INTEGER NOT NULL, `inputText` TEXT NOT NULL, `analyzedAt` INTEGER NOT NULL, `claimsJson` TEXT NOT NULL, `inputKind` TEXT NOT NULL, PRIMARY KEY(`eventId`), FOREIGN KEY(`eventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputText",
+            "columnName": "inputText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyzedAt",
+            "columnName": "analyzedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "claimsJson",
+            "columnName": "claimsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputKind",
+            "columnName": "inputKind",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "eventId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "eventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "monitor_tasks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `anchorEventId` INTEGER NOT NULL, `payload` TEXT NOT NULL, `scopeFingerprint` TEXT NOT NULL, `serviceFingerprint` TEXT NOT NULL, `authorizationKey` TEXT NOT NULL, `status` TEXT NOT NULL, `attempts` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `expiresAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `nextAttemptAt` INTEGER NOT NULL, `leaseOwner` TEXT NOT NULL, `leaseUntil` INTEGER NOT NULL, `lastError` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`anchorEventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "anchorEventId",
+            "columnName": "anchorEventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopeFingerprint",
+            "columnName": "scopeFingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "serviceFingerprint",
+            "columnName": "serviceFingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authorizationKey",
+            "columnName": "authorizationKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "attempts",
+            "columnName": "attempts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAt",
+            "columnName": "expiresAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nextAttemptAt",
+            "columnName": "nextAttemptAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leaseOwner",
+            "columnName": "leaseOwner",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leaseUntil",
+            "columnName": "leaseUntil",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_monitor_tasks_anchorEventId",
+            "unique": false,
+            "columnNames": [
+              "anchorEventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_monitor_tasks_anchorEventId` ON `${TABLE_NAME}` (`anchorEventId`)"
+          },
+          {
+            "name": "index_monitor_tasks_status_nextAttemptAt",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "nextAttemptAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_monitor_tasks_status_nextAttemptAt` ON `${TABLE_NAME}` (`status`, `nextAttemptAt`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "anchorEventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "monitor_task_inputs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`taskId` TEXT NOT NULL, `eventId` INTEGER NOT NULL, `inputFingerprint` TEXT NOT NULL, PRIMARY KEY(`taskId`, `eventId`), FOREIGN KEY(`taskId`) REFERENCES `monitor_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`eventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "taskId",
+            "columnName": "taskId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "inputFingerprint",
+            "columnName": "inputFingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "taskId",
+            "eventId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_monitor_task_inputs_eventId",
+            "unique": false,
+            "columnNames": [
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_monitor_task_inputs_eventId` ON `${TABLE_NAME}` (`eventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "monitor_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "taskId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "eventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "work_thumbnails",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`workKey` TEXT NOT NULL, `packageName` TEXT NOT NULL, `fileName` TEXT NOT NULL, `capturedAt` INTEGER NOT NULL, `kind` TEXT NOT NULL, `width` INTEGER NOT NULL, `height` INTEGER NOT NULL, `byteCount` INTEGER NOT NULL, PRIMARY KEY(`workKey`), FOREIGN KEY(`workKey`) REFERENCES `observed_works`(`workKey`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "workKey",
+            "columnName": "workKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "packageName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileName",
+            "columnName": "fileName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "width",
+            "columnName": "width",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "height",
+            "columnName": "height",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "byteCount",
+            "columnName": "byteCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "workKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_work_thumbnails_fileName",
+            "unique": true,
+            "columnNames": [
+              "fileName"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_work_thumbnails_fileName` ON `${TABLE_NAME}` (`fileName`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "observed_works",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "workKey"
+            ],
+            "referencedColumns": [
+              "workKey"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "work_originals",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`workKey` TEXT NOT NULL, `url` TEXT NOT NULL, `source` TEXT NOT NULL, `savedAt` INTEGER NOT NULL, PRIMARY KEY(`workKey`), FOREIGN KEY(`workKey`) REFERENCES `observed_works`(`workKey`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "workKey",
+            "columnName": "workKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedAt",
+            "columnName": "savedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "workKey"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "observed_works",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "workKey"
+            ],
+            "referencedColumns": [
+              "workKey"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "daily_topic_rollup",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`dateKey` TEXT NOT NULL, `topicName` TEXT NOT NULL, `viewEvents` INTEGER NOT NULL, `uniqueWorks` INTEGER NOT NULL, `dedupFacts` INTEGER NOT NULL, `newFacts` INTEGER NOT NULL, `guidanceEvents` INTEGER NOT NULL, `guidanceDurationSec` INTEGER NOT NULL, `guidanceDurationMillis` INTEGER NOT NULL, `analyzedEvents` INTEGER NOT NULL, PRIMARY KEY(`dateKey`, `topicName`))",
+        "fields": [
+          {
+            "fieldPath": "dateKey",
+            "columnName": "dateKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "topicName",
+            "columnName": "topicName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "viewEvents",
+            "columnName": "viewEvents",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uniqueWorks",
+            "columnName": "uniqueWorks",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dedupFacts",
+            "columnName": "dedupFacts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "newFacts",
+            "columnName": "newFacts",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "guidanceEvents",
+            "columnName": "guidanceEvents",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "guidanceDurationSec",
+            "columnName": "guidanceDurationSec",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "guidanceDurationMillis",
+            "columnName": "guidanceDurationMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyzedEvents",
+            "columnName": "analyzedEvents",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "dateKey",
+            "topicName"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "rollup_contributions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` INTEGER NOT NULL, `dateKey` TEXT NOT NULL, `topicName` TEXT NOT NULL, `workKey` TEXT NOT NULL, `viewEvents` INTEGER NOT NULL, `guidanceEvents` INTEGER NOT NULL, `guidanceDurationMillis` INTEGER NOT NULL, `analyzedEvents` INTEGER NOT NULL, `capturedAt` INTEGER NOT NULL, `semanticFingerprint` TEXT NOT NULL, PRIMARY KEY(`eventId`, `dateKey`, `topicName`), FOREIGN KEY(`eventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateKey",
+            "columnName": "dateKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "topicName",
+            "columnName": "topicName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "workKey",
+            "columnName": "workKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "viewEvents",
+            "columnName": "viewEvents",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "guidanceEvents",
+            "columnName": "guidanceEvents",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "guidanceDurationMillis",
+            "columnName": "guidanceDurationMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analyzedEvents",
+            "columnName": "analyzedEvents",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "semanticFingerprint",
+            "columnName": "semanticFingerprint",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "eventId",
+            "dateKey",
+            "topicName"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_rollup_contributions_dateKey_topicName_workKey",
+            "unique": false,
+            "columnNames": [
+              "dateKey",
+              "topicName",
+              "workKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_rollup_contributions_dateKey_topicName_workKey` ON `${TABLE_NAME}` (`dateKey`, `topicName`, `workKey`)"
+          },
+          {
+            "name": "index_rollup_contributions_dateKey_eventId",
+            "unique": false,
+            "columnNames": [
+              "dateKey",
+              "eventId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_rollup_contributions_dateKey_eventId` ON `${TABLE_NAME}` (`dateKey`, `eventId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "eventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "rollup_facts",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` INTEGER NOT NULL, `dateKey` TEXT NOT NULL, `topicName` TEXT NOT NULL, `factKey` TEXT NOT NULL, `factText` TEXT NOT NULL, `sourcePlatform` TEXT NOT NULL, `capturedAt` INTEGER NOT NULL, `isNew` INTEGER NOT NULL, PRIMARY KEY(`eventId`, `dateKey`, `topicName`, `factKey`), FOREIGN KEY(`eventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dateKey",
+            "columnName": "dateKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "topicName",
+            "columnName": "topicName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "factKey",
+            "columnName": "factKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "factText",
+            "columnName": "factText",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourcePlatform",
+            "columnName": "sourcePlatform",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAt",
+            "columnName": "capturedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isNew",
+            "columnName": "isNew",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "eventId",
+            "dateKey",
+            "topicName",
+            "factKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_rollup_facts_dateKey_topicName_factKey_isNew",
+            "unique": false,
+            "columnNames": [
+              "dateKey",
+              "topicName",
+              "factKey",
+              "isNew"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_rollup_facts_dateKey_topicName_factKey_isNew` ON `${TABLE_NAME}` (`dateKey`, `topicName`, `factKey`, `isNew`)"
+          },
+          {
+            "name": "index_rollup_facts_capturedAt",
+            "unique": false,
+            "columnNames": [
+              "capturedAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_rollup_facts_capturedAt` ON `${TABLE_NAME}` (`capturedAt`)"
+          },
+          {
+            "name": "index_rollup_facts_factKey",
+            "unique": false,
+            "columnNames": [
+              "factKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_rollup_facts_factKey` ON `${TABLE_NAME}` (`factKey`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "eventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "rollup_dirty",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`eventId` INTEGER NOT NULL, PRIMARY KEY(`eventId`), FOREIGN KEY(`eventId`) REFERENCES `browse_events`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "eventId",
+            "columnName": "eventId",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "eventId"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": [
+          {
+            "table": "browse_events",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "eventId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "rollup_metadata",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `zone` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "zone",
+            "columnName": "zone",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '52e47aae52ecca71a7d7521afb5808d5')"
+    ]
+  }
+}

@@ -73,7 +73,7 @@ class SwissBrowseUiTest {
         } } }
         awaitTag("viewpoints-topic-就业")
         compose.onNodeWithTag("viewpoints-topic-就业").performClick().assertIsSelected()
-        compose.onNodeWithText("未核实").assertIsDisplayed()
+        compose.onNodeWithText("待分析").assertIsDisplayed()
         compose.onNodeWithTag("viewpoints-topic-all").performClick().assertIsSelected()
     }
 

@@ -38,7 +38,7 @@ internal class ReportPdfDocumentBuilder(
 
     private fun metrics(): List<PdfDashboardMetric> {
         val works = report.workStatistics
-        val facts = newFactMetric(report.claims)
+        val facts = report.reportNewFactMetric()
         val sources = report.independentSources()
         return listOf(
             PdfDashboardMetric("浏览作品（估算）", works?.let { "${it.total} 个" } ?: "未统计",
@@ -51,7 +51,7 @@ internal class ReportPdfDocumentBuilder(
     }
 
     private fun unknownDetail(metric: EvidenceMetric) =
-        if (metric.unknown > 0) listOf("未核实 ${metric.unknown} 项") else emptyList()
+        if (metric.unknown > 0) listOf("待分析 ${metric.unknown} 项") else emptyList()
 
     private fun exposureCard(): PdfDashboardCard {
         // The selected period and the rolling seven-day assessment have different scopes.
@@ -61,7 +61,7 @@ internal class ReportPdfDocumentBuilder(
         val share = view?.share?.takeIf { distribution != null && distribution.classified > 0 && it.isFinite() && it in 0.0..1.0 }
         val repeat = view?.longitudinal?.takeIf { it.known > 0 }?.let {
             "${it.repeated}/${it.known} 个作品（${percent(it.repeatedShare)}）"
-        } ?: "未核实"
+        } ?: "待分析"
         val blocks = buildList {
             add(ReportPdfBlock.Metrics(listOf(
                 PdfMetric("已识别立场", distribution?.let { "${it.classified}/${it.contacts} 次" } ?: "未统计"),

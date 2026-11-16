@@ -42,6 +42,11 @@ internal fun SwissArgumentDetailSheet(selection: SwissArgumentSelection, events:
         }
     }
     val source = sourceId?.let { swissSourceEvent(it, events) }
+    val secureResults = remember(selection, events, semantics) {
+        selection.details.sourceIds.mapNotNull { id -> byId[id]?.let { event ->
+            semantics.filter { it.eventId == id }.maxByOrNull { it.analyzedAt }?.takeIf { it.validFor(event) }?.semanticV2
+        } }.distinct()
+    }
     if (source != null) {
         SwissWorkDetailSheet(source, events, semantics, report, appNames,
             onDismiss = { sourceId = null }, onRelated = { sourceId = it.id })
@@ -60,6 +65,15 @@ internal fun SwissArgumentDetailSheet(selection: SwissArgumentSelection, events:
                 Text("${selection.details.workCount} 篇", style = MaterialTheme.typography.labelMedium, color = Muted)
             }
             item("evidence-header") { Text("核心依据与历史对照", style = MaterialTheme.typography.titleSmall) }
+            secureResults.forEachIndexed { index, result ->
+                if (result.emotionalGuidance.isOverExtrapolation) item("guidance-$index") {
+                    GuidanceEvidenceCard(result.emotionalGuidance)
+                }
+                result.facts.mapNotNull { it.matchedSourceNote }.distinct().forEachIndexed { noteIndex, note ->
+                    item("source-note-$index-$noteIndex") { Text(note, color = DesignTokens.Amber,
+                        style = MaterialTheme.typography.labelMedium) }
+                }
+            }
             if (evidence.isEmpty()) item("no-evidence") { Text("暂无依据", color = Muted) }
             evidence.forEachIndexed { index, fragment ->
                 item("evidence-$index") {
@@ -86,6 +100,7 @@ internal fun SwissArgumentDetailSheet(selection: SwissArgumentSelection, events:
                         maxLines = 3, style = MaterialTheme.typography.bodyMedium)
                     Text(DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.systemDefault())
                         .format(Instant.ofEpochMilli(event.timestamp)), style = MaterialTheme.typography.labelSmall, color = Muted)
+                    WorkSourceButton(event, onUnavailable = { sourceId = event.id })
                 }
             }
         }

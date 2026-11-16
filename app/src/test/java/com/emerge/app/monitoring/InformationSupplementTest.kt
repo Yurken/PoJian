@@ -119,6 +119,32 @@ class InformationSupplementTest {
         assertEquals(request.scopeKey, JSONObject(http.sent.toString("UTF-8")).getString("scope_key"))
     }
 
+    @Test fun secureModeRejectsLegacyRetrievalBeforePreparingAnyPayload() {
+        val error = assertThrows(IllegalArgumentException::class.java) {
+            InformationSupplementClient.prepareLegacyRequest(request, secureConfigured = true)
+        }
+        assertEquals("请使用脱敏检索补充资料", error.message)
+    }
+
+    @Test fun outgoingLegacyTextIsMaskedAndResponseMatchesSanitizedScope() = runBlocking<Unit> {
+        val phone = "13800138000"
+        val email = "person@example.org"
+        val nationalId = "11010519900101123X"
+        val privateRequest = request.copy(scopeKey = "report:$phone", topic = "联系$email",
+            subject = phone, dimension = email, conditions = nationalId,
+            known = listOf(SupplementKnownArgument("电话$phone", "邮箱$email；证件$nationalId")))
+        val safe = InformationSupplementClient.prepareLegacyRequest(privateRequest, secureConfigured = false)
+        val reply = response().put("scope_key", safe.scopeKey).put("topic", safe.topic)
+        val http = FakeConnection(reply.toString())
+        assertEquals(1, InformationSupplementClient.retrieve(privateRequest, config, false, { true },
+            openConnection = { http }).sources.size)
+        val sent = http.sent.toString("UTF-8")
+        listOf(phone, email, nationalId).forEach { assertFalse(sent.contains(it)) }
+        assertTrue(sent.contains("[端侧已脱敏]"))
+        assertTrue(safe.scopeKey.startsWith("private-scope:"))
+        assertThrows(IllegalArgumentException::class.java) { InformationSupplementProtocol.decode(reply, privateRequest) }
+    }
+
     @Test fun scopeChangeDuringReadRejectsReplyAndClosesConnection() = runBlocking {
         var current = true
         val http = FakeConnection(response().toString()).apply { onRead = { current = false } }

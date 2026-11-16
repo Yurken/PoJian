@@ -418,11 +418,12 @@ internal fun SwissWorkDetailSheet(event: BrowseEvent, events: List<BrowseEvent>,
                     }
                 }
             }
-            item("original") { WorkOriginalContent(event) }
+            item("original") { WorkOriginalContent(event, analyzed.flatMap { listOf(it.quote, it.evidence) }) }
             item("raw-title") { Text("原文", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold) }
             items(attached, key = { "raw:${it.id}" }) { row ->
                 Text(swissRecordSource(row), style = MaterialTheme.typography.labelSmall, color = Muted)
-                QuoteBlock(rememberOriginalText(row), fromAudio = row.sourceType.startsWith("audio_"))
+                QuoteBlock(rememberOriginalText(row), fromAudio = row.sourceType.startsWith("audio_"),
+                    highlights = analyzed.flatMap { listOf(it.quote, it.evidence) })
             }
         }
     }

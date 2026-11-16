@@ -2,7 +2,7 @@ package com.emerge.app.ui
 
 import com.emerge.app.analysis.CognitiveReport
 import com.emerge.app.analysis.independentSources
-import com.emerge.app.analysis.newFactMetric
+import com.emerge.app.analysis.reportNewFactMetric
 import com.emerge.app.analysis.SourceProvenanceCodec
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,7 +17,7 @@ internal fun swissReportJson(report: CognitiveReport): String = JSONObject().app
     put("observedDurationMillis", report.observedDurationMillis)
     put("unknownDurationRecords", report.unknownDurationRecords)
     val sources = report.independentSources()
-    val facts = newFactMetric(report.claims)
+    val facts = report.reportNewFactMetric()
     put("independentSources", if (sources.total == 0 || sources.known == 0 && sources.unknown > 0) JSONObject.NULL else sources.known)
     put("independentSourcesUnknown", sources.unknown)
     put("newFacts", if (facts.total == 0 || facts.known == 0 && facts.unknown > 0) JSONObject.NULL else facts.known)

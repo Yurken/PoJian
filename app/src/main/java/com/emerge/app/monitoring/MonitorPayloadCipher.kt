@@ -10,19 +10,20 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /** Protect queued text at rest and authenticate its task identity. No screenshot/audio bytes enter this envelope. */
-class MonitorPayloadCipher {
+class MonitorPayloadCipher(private val maxBytes: Int = MAX_BYTES) {
+    init { require(maxBytes in 1..512 * 1024) }
     fun seal(plaintext: String, identity: String): String {
         val bytes = plaintext.toByteArray(Charsets.UTF_8)
-        require(bytes.size <= MAX_BYTES)
+        require(bytes.size <= maxBytes)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key(true)) }
         cipher.updateAAD(aad(identity))
         return "1:" + Base64.encodeToString(cipher.iv + cipher.doFinal(bytes), Base64.NO_WRAP)
     }
 
     fun open(envelope: String, identity: String): String {
-        require(envelope.startsWith("1:") && envelope.length <= (MAX_BYTES + 28) * 4 / 3 + 8)
+        require(envelope.startsWith("1:") && envelope.length <= (maxBytes + 28) * 4 / 3 + 8)
         val bytes = Base64.decode(envelope.substring(2), Base64.NO_WRAP)
-        require(bytes.size in 28..MAX_BYTES + 28)
+        require(bytes.size in 28..maxBytes + 28)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply {
             init(Cipher.DECRYPT_MODE, key(false), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
         }

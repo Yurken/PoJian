@@ -84,3 +84,11 @@ fun calculateStatistics(events: List<BrowseEvent>, period: StatisticsPeriod, now
         apps, bucketDurations.sum(), selected.count { !window.durationKnown(it) }, selected.size,
         apps.sumOf { it.unidentifiedWorks })
 }
+
+/** Calendar summary from Room's materialized projection; distinct identities are resolved by the DAO. */
+data class MaterializedBrowseStatistics(val visitCount: Int, val uniqueWorks: Int,
+    val dedupFacts: Int, val newFacts: Int, val guidanceEvents: Int, val guidanceDurationSec: Long)
+
+fun calculateSummaryStatistics(summary: com.emerge.app.data.DailyRollupSummary): MaterializedBrowseStatistics =
+    MaterializedBrowseStatistics(summary.viewEvents, summary.uniqueWorks, summary.dedupFacts,
+        summary.newFacts, summary.guidanceEvents, summary.guidanceDurationSec)

@@ -90,7 +90,7 @@ bash scripts/check-monitor-core.sh
 
 构建前请先按[固定签名配置](docs/ANDROID_SIGNING.md)恢复项目密钥与本地 `keystore.properties`——Debug 与 Release 共用同一签名，配置缺失时构建直接失败。首次构建会下载并校验固定版本的 sherpa-onnx 推理库；正式发布使用 `./gradlew :app:assembleRelease -PemergeAbi=arm64-v8a`。本地调试不指定 `emergeAbi` 时保留全部上游架构，也可按设备指定，例如 `-PemergeAbi=x86_64`。
 
-**覆盖安装**：应用 ID（`com.zhiheng.app`）与数据库文件名保持不变，当前 Room 为 v7。请使用相同签名的安装包覆盖安装，不要先卸载。
+**覆盖安装**：应用 ID（`com.zhiheng.app`）与数据库文件名保持不变，当前 Room 为 v10。请使用相同签名的安装包覆盖安装，不要先卸载。
 
 ## 发布与分发
 

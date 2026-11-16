@@ -23,7 +23,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import com.emerge.app.analysis.AnalysisState
 import com.emerge.app.analysis.repeatedEvidenceShare
-import com.emerge.app.analysis.newFactMetric
+import com.emerge.app.analysis.reportNewFactMetric
 import java.util.Locale
 
 @Composable
@@ -32,7 +32,7 @@ internal fun CocoonCard(state: AnalysisState, period: StatisticsPeriod, visible:
     val exposure = report?.periodExposure
     val primary = exposure?.primary
     val repeat = repeatedEvidenceShare(state, period)
-    val newFacts = remember(report?.claims) { report?.claims?.let(::newFactMetric) }
+    val newFacts = remember(report) { report?.reportNewFactMetric() }
     val fraction = primary?.share?.toFloat()
     val theme = fraction?.let { computeCocoonTheme(it * 100) }
     val accent = theme?.let { Color(it.colorArgb) } ?: DesignTokens.Emerald

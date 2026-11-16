@@ -179,7 +179,18 @@ internal fun SwissViewpointsScreen(
     val shares = data?.shares.orEmpty()
     val candidates = data?.candidates.orEmpty()
     val trend = data?.trend.orEmpty()
-    val requests = data?.requests.orEmpty()
+    val requests = if (com.emerge.app.monitoring.SecureChannelConfig.configured) emptyList() else data?.requests.orEmpty()
+    val secureResults = remember(events, semantics, period, now, selectedTopic) {
+        val window = ObservationWindow.forPeriod(period, now, zone)
+        val latest = semantics.groupBy { it.eventId }.mapValues { (_, values) -> values.maxBy { it.analyzedAt } }
+        events.filter(window::contains).mapNotNull { event -> latest[event.id]?.takeIf { it.validFor(event) }
+            ?.semanticV2?.takeIf { selectedTopic == null || it.topicName == selectedTopic }?.let { event.id to it } }.toMap()
+    }
+    val independentFacts = remember(secureResults) {
+        secureResults.values.flatMap { result -> result.facts.map { fact ->
+            fact.matchedHistoryId ?: com.emerge.app.data.DailyTopicRollupProjector.stableFactId(result.topicName, fact.factPoint)
+        } }.distinct().size
+    }
     var detailId by rememberSaveable { mutableStateOf<Long?>(null) }
     var groupKey by remember(period, selectedTopic) { mutableStateOf<String?>(null) }
     val selectedGroup = candidates.firstOrNull { it.key == groupKey }
@@ -289,8 +300,8 @@ internal fun SwissViewpointsScreen(
                         )
                         VerticalDivider(Modifier.fillMaxHeight(), color = DesignTokens.Border)
                         SwissViewpointMetric(
-                            label = "独立来源",
-                            value = data?.independentSources?.display ?: "—",
+                            label = if (secureResults.isNotEmpty()) "独立事实" else "独立来源",
+                            value = if (secureResults.isNotEmpty()) "$independentFacts 项" else data?.independentSources?.display ?: "—",
                             modifier = Modifier.weight(1f).testTag("viewpoints-independent-sources")
                         )
                     }
@@ -550,6 +561,10 @@ internal fun SwissViewpointsScreen(
                         )
                     }
                 }
+                group.items.flatMap { it.records }.mapNotNull { secureResults[it.id] }
+                    .flatMap { it.facts }.mapNotNull { it.matchedSourceNote }.distinct().forEach { note ->
+                        Text(note, color = DesignTokens.Amber, style = MaterialTheme.typography.labelSmall)
+                    }
                 val sources = group.items.map {
                     appNames[it.record.packageName] ?: swissKnownApps[it.record.packageName] ?: it.record.packageName
                 }.distinct()
@@ -574,6 +589,9 @@ internal fun SwissViewpointsScreen(
                     )
                 }
             }
+        }
+        if (secureResults.values.any { it.blindSpots.isNotEmpty() }) item("blind-spots") {
+            InformationSupplementPanel(secureResults.values.flatMap { it.blindSpots }.distinct().take(4))
         }
     }
     groupDetail?.takeIf { it.first === detailInput }?.second?.let { details ->

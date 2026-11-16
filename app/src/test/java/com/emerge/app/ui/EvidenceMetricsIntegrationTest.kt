@@ -63,7 +63,7 @@ class EvidenceMetricsIntegrationTest {
         fun count(events: List<BrowseEvent>, results: List<EventSemantics>) = filterSwissViewpoints(
             prepareSwissViewpoints(events, results, null, StatisticsPeriod.HOUR, now, zone), null, zone).independentSources.display
         assertEquals("1", count(listOf(a), models))
-        assertEquals("未核实", count(listOf(a.copy(visibleText = "应该增加招聘岗位")), models))
+        assertEquals("待分析", count(listOf(a.copy(visibleText = "应该增加招聘岗位")), models))
         assertEquals("—", count(emptyList(), models))
         assertEquals("—", count(listOf(a), models + models.first().copy(analyzedAt = now + 1, claims = emptyList())))
     }
@@ -76,7 +76,7 @@ class EvidenceMetricsIntegrationTest {
         fun count(rows: List<BrowseEvent>) = filterSwissViewpoints(prepareSwissViewpoints(rows, results, null,
             StatisticsPeriod.HOUR, now, zone), null, zone).independentSources
         assertEquals(1, count(listOf(parent, child, revisit)).known)
-        assertEquals("未核实", count(listOf(parent, child.copy(workKey = "another"))).display)
+        assertEquals("待分析", count(listOf(parent, child.copy(workKey = "another"))).display)
         val invalid = CognitiveAnalyzer().analyze(listOf(parent, child.copy(workKey = "another")), StatisticsPeriod.HOUR,
             now, zone, semantics = results)
         assertTrue(JSONObject(swissReportJson(invalid)).isNull("independentSources"))

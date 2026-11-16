@@ -11,11 +11,40 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 object RemoteAudioInsights {
-    suspend fun analyze(config: TextServiceConfig, current: List<TranscriptEvidence>, history: List<TranscriptEvidence>): AudioInsightReport = withContext(Dispatchers.IO) {
+    suspend fun analyze(config: TextServiceConfig, current: List<TranscriptEvidence>, history: List<TranscriptEvidence>,
+        application: com.emerge.app.EmergeApplication? = null, isCurrent: () -> Boolean = { true }): AudioInsightReport = withContext(Dispatchers.IO) {
         require(current.isNotEmpty()) { "暂无转写可分析" }
         require(current.sumOf { it.text.length } <= 20_000) { "转写较长，请使用本地分析或分段导入" }
+        if (com.emerge.app.monitoring.SecureChannelConfig.applies(config)) {
+            val app = requireNotNull(application) { "安全分析上下文不可用" }
+            val client = com.emerge.app.monitoring.SecureSemanticClient(app)
+            val claims = mutableListOf<AudioClaimInsight>()
+            for (segment in current) {
+                require(segment.text.length <= 16000) { "转写较长，请分段分析" }
+                val facts = app.repository.recentHistoryFacts(before = segment.timestamp)
+                val workId = "audio:${segment.sessionId}:${segment.id}"
+                val payload = JSONObject().put("work_id", workId).put("platform", "audio_transcript")
+                    .put("title", "").put("author", "").put("clean_text", com.emerge.app.monitoring.CloudPrivacyStats.sanitize(segment.text))
+                    .put("dwell_seconds", ((segment.endMillis - segment.startMillis) / 1000).coerceIn(0, 86400))
+                    .put("history_facts", JSONArray().apply { facts.forEach { fact -> put(JSONObject()
+                        .put("fact_id", fact.factId).put("fact_text", com.emerge.app.monitoring.CloudPrivacyStats.sanitize(fact.factText))
+                        .put("source_platform", fact.sourcePlatform)
+                        .put("captured_at", java.time.Instant.ofEpochMilli(fact.capturedAt).toString())) } })
+                val result = client.analyze(config, payload, isCurrent)
+                val event = com.emerge.app.data.BrowseEvent(id = segment.id, packageName = "audio_transcript",
+                    timestamp = segment.timestamp, eventType = 0, visibleText = segment.text, workKey = workId)
+                val semantic = com.emerge.app.analysis.SemanticsCodec.decodeV2(result, event).semanticV2!!
+                require(semantic.facts.all { it.matchedHistoryId == null || it.matchedHistoryId in facts.map { fact -> fact.factId } })
+                semantic.viewpoints.forEach { viewpoint ->
+                    val evidence = viewpoint.evidences.firstOrNull { segment.text.contains(it.factSpan) }
+                    if (evidence != null) claims += AudioClaimInsight(viewpoint.stanceSummary, evidence.factSpan, segment.id,
+                        viewpoint.authorAttitude, if (evidence.isCoveredByHistory) "依据重复" else "依据有新增")
+                }
+            }
+            return@withContext AudioInsightReport("识别出 ${claims.size} 个观点", "安全文字服务 · 引文已校验", claims)
+        }
         fun rows(list: List<TranscriptEvidence>) = JSONArray().apply { list.forEach { row -> put(JSONObject().apply {
-            put("id", row.id); put("text", row.text); put("timestamp", row.timestamp)
+            put("id", row.id); put("text", com.emerge.app.monitoring.CloudPrivacyStats.sanitize(row.text)); put("timestamp", row.timestamp)
             put("startMillis", row.startMillis); put("endMillis", row.endMillis)
         }) } }
         var historicalCharacters = 0

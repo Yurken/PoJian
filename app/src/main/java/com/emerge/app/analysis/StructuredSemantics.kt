@@ -26,12 +26,13 @@ data class EventSemantics(
     val inputText: String,
     val analyzedAt: Long,
     val claims: List<ArgumentUnit>,
-    val inputKind: String = "text"
+    val inputKind: String = "text",
+    val semanticV2: SemanticAnalysisV2? = null
 ) {
     fun validFor(event: BrowseEvent): Boolean =
         eventId == event.id && inputText == event.visibleText && inputText.isNotBlank() &&
             inputText.length <= 16_000 && analyzedAt >= 0 && inputKind.isNotBlank() && inputKind.length <= 40 &&
-            claims.size <= 3 && claims.all { claim ->
+            (semanticV2?.validFor(inputText) != false) && claims.size <= 3 && claims.all { claim ->
                 claim.quote.isNotBlank() && claim.quote.length <= 500 && inputText.contains(claim.quote) &&
                     claim.topic.length <= 80 && claim.subject.length <= 100 && claim.dimension.length <= 80 &&
                     claim.stance.length <= 200 && claim.conditions.length <= 200 && claim.evidence.length <= 500 &&

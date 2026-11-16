@@ -106,21 +106,42 @@ object InformationSupplementClient {
     private class ServiceFailure(message: String) : IOException(message)
     private const val MAX_RESPONSE_BYTES = 128 * 1024
 
+    /** The legacy retrieval endpoint is never used by a configured secure channel. */
+    internal fun prepareLegacyRequest(request: SupplementRequest,
+        secureConfigured: Boolean = SecureChannelConfig.configured): SupplementRequest {
+        require(!secureConfigured) { "请使用脱敏检索补充资料" }
+        InformationSupplementProtocol.encode(request)
+        val scope = CloudPrivacyStats.sanitize(request.scopeKey)
+        return request.copy(
+            scopeKey = if (scope == request.scopeKey) scope else "private-scope:" + AttestedPayloadCipher.hash(request.scopeKey),
+            topic = CloudPrivacyStats.sanitize(request.topic),
+            subject = CloudPrivacyStats.sanitize(request.subject),
+            dimension = CloudPrivacyStats.sanitize(request.dimension),
+            conditions = CloudPrivacyStats.sanitize(request.conditions),
+            known = request.known.map { SupplementKnownArgument(CloudPrivacyStats.sanitize(it.quote),
+                CloudPrivacyStats.sanitize(it.evidence)) }
+        )
+    }
+
     suspend fun retrieve(request: SupplementRequest, config: TextServiceConfig, allowLocalHttp: Boolean,
         isCurrent: () -> Boolean, onRequest: () -> Unit = {},
         openConnection: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection }): SupplementResult {
+        require(!SecureChannelConfig.configured) { "请使用脱敏检索补充资料" }
         require(config.enabled) { "请先开启云端分析" }
         val endpoint = EndpointPolicy.validate(config.endpoint, allowLocalHttp)
         require(config.token.isNotEmpty() && config.token.length <= 512 && config.token.all { it.code in 33..126 }) {
             "访问令牌无效"
         }
-        val bytes = InformationSupplementProtocol.encode(request).toString().toByteArray(Charsets.UTF_8)
+        currentCoroutineContext().ensureActive()
+        if (!isCurrent()) throw CancellationException("Supplement scope changed")
+        val sanitizedRequest = prepareLegacyRequest(request)
+        val bytes = InformationSupplementProtocol.encode(sanitizedRequest).toString().toByteArray(Charsets.UTF_8)
         require(bytes.size <= 32 * 1024) { "补充材料超出范围" }
         return withTimeout(55_000) {
             val json = post("$endpoint/information-supplement", config.token, bytes, isCurrent, onRequest, openConnection)
             currentCoroutineContext().ensureActive()
             if (!isCurrent()) throw CancellationException("Supplement scope changed")
-            InformationSupplementProtocol.decode(json, request)
+            InformationSupplementProtocol.decode(json, sanitizedRequest)
         }
     }
 

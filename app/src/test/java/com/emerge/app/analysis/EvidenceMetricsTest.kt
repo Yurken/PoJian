@@ -21,7 +21,7 @@ class EvidenceMetricsTest {
 
     @Test fun zeroChangeUnknownAndNoDataRemainDifferent() {
         assertEquals("0", newFactMetric(listOf(claim(2, Increment.REPEATED, fact(repeated = true)))).display)
-        assertEquals("未核实", newFactMetric(listOf(claim(1, Increment.FIRST, fact()))).display)
+        assertEquals("待分析", newFactMetric(listOf(claim(1, Increment.FIRST, fact()))).display)
         assertEquals("—", newFactMetric(emptyList()).display)
         assertEquals("1+", newFactMetric(listOf(claim(2, Increment.NEW, fact(fresh = true)),
             claim(3, Increment.UNKNOWN, fact("招聘人数增加20%")))).display)
@@ -31,12 +31,12 @@ class EvidenceMetricsTest {
         val fresh = claim(2, Increment.NEW, fact(fresh = true))
         for (row in listOf(fresh.copy(uncertainAttribution = true), fresh.copy(historyComparisonTruncated = true),
             fresh.copy(evidenceDetails = listOf(fact(fresh = true).copy(identityUnresolved = true))))) {
-            assertEquals("未核实", newFactMetric(listOf(row)).display)
+            assertEquals("待分析", newFactMetric(listOf(row)).display)
         }
     }
 
     @Test fun repeatingAnUnassessedFirstOccurrenceCannotTurnUnknownIntoZero() {
-        assertEquals("未核实", newFactMetric(listOf(claim(1, Increment.FIRST, fact()),
+        assertEquals("待分析", newFactMetric(listOf(claim(1, Increment.FIRST, fact()),
             claim(2, Increment.REPEATED, fact(repeated = true)))).display)
     }
 
@@ -79,7 +79,7 @@ class EvidenceMetricsTest {
             record(3, secondary("《乙报告》", "《共同调查》")),
             record(4, secondary("《三次转载》", "《甲报告》")))
         assertEquals("1", independentSourceMetric(rows).display)
-        assertEquals("未核实", independentSourceMetric(rows.drop(1)).display)
+        assertEquals("待分析", independentSourceMetric(rows.drop(1)).display)
     }
 
     @Test fun citingTwoIndependentMaterialsDoesNotMergeTheirRoots() {
@@ -92,16 +92,16 @@ class EvidenceMetricsTest {
         val known = record(1, primary("青禾研究所", "《甲样本》"))
         assertEquals("1+", independentSourceMetric(listOf(known, SourceRecord(2, "原文", null))).display)
         assertEquals("1+", independentSourceMetric(listOf(known.copy(provenance = known.provenance!!.copy(complete = false)))).display)
-        assertEquals("未核实", independentSourceMetric(listOf(SourceRecord(1, "原文", null))).display)
+        assertEquals("待分析", independentSourceMetric(listOf(SourceRecord(1, "原文", null))).display)
         assertEquals("—", independentSourceMetric(emptyList()).display)
     }
 
     @Test fun cyclicOrConflictingProvenanceCannotBecomeIndependentEvidence() {
         val cycle = listOf(record(1, secondary("《甲报告》", "《乙报告》")),
             record(2, secondary("《乙报告》", "《甲报告》")))
-        assertEquals("未核实", independentSourceMetric(cycle).display)
+        assertEquals("待分析", independentSourceMetric(cycle).display)
         val conflict = record(3, primary("青禾研究所", "《甲报告》"))
-        assertEquals("未核实", independentSourceMetric(cycle + conflict).display)
+        assertEquals("待分析", independentSourceMetric(cycle + conflict).display)
     }
 
     @Test fun conflictingPrimaryAndSecondaryDeclarationsRemainUnknownEvenWithAKnownParent() {
@@ -113,8 +113,8 @@ class EvidenceMetricsTest {
 
     @Test fun invalidAnchorsAndInvalidPrimaryDeclarationsCannotCount() {
         val source = primary("青禾研究所", "《甲样本》")
-        assertEquals("未核实", independentSourceMetric(listOf(record(1, source).copy(evidence = "修改后原文"))).display)
-        assertEquals("未核实", independentSourceMetric(listOf(record(1,
+        assertEquals("待分析", independentSourceMetric(listOf(record(1, source).copy(evidence = "修改后原文"))).display)
+        assertEquals("待分析", independentSourceMetric(listOf(record(1,
             source.copy(basis = "青禾研究所发布《甲样本》")))).display)
     }
 

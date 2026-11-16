@@ -62,8 +62,13 @@ internal class CaptureTextCleaner(
     suspend fun clean(raw: String, config: TextServiceConfig, authorization: String, isCurrent: () -> Boolean): String {
         val local = PlatformTextCleaner.clean(raw)
         currentCoroutineContext().ensureActive()
+        // Secure semantic mode performs local cleanup only: do not leak a plaintext preflight.
+        if (com.emerge.app.monitoring.SecureChannelConfig.applies(config)) return local
         if (!config.enabled || config.token.isBlank() || local.isBlank() || local.length > 16000 ||
             local.count { it == '\n' } >= 256 || !isCurrent()) return local
+        // Keep the local original intact. Avoid remote deletion suggestions over redacted text,
+        // whose hash/line offsets would no longer describe that original.
+        if (com.emerge.app.monitoring.CloudPrivacyStats.sanitize(local) != local) return local
         val scope = MonitorPolicy.hash("$authorization|${config.endpoint}|${config.token}")
         val key = MonitorPolicy.hash("$scope|$local")
         synchronized(cache) {

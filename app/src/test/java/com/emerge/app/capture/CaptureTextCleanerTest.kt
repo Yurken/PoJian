@@ -91,6 +91,12 @@ class CaptureTextCleanerTest {
         assertEquals(raw, cleaner.clean(raw, config, "scope") { true })
     }
 
+    @Test fun privacyMaskingPreventsCleanupPreflightFromLeakingTheOriginal() = runBlocking {
+        val raw = "联系方式13800138000，正文观点保留。"
+        val cleaner = CaptureTextCleaner(request = { _, _, _ -> error("Sensitive preflight must stay local") })
+        assertEquals(raw, cleaner.clean(raw, config, "scope") { true })
+    }
+
     @Test fun emojiAndSuffixEditsPreserveExactQuotedWords() {
         val raw = "😀正文：仅限2026年 广告 展开\n相关搜索"
         val result = CaptureCleanupProtocol.decode(raw, selection(raw, "[1]",

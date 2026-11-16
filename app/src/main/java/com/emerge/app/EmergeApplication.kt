@@ -15,7 +15,7 @@ import kotlinx.coroutines.flow.shareIn
 
 class EmergeApplication : Application() {
     // Keep the existing database filename so a rebrand never strands local history.
-    val database by lazy { Room.databaseBuilder(this, BrowseDatabase::class.java, "zhiheng.db").addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8, BrowseDatabase.MIGRATION_8_9).build() }
+    val database by lazy { Room.databaseBuilder(this, BrowseDatabase::class.java, "zhiheng.db").addMigrations(BrowseDatabase.MIGRATION_1_2, BrowseDatabase.MIGRATION_2_3, BrowseDatabase.MIGRATION_3_4, BrowseDatabase.MIGRATION_4_5, BrowseDatabase.MIGRATION_5_6, BrowseDatabase.MIGRATION_6_7, BrowseDatabase.MIGRATION_7_8, BrowseDatabase.MIGRATION_8_9, BrowseDatabase.MIGRATION_9_10).build() }
     val repository by lazy { BrowseRepository(database) }
     private val historyScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     // Long-lived observers share one load. Direct repository first() reads remain
@@ -58,6 +58,7 @@ class EmergeApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        com.emerge.app.monitoring.CloudPrivacyStats.attach(this)
         if (BuildConfig.BUNDLED_DEMO_DATA) {
             com.emerge.app.data.DemoSnapshotInstaller.install(dataDir) { assets.open("demo-snapshot.zip") }
             // Also restore online analysis when upgrading the earlier offline demo,

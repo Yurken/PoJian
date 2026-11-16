@@ -4,6 +4,25 @@ LEVELS = {"unknown", "low", "medium", "high"}
 EMOTIONS = {"anxiety", "anger", "fear", "sadness", "joy", "neutral"}
 
 
+def verify_evidence_spans(result_json, source_text):
+    """Check exact contiguous excerpts, without punctuation deletion that could
+    erase a negation or join unrelated sentences into invented evidence.
+    Only the positive guidance flag is downgraded; this is not fact checking.
+    """
+    import copy
+    result = copy.deepcopy(result_json)
+    guidance = result.get("emotional_guidance", {})
+    if guidance.get("is_over_extrapolation") is True:
+        verified = all(isinstance(guidance.get(key), str) and guidance[key].strip()
+                       and guidance[key] in source_text for key in ("fact_span", "conclusion_span"))
+        guidance["span_verified"] = bool(verified)
+        if not verified:
+            guidance["is_over_extrapolation"] = False
+            for key in ("fact_span", "conclusion_span", "scope_extrapolation", "certainty_upgrade", "emotion_amplification"):
+                guidance[key] = ""
+    return result
+
+
 def validate_emotions(values, available):
     """Optional content annotations; absent labels must never be interpreted as neutral."""
     if not isinstance(values, list) or not 1 <= len(values) <= 3:

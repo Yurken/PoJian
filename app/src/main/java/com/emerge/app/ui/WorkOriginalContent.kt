@@ -35,7 +35,31 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 @Composable
-internal fun WorkOriginalContent(event: BrowseEvent) {
+internal fun WorkSourceButton(event: BrowseEvent, onUnavailable: () -> Unit) {
+    val context = LocalContext.current
+    val app = context.applicationContext as? EmergeApplication ?: return
+    val dao = app.database.workOriginalDao()
+    val key = event.workKey
+    val source by remember(key) { key?.let(dao::observe) ?: flowOf(null) }.collectAsState(initial = null)
+    val work by remember(key) { key?.let(dao::observeWork) ?: flowOf(null) }.collectAsState(initial = null)
+    val direct = source?.url?.takeIf { OriginalLinks.allowed(it, event.packageName) } ?: work?.let(OriginalLinks::forWork)
+    val search = source?.url?.takeIf { OriginalLinks.isSearchFallback(it, event.packageName) }
+        ?: OriginalLinks.searchFallback(event.packageName, work?.title ?: event.visibleText.lineSequence().firstOrNull().orEmpty())
+    val url = direct ?: search
+    if (url != null) PojianTextButton(onClick = {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            if (direct == null) intent.setPackage(event.packageName)
+            context.startActivity(intent)
+        } catch (_: android.content.ActivityNotFoundException) { onUnavailable() }
+        catch (_: SecurityException) { onUnavailable() }
+    }, modifier = Modifier.testTag("work-source-open-${event.id}")) {
+        Text(if (direct == null) "搜索出处" else "查看出处")
+    }
+}
+
+@Composable
+internal fun WorkOriginalContent(event: BrowseEvent, highlights: List<String> = emptyList()) {
     if (!OriginalLinks.supports(event.packageName)) return
     val app = LocalContext.current.applicationContext as? EmergeApplication ?: return
     val dao = app.database.workOriginalDao()
@@ -53,9 +77,13 @@ internal fun WorkOriginalContent(event: BrowseEvent) {
             }
             if (url != null) PojianIconButton(onClick = { expanded = true }) { Icon(painterResource(R.drawable.ic_open_in_new), contentDescription = "全屏") }
         }
-        if (url == null) MetadataText("原作链接未保存")
+        if (url == null) WorkSourceButton(event, onUnavailable = { expanded = true })
         else if (!expanded) key(url) { OriginalPage(url, Modifier.fillMaxWidth().height(420.dp)) }
     }
+    if (expanded && url == null) AlertDialog(onDismissRequest = { expanded = false },
+        title = { Text("原文") }, text = {
+            androidx.compose.foundation.lazy.LazyColumn { item { QuoteBlock(event.visibleText, highlights = highlights) } }
+        }, confirmButton = { TextButton(onClick = { expanded = false }) { Text("关闭") } })
     if (expanded && url != null) Dialog(onDismissRequest = { expanded = false },
         properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize()) {

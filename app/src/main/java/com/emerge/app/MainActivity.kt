@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra("monitor_discover", false)) discoveryRequest++
         setContent { EmergeTheme { EmergeScreen(discoveryRequest) {
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        } } }
+        }; com.emerge.app.ui.SecureChannelAlert() } }
     }
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

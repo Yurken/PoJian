@@ -39,6 +39,8 @@ h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 
   border-radius: 6px; padding: 3px 12px; font-size: 12px; cursor: pointer;
 }
 .btn:hover { border-color: var(--accent); color: var(--accent); }
+#securityPanel .btn { appearance: none; white-space: normal; line-height: 1.5; margin: 6px 4px 0 0; }
+#securityPanel .btn[aria-pressed="true"] { border-color: var(--err); color: var(--err); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
 .dot.err { background: var(--err); }
@@ -194,6 +196,14 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
   <div class="badges" id="badges"></div>
 
   <div class="cards" id="cards"></div>
+  <section class="panel" id="securityPanel" hidden>
+    <h2>安全审计与攻防演练</h2>
+    <pre class="mono" id="securityState" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>
+    <button class="btn" type="button" id="simulateTamper" aria-pressed="false">[模拟攻击1] 篡改云端程序度量</button>
+    <button class="btn" type="button" id="simulateRollback" aria-pressed="false">[模拟攻击2] 回滚数据库旧快照</button>
+    <div class="msg" id="securityMsg" role="status"></div>
+    <pre class="mono" id="securityLogs" style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:280px;overflow:auto"></pre>
+  </section>
 
   <div class="panel">
     <h2>请求统计</h2>
@@ -452,6 +462,19 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
 
   function render(data) {
     var svc = data.service, st = svc.stats, cfg = data.settings || {};
+    var security = data.security;
+    document.getElementById("securityPanel").hidden = !security;
+    if (security) {
+      document.getElementById("securityState").textContent = security.protocol + "\n程序签名度量 " + security.code_measurement_hash +
+        "\n状态链 v" + security.current_version + " · " + security.current_state_hash;
+      document.getElementById("securityLogs").textContent = (security.logs || []).map(function (entry) {
+        return fmtTime(entry.time / 1000) + " " + entry.type + " " + entry.cipher_preview;
+      }).join("\n");
+      document.getElementById("simulateTamper").disabled = !security.debug_enabled;
+      document.getElementById("simulateRollback").disabled = !security.debug_enabled;
+      document.getElementById("simulateTamper").setAttribute("aria-pressed", String(security.simulate_tamper_attack));
+      document.getElementById("simulateRollback").setAttribute("aria-pressed", String(security.simulate_rollback_attack));
+    }
     var badges = "";
     badges += badge("文字模型", svc.model_configured);
     if (svc.monitor) {
@@ -609,6 +632,11 @@ footer { color: var(--muted); font-size: 12px; margin-top: 8px; text-align: cent
   }
 
   refreshBtn.addEventListener("click", tick);
+  ["Tamper", "Rollback"].forEach(function (name) {
+    document.getElementById("simulate" + name).addEventListener("click", function () {
+      postConfig("admin/debug/toggle-" + name.toLowerCase(), {}, "securityMsg", "模拟状态已更新");
+    });
+  });
   pauseBtn.addEventListener("click", function () {
     paused = !paused;
     pauseBtn.textContent = paused ? "继续" : "暂停";

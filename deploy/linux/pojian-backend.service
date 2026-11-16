@@ -14,7 +14,7 @@ Environment=EMERGE_HOST=127.0.0.1
 Environment=EMERGE_PORT=28763
 Environment=EMERGE_BUDGET_DB=/var/lib/pojian-backend/monitor-budget.sqlite3
 EnvironmentFile=/etc/pojian/backend.env
-ExecStart=/usr/bin/python3 -B /opt/pojian-backend/current/server/monitor_server.py
+ExecStart=/usr/bin/env /opt/pojian-backend/current/.venv/bin/python -B /opt/pojian-backend/current/server/monitor_server.py
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=20

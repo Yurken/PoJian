@@ -381,6 +381,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
         if (input.kind == "frame" && !policy.visual) return ProcessResult.CANCELLED
         mutableState.update { it.copy(busy = true, notice = "正在云端分析采样内容") }
         try {
+            if (SecureChannelConfig.applies(service)) return processSecure(input, service)
             val now = System.currentTimeMillis()
             val checkFacts = input.checkFacts
             // Keep work attribution, fact mode, authorization and relative-date context separate.
@@ -496,12 +497,57 @@ class MonitorRuntime(private val app: EmergeApplication) {
         } catch (error: Exception) {
             if (error is CancellationException || error is MonitorInputInvalidated) throw error
             if (!current(input)) return ProcessResult.CANCELLED
+            if (error is SecurityAttestationException) {
+                SecureChannelTelemetry.blocked(error)
+                unchecked(input, error.message ?: "安全校验失败，已阻断上传")
+                return ProcessResult.FAILED(error.alertCode)
+            }
             val retryable = if (error is HttpFailure) error.status in setOf(408, 429) || error.status in 500..599
                 else error is java.io.IOException
             if (input.lease != null && retryable) return ProcessResult.RETRY(if (error is HttpFailure) "http_${error.status}" else "network")
             unchecked(input, if (retryable) "网络或服务暂不可用，核查未完成，请稍后重试" else "云端结果无法使用，核查未完成，请稍后重试")
             return ProcessResult.FAILED(if (error is HttpFailure) "http_${error.status}" else "invalid_response")
         } finally { connection = null; mutableState.update { it.copy(busy = false) } }
+    }
+
+    private suspend fun processSecure(input: MonitorInput, service: TextServiceConfig): ProcessResult {
+        // V2 consumes retained, locally extracted text. Raw image bytes never bypass this channel.
+        val targets = input.snapshots.distinctBy { it.id }
+        if (targets.isEmpty()) {
+            unchecked(input, "暂无已保存文字可供安全分析")
+            return ProcessResult.DONE
+        }
+        val client = SecureSemanticClient(app)
+        for (event in targets) {
+            requireCurrentMonitorInput(current(input) && app.audioCoordinator.settings.config.value == service)
+            val history = app.repository.recentHistoryFacts(before = event.timestamp)
+            val payload = JSONObject().put("work_id", event.workKey ?: event.id.toString())
+                .put("platform", event.packageName).put("title", "").put("author", "")
+                .put("clean_text", CloudPrivacyStats.sanitize(event.visibleText))
+                .put("dwell_seconds", (event.durationMillis / 1000).coerceIn(0, 86400))
+                .put("history_facts", JSONArray().apply { history.forEach { fact -> put(JSONObject()
+                    .put("fact_id", fact.factId).put("fact_text", CloudPrivacyStats.sanitize(fact.factText))
+                    .put("source_platform", fact.sourcePlatform)
+                    .put("captured_at", java.time.Instant.ofEpochMilli(fact.capturedAt).toString())) } })
+            app.audioCoordinator.settings.recordRequest()
+            val result = client.analyze(service, payload) {
+                current(input) && app.audioCoordinator.settings.config.value == service
+            }
+            requireCurrentMonitorInput(current(input) && app.audioCoordinator.settings.config.value == service)
+            val semantics = com.emerge.app.analysis.SemanticsCodec.decodeV2(result, event, System.currentTimeMillis())
+            val historicalIds = history.map { it.factId }.toSet()
+            require(semantics.semanticV2?.facts.orEmpty().all {
+                it.matchedHistoryId == null || it.matchedHistoryId in historicalIds
+            }) { "服务引用了未提供的历史事实" }
+            app.repository.saveSemantics(event, semantics, input.deletion, transactionGuard = {
+                input.lease?.let { tasks.isLeaseCurrent(it, System.currentTimeMillis()) {
+                    current(input) && app.audioCoordinator.settings.config.value == service
+                } } ?: true
+            }) { current(input) && app.audioCoordinator.settings.config.value == service }
+        }
+        mutableState.update { it.copy(requestsToday = app.audioCoordinator.settings.requestsToday()) }
+        notice("分析完成")
+        return ProcessResult.DONE
     }
 
     @Synchronized private fun commit(input: MonitorInput, outputs: List<MonitorFinding>, service: TextServiceConfig) {
@@ -516,7 +562,7 @@ class MonitorRuntime(private val app: EmergeApplication) {
     }
 
     private suspend fun request(input: MonitorInput, endpoint: String, token: String, checkFacts: Boolean): JSONObject {
-        val payload = JSONObject().put("version", 1).put("id", input.id).put("text", input.text)
+        val payload = JSONObject().put("version", 1).put("id", input.id).put("text", CloudPrivacyStats.sanitize(input.text))
             .put("kind", input.kind).put("captured_at", input.at).put("check_facts", checkFacts)
             .put("content_scope", MonitorPolicy.hash(input.factScope + ":" + authorizationKey() + ":" + serviceFingerprint()))
         if (input.image.isNotEmpty()) payload.put("image", input.image)

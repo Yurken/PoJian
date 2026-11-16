@@ -485,7 +485,23 @@ class HttpTests(unittest.TestCase):
     def test_unauthorized_does_not_call_provider(self): self.assertEqual(self.call(token="wrong")[0], 401); self.assertEqual(self.provider.model_calls, 0)
     def test_invalid_body(self): self.assertEqual(self.call(body={"version": 2})[0], 400)
     def test_wrong_media_type(self): self.assertEqual(self.call(extra={"Content-Type": "text/plain"})[0], 415)
-    def test_oversized_body(self): self.assertEqual(self.call(body={"data": "x" * m.MAX_BODY})[0], 413)
+    def test_oversized_body(self):
+        # Rejection must happen from headers, before accepting the body. Sending
+        # the oversized body concurrently races the server's early close and
+        # can raise BrokenPipeError before the test reads the correct 413.
+        connection = http.client.HTTPConnection("127.0.0.1", self.server.server_port, timeout=3)
+        try:
+            connection.putrequest("POST", "/monitor")
+            connection.putheader("Authorization", "Bearer test-token")
+            connection.putheader("Content-Type", "application/json")
+            connection.putheader("Content-Length", str(m.MAX_BODY + 1))
+            connection.endheaders()
+            response = connection.getresponse()
+            self.assertEqual(response.status, 413)
+            response.read()
+            self.assertEqual(self.provider.model_calls, 0)
+        finally:
+            connection.close()
     def test_budget_is_enforced(self):
         for _ in range(5): self.assertEqual(self.call()[0], 200)
         self.assertEqual(self.call()[0], 429)

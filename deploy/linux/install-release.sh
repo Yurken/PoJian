@@ -154,8 +154,13 @@ chown -R root:root "$stage"
 find "$stage" -type d -exec chmod 0755 {} +
 find "$stage" -type f -exec chmod 0644 {} +
 
+# The private virtual environment belongs to this release and is switched or
+# rolled back together with its code. No dependency files or keys enter Git.
+/usr/bin/python3 -m venv "$stage/.venv"
+"$stage/.venv/bin/python" -m pip install --disable-pip-version-check -r "$stage/server/requirements.txt"
+
 cd "$stage"
-runuser -u pojian -- /usr/bin/python3 -B - <<'PY'
+runuser -u pojian -- "$stage/.venv/bin/python" -B - <<'PY'
 import sys
 import unittest
 
@@ -177,6 +182,10 @@ try:
     from monitor_server import Options, runtime_file_has_text_key
     config = Config.from_env(require_upstream=os.getenv('EMERGE_ALLOW_UNCONFIGURED') != '1')
     Options.from_env(config)
+    if os.getenv("POJIAN_SIGNING_PRIVATE_KEY"):
+        from secure_gateway import SecureGateway
+        signed = SecureGateway.from_env()
+        signed.store.close()
     if (os.environ.get('EMERGE_HOST') != '127.0.0.1'
             or os.environ.get('EMERGE_PORT') != '28763'
             or os.environ.get('EMERGE_BUDGET_DB') != '/var/lib/pojian-backend/monitor-budget.sqlite3'):
@@ -194,7 +203,7 @@ systemd-run --quiet --wait --pipe --collect \
     --setenv=PYTHONDONTWRITEBYTECODE=1 \
     --setenv=EMERGE_HOST=127.0.0.1 --setenv=EMERGE_PORT=28763 \
     --setenv=EMERGE_BUDGET_DB=/var/lib/pojian-backend/monitor-budget.sqlite3 \
-    /usr/bin/python3 -B -c "$validation_code"
+    "$stage/.venv/bin/python" -B -c "$validation_code"
 systemd-analyze verify "$bundle/$unit"
 
 if [[ -L "$base/current" ]]; then
@@ -281,6 +290,14 @@ for attempt in range(30):
                 error.close()
                 if status != 401:
                     raise ValueError('Unauthenticated request did not return 401')
+        if os.getenv('POJIAN_SIGNING_PRIVATE_KEY'):
+            from crypto_guard import code_measurement
+            headers = {'Authorization': 'Bearer ' + config.service_token}
+            with urlopen(Request(base + '/api/v1/health', headers=headers), timeout=2) as response:
+                signed = json.load(response)
+                if (response.status != 200 or signed.get('enclave_mode') != 'SIGNED_APPLICATION_V2'
+                        or signed.get('code_measurement_hash') != code_measurement()):
+                    raise ValueError('Signed application endpoint does not match this release')
         if not effective_configured:
             for endpoint in ('/monitor', '/analyze'):
                 headers = {'Content-Type': 'application/json',
@@ -326,7 +343,7 @@ systemd-run --quiet --wait --pipe --collect \
     --setenv=PYTHONDONTWRITEBYTECODE=1 \
     --setenv=EMERGE_HOST=127.0.0.1 --setenv=EMERGE_PORT=28763 \
     --setenv=EMERGE_BUDGET_DB=/var/lib/pojian-backend/monitor-budget.sqlite3 \
-    /usr/bin/python3 -B -c "$readiness_code"
+    "$release/.venv/bin/python" -B -c "$readiness_code"
 systemctl is-active --quiet "$unit"
 if [[ -n "$previous_release" ]]; then
     ln -s "$previous_release" "$base/.previous-$release_id"

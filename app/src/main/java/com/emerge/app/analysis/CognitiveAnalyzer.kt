@@ -29,7 +29,8 @@ data class ClaimObservation(val eventId: Long, val timestamp: Long, val packageN
     val comparedHistoryEventIds: List<Long> = emptyList(),
     val historyComparisonTruncated: Boolean = false,
     val dimension: String = "", val stance: String = "", val analysisSource: String = "local_rules",
-    val sourceRecord: SourceRecord? = null)
+    val sourceRecord: SourceRecord? = null,
+    val semanticFacts: List<SemanticEvidence>? = null)
 data class ClaimGroup(val topic: String, val quote: String, val observations: List<ClaimObservation>)
 data class TopicCount(val topic: String, val count: Int)
 data class HourlyReview(val hour: Int, val recordCount: Int, val durationMillis: Long,
@@ -54,7 +55,11 @@ data class CognitiveReport(val generatedAt: Long, val start: Long, val end: Long
     val failedAnalysisRecords: Int = 0, val exposure: ExposureAssessment? = null,
     val emotionExposure: EmotionExposureSummary = EmotionExposureSummary(),
     val topicDigests: List<TopicDigest> = emptyList(),
-    val periodExposure: ExposureAssessment? = null)
+    val periodExposure: ExposureAssessment? = null,
+    val semanticV2: Map<Long, SemanticAnalysisV2> = emptyMap(),
+    val semanticEventTimes: Map<Long, Long> = emptyMap(),
+    val semanticFingerprint: String? = null,
+    val dailyRollup: com.emerge.app.data.DailyRollupSummary? = null)
 
 class CognitiveAnalyzer {
     private companion object {
@@ -231,7 +236,8 @@ class CognitiveAnalyzer {
                     details.map { it.text }, conditions, uncertain, increment, comparable?.eventId ?: related?.eventId,
                     if (within) window.durationMillis(event) else event.durationMillis.takeIf { window.durationKnown(event) },
                     details, subject, comparableHistory.map { it.eventId }.distinct(), truncated, dimension, stance, source,
-                    candidate.sourceRecord?.let { if (uncertain) it.copy(provenance = null) else it })
+                    candidate.sourceRecord?.let { if (uncertain) it.copy(provenance = null) else it },
+                    structured?.semanticV2?.facts)
                 observations += event to observation
                 if (!uncertain && subject.isNotBlank()) {
                     conditionKeys[observation] = conditionKey
@@ -279,6 +285,8 @@ class CognitiveAnalyzer {
         val hours = IntArray(24)
         current.forEach { hours[Instant.ofEpochMilli(maxOf(window.start, it.timestamp)).atZone(zone).hour]++ }
         val prior = ordered.filter { it.timestamp < window.start && !window.contains(it) }
+        val semanticResults = selected.mapNotNull { event -> latestSemantics[event.id]?.takeIf { it.validFor(event) }
+            ?.semanticV2?.let { event.id to it } }.toMap()
         return CognitiveReport(now, window.start, now, period.label, selected.size, usableEvents.size, skipped, merged, current,
             groups, topicCounts, findings, dates(usableEvents.map { it.id }.toSet()), selected.groupingBy { it.packageName }.eachCount(),
             purpose, hours.toList(), zone.id, hourlyReviews = reviews, coverageSessions = usableEvents.size,
@@ -294,7 +302,9 @@ class CognitiveAnalyzer {
             pendingAnalysisRecords = selected.count { analysisStatuses[it.id] in setOf("queued", "running") },
             failedAnalysisRecords = selected.count { analysisStatuses[it.id] == "failed" }, exposure = exposure,
             emotionExposure = EmotionExposure.analyze(events, semantics, window.start, now, zone),
-            topicDigests = TopicDigests.build(current, ordered, zone), periodExposure = periodExposure)
+            topicDigests = TopicDigests.build(current, ordered, zone), periodExposure = periodExposure,
+            semanticV2 = semanticResults, semanticEventTimes = selected.associate { it.id to it.timestamp },
+            semanticFingerprint = com.emerge.app.data.RollupSemanticFingerprint.of(semanticResults))
     }
 
     private fun clean(event: BrowseEvent): List<String> {

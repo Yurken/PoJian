@@ -329,6 +329,7 @@ internal fun platformName(packageName: String): String = when (packageName) {
 @Composable
 internal fun SwissEmotionSummary(report: CognitiveReport?) {
     val emotion = report?.emotionExposure
+    val expressions = remember(report?.semanticV2) { report?.semanticV2?.values?.let(::expressionFractions) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             Surface(
@@ -354,8 +355,8 @@ internal fun SwissEmotionSummary(report: CognitiveReport?) {
                 modifier = Modifier.padding(12.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                SwissMetricBar("事实性表述", null, DesignTokens.Blue, Modifier.weight(1f))
-                SwissMetricBar("情绪化表达", null, DesignTokens.Rose, Modifier.weight(1f))
+                SwissMetricBar("事实性表述", expressions?.first, DesignTokens.Blue, Modifier.weight(1f))
+                SwissMetricBar("情绪化表达", expressions?.second, DesignTokens.Rose, Modifier.weight(1f))
             }
         }
         emotion?.let {

@@ -55,6 +55,39 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
+/** Local, editable queries: viewing a topic never sends a search request. */
+@Composable
+internal fun InformationSupplementPanel(spots: List<com.emerge.app.analysis.SemanticBlindSpot>) {
+    if (spots.isEmpty()) return
+    val context = androidx.compose.ui.platform.LocalContext.current
+    Column(Modifier.fillMaxWidth().testTag("information-blind-spots"), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("信息覆盖盲区提示", style = MaterialTheme.typography.titleMedium)
+        spots.take(4).forEach { spot ->
+            var query by androidx.compose.runtime.saveable.rememberSaveable(spot) { mutableStateOf(spot.sanitizedQuery) }
+            var error by remember(spot) { mutableStateOf(false) }
+            WhiteCard {
+                Text(spot.dimension, style = MaterialTheme.typography.labelLarge)
+                Text(spot.gapTip, style = MaterialTheme.typography.bodyMedium)
+                androidx.compose.material3.OutlinedTextField(query, onValueChange = { query = it.take(200); error = false },
+                    label = { Text("检索词") }, modifier = Modifier.fillMaxWidth(), maxLines = 3)
+                PojianSecondaryButton(onClick = {
+                    val sanitized = com.emerge.app.capture.PagePrivacyGuard.sanitizeForCloud(query).first.trim()
+                    query = sanitized
+                    val intent = android.content.Intent(android.content.Intent.ACTION_WEB_SEARCH)
+                        .putExtra(android.app.SearchManager.QUERY, sanitized)
+                    error = try {
+                        context.startActivity(intent)
+                        android.widget.Toast.makeText(context, "已使用脱敏检索词", android.widget.Toast.LENGTH_SHORT).show()
+                        false
+                    } catch (_: android.content.ActivityNotFoundException) { true }
+                    catch (_: SecurityException) { true }
+                }, enabled = query.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("检索补充资料") }
+                if (error) Text("未找到可用的搜索应用", color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
 /** Mount only after the user selects 补充资料. A context change closes rather than re-fetches. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

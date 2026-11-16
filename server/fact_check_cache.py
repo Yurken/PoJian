@@ -3,6 +3,42 @@ from concurrent.futures import Future
 import copy
 import threading
 import time
+import re
+
+
+def independent_fact_counts(viewpoints, history_facts):
+    """Local exposure coverage, deliberately separate from external fact truth.
+
+    The existing FactCheckCache caches public verification, not user histories;
+    its global entries must not leak another device's private exposure history.
+    """
+    history = {item.fact_id: item for item in history_facts}
+    if len(history) != len(history_facts):
+        raise ValueError("Duplicate historical fact identity")
+    facts, point_identities = {}, {}
+    for viewpoint in viewpoints:
+        for evidence in viewpoint.evidences:
+            if evidence.is_covered_by_history:
+                if evidence.matched_history_id not in history:
+                    raise ValueError("Historical fact reference does not resolve")
+                matched = history[evidence.matched_history_id]
+                # The model cannot infer a "14 works" citation count from a
+                # bounded list of unique historical facts. Derive this note
+                # only from the record that actually resolved.
+                location = " · ".join(value for value in (matched.source_platform.strip(), matched.captured_at.strip()) if value)
+                evidence.matched_source_note = "与历史事实重合" + (f"（{location}）" if location else "")
+            elif evidence.matched_history_id is not None or evidence.matched_source_note:
+                raise ValueError("Historical reference without coverage")
+            point = re.sub(r"\s+", " ", evidence.fact_point.strip()).lower()
+            identity = (evidence.is_covered_by_history, evidence.matched_history_id)
+            if point in point_identities and point_identities[point] != identity:
+                raise ValueError("Inconsistent duplicate fact coverage")
+            point_identities[point] = identity
+            key = ("history", evidence.matched_history_id) if evidence.is_covered_by_history else ("new", point)
+            facts[key] = evidence.is_covered_by_history
+    total = len(facts)
+    new = sum(not covered for covered in facts.values())
+    return new, total, new / total if total else 0.0
 
 
 class FactCheckCache:

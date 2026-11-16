@@ -167,7 +167,7 @@ class AudioCoordinator(private val app: EmergeApplication) {
                 val config = settings.config.value
                 val result = if (config.enabled) {
                     settings.recordRequest()
-                    RemoteAudioInsights.analyze(config, current, history)
+                    RemoteAudioInsights.analyze(config, current, history, app) { settings.config.value == config }
                 } else withContext(Dispatchers.Default) { LocalAudioInsights.analyze(current, history) }
                 ensureActive()
                 if (settings.config.value != config) { messageState.value = "分析设置有变化，请重新生成回顾"; return@launch }

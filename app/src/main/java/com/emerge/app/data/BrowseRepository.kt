@@ -14,6 +14,69 @@ import kotlinx.coroutines.sync.withLock
 class BrowseRepository(private val database: BrowseDatabase) {
     private val dao = database.browseEventDao()
     private val audio = database.audioDao()
+    private val rollups = database.dailyTopicRollupDao()
+
+    /** Must run inside the same Room transaction as the triggering mutation. */
+    private suspend fun refreshRollups(zone: java.time.ZoneId = java.time.ZoneId.systemDefault()) {
+        val sql = database.openHelper.writableDatabase
+        // Read persisted schema state so a rolled-back first transaction cannot leave a stale process flag.
+        val triggersInstalled = sql.query("SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='rollup_event_insert'")
+            .use { it.moveToFirst() }
+        if (!triggersInstalled) DailyTopicRollupSchema.installTriggers(sql)
+        if (rollups.zone() != zone.id) {
+            // A timezone change intentionally rebuilds once; ordinary reads only drain changed IDs.
+            sql.execSQL("DELETE FROM rollup_facts")
+            sql.execSQL("DELETE FROM rollup_contributions")
+            sql.execSQL("DELETE FROM daily_topic_rollup")
+            sql.execSQL("INSERT OR IGNORE INTO rollup_dirty SELECT id FROM browse_events")
+            rollups.putMetadata(RollupMetadata(zone = zone.id))
+        }
+        while (true) {
+            val dirty = rollups.dirty()
+            if (dirty.isEmpty()) break
+            for (id in dirty) {
+                rollups.removeFacts(id)
+                rollups.removeContributions(id)
+                dao.event(id)?.let { event ->
+                    val semantic = dao.semanticsForEvent(id)?.let(SemanticsCodec::decode)
+                    val projection = DailyTopicRollupProjector.project(event, semantic, zone)
+                    if (projection.contributions.isNotEmpty()) rollups.insertContributions(projection.contributions)
+                    if (projection.facts.isNotEmpty()) rollups.insertFacts(projection.facts)
+                }
+                rollups.clean(id)
+            }
+        }
+    }
+
+    suspend fun dailyTopicRollups(first: java.time.LocalDate, last: java.time.LocalDate,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): List<DailyTopicRollupEntity> =
+        database.withTransaction {
+            require(!last.isBefore(first))
+            refreshRollups(zone)
+            rollups.days(first.toString(), last.toString())
+        }
+
+    /** Calendar-day summary. Range distinct counts use small indexed identity rows, never raw text. */
+    suspend fun rollupSummary(first: java.time.LocalDate, last: java.time.LocalDate,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+        through: Long = Long.MAX_VALUE): DailyRollupSummary = database.withTransaction {
+        require(!last.isBefore(first))
+        refreshRollups(zone)
+        val rows = if (rollups.hasFuture(first.toString(), last.toString(), through))
+            rollups.filteredDays(first.toString(), last.toString(), through)
+            else rollups.days(first.toString(), last.toString())
+        val events = rollups.eventTotals(first.toString(), last.toString(), through)
+        val facts = rollups.factTotals(first.toString(), last.toString(), through)
+        DailyRollupSummary(rows, events.viewEvents, events.uniqueWorks, facts.dedupFacts, facts.newFacts,
+            events.analyzedEvents, events.guidanceEvents, rollups.guidanceMillis(first.toString(), last.toString(), through) / 1000,
+            RollupSemanticFingerprint.combine(rollups.semanticKeys(first.toString(), last.toString(), through)))
+    }
+
+    suspend fun recentHistoryFacts(topic: String? = null, limit: Int = 15,
+        before: Long = Long.MAX_VALUE): List<HistoryFact> = database.withTransaction {
+        refreshRollups()
+        rollups.history(topic?.trim()?.takeIf(String::isNotEmpty), limit.coerceIn(1, 15), before)
+    }
     private val captureMutex = Mutex()
     private val deletionGeneration = AtomicLong()
     private data class DecodedSemantic(val claimsHash: ByteArray, val value: EventSemantics)
@@ -97,13 +160,10 @@ class BrowseRepository(private val database: BrowseDatabase) {
                     dao.updateMaterialIdentity(original.id, key, hint.method)
                 }
             }
-            // Backfill only IDs actually captured from the platform; titles cannot locate original media.
-            database.workOriginalDao().works().forEach { work ->
-                OriginalLinks.forWork(work)?.let { url ->
-                    database.workOriginalDao().insert(WorkOriginal(work.workKey, url, "platform_id", work.firstSeenAt))
-                }
-            }
+            // A search fallback remains explicitly marked and never replaces a saved direct link.
+            database.workOriginalDao().works().forEach { work -> saveCapturedOriginal(work) }
             dao.trimWorks()
+            refreshRollups()
         }
         repaired = true
     }
@@ -111,10 +171,11 @@ class BrowseRepository(private val database: BrowseDatabase) {
     suspend fun record(event: BrowseEvent) = database.withTransaction {
         val id = dao.insert(event)
         dao.trimWorks()
+        refreshRollups()
         id
     }
     suspend fun updateSession(event: BrowseEvent): Long? = database.withTransaction {
-        event.id.takeIf { dao.update(event) > 0 }
+        event.id.takeIf { dao.update(event) > 0 }.also { refreshRollups() }
     }
 
     /** A sample taken before deletion must never become a new row after deletion. */
@@ -126,6 +187,17 @@ class BrowseRepository(private val database: BrowseDatabase) {
             if (hint.truncated) it.title.startsWith(hint.title) else it.title == hint.title
         }
         return matches.singleOrNull()?.let { hint.copy(canonicalKey = it.workKey, nativeId = it.nativeId) } ?: hint
+    }
+
+    private suspend fun saveCapturedOriginal(work: ObservedWork, text: String? = null, capturedAt: Long = work.firstSeenAt) {
+        val candidate = text?.let { OriginalLinks.fromInput(it, work.packageName) }
+            ?.let { WorkOriginal(work.workKey, it, "captured_link", capturedAt) }
+            ?: OriginalLinks.forCapturedWork(work) ?: return
+        val originals = database.workOriginalDao()
+        val existing = originals.get(work.workKey)
+        if (existing == null || existing.source == "platform_search" && candidate.source != "platform_search") {
+            originals.put(candidate)
+        }
     }
 
     suspend fun findEvent(id: Long): BrowseEvent? = dao.event(id)
@@ -143,11 +215,12 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 dao.updateMaterialIdentity(root.id, key, root.identityMethod)
             }
             database.workOriginalDao().put(WorkOriginal(key, url, "user_link", System.currentTimeMillis()))
+            refreshRollups()
             true
         }
     }
     suspend fun clearSemantics() = captureMutex.withLock {
-        database.withTransaction { dao.clearSemantics() }
+        database.withTransaction { dao.clearSemantics(); refreshRollups() }
     }
 
     /** Bind a completed result to the full input snapshot; never upsert the encounter itself. */
@@ -169,11 +242,15 @@ class BrowseRepository(private val database: BrowseDatabase) {
             if (previous != null && previous.analyzedAt > semantics.analyzedAt) return@withTransaction false
             if (!current() || !transactionGuard()) return@withTransaction false
             dao.putSemantics(SemanticsCodec.encode(semantics))
+            refreshRollups()
             true
         }
         // Revocation/deletion can change while Room completes the transaction.
         if (saved && !current()) {
-            dao.removeSemanticsVersion(snapshot.id, semantics.analyzedAt, semantics.inputText)
+            database.withTransaction {
+                dao.removeSemanticsVersion(snapshot.id, semantics.analyzedAt, semantics.inputText)
+                refreshRollups()
+            }
             false
         } else saved
     }
@@ -215,9 +292,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
                     if (previousKey != null && previousKey != it.workKey) {
                         originals.get(previousKey)?.let { old -> originals.insert(old.copy(workKey = it.workKey)) }
                     }
-                    OriginalLinks.forWork(it)?.let { url ->
-                        originals.insert(WorkOriginal(it.workKey, url, "platform_id", it.firstSeenAt))
-                    }
+                    saveCapturedOriginal(it, event.visibleText, event.timestamp)
                 }
                 if (continuing) dao.updateMaterialIdentity(savedId, event.workKey, event.identityMethod)
                 if (sampleText != null && dao.lastSampleText(savedId) != sampleText) {
@@ -227,6 +302,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
                 }
             }
             dao.trimWorks()
+            refreshRollups()
             savedId
         }
         // Settings/deletion may change while Room resumes the transaction result.
@@ -239,6 +315,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
     suspend fun deleteEvent(id: Long) {
         deletionGeneration.incrementAndGet()
         captureMutex.withLock { database.withTransaction {
+            refreshRollups()
             audio.invalidateAllAnalyses()
             audio.invalidateForEvent(id)
             dao.deleteEvent(id)
@@ -249,6 +326,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
     /** One complete, unprotected unit per transaction; selection cannot race an audio append. */
     internal suspend fun evictOldestStorageUnit(beforeTimestamp: Long? = null): Boolean = captureMutex.withLock {
         database.withTransaction {
+            refreshRollups()
             val visit = dao.oldestStorageVisit(beforeTimestamp)
             val session = audio.oldestStorageSession(beforeTimestamp)
             if (visit == null && session == null) return@withTransaction false
@@ -268,6 +346,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
     suspend fun deletePackage(packageName: String) {
         deletionGeneration.incrementAndGet()
         captureMutex.withLock { database.withTransaction {
+            refreshRollups()
             audio.invalidateAllAnalyses()
             audio.deletePackage(packageName)
             dao.deletePackage(packageName)
@@ -278,6 +357,7 @@ class BrowseRepository(private val database: BrowseDatabase) {
     suspend fun clear() {
         deletionGeneration.incrementAndGet()
         captureMutex.withLock { database.withTransaction {
+            refreshRollups()
             audio.clear()
             dao.clear()
             dao.trimWorks()

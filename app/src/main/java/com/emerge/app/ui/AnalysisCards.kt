@@ -127,6 +127,7 @@ internal fun AnalysisCards(
                     verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SheetHeading(reviewTitle, "") { showReport = false }
                     if (state.stale) MetadataText("正在更新，以下为上次结果")
+                    report.semanticV2.values.map { it.emotionalGuidance }.distinct().forEach { GuidanceEvidenceCard(it) }
                     WhiteCard {
                         HourlyRecordHeatmapContent(
                             counts = List(24) { hour -> report.hourlyReviews.firstOrNull { it.hour == hour }?.recordCount ?: 0 },

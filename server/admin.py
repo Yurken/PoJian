@@ -165,3 +165,18 @@ def service_payload(stats: Stats | None, *, monitor: bool, model_configured: boo
 
 def status_json(payload: dict) -> bytes:
     return json.dumps(payload, ensure_ascii=False, allow_nan=False).encode("utf-8")
+
+
+class SecurityAudit:
+    """Bounded ciphertext-only security diagnostics; no cleartext or exception text."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.events = deque(maxlen=50)
+
+    def record(self, kind, cipher=""):
+        with self.lock:
+            self.events.appendleft({"time": int(time.time()*1000), "type": kind, "cipher_preview": cipher[:96]})
+
+    def snapshot(self):
+        with self.lock:
+            return [dict(item) for item in self.events]

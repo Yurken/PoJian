@@ -1,0 +1,42 @@
+{
+  "client_private_key_base64": "ICEiIyQlJicoKSorLC0uLzAxMjM0NTY3ODk6Ozw9Pj8=",
+  "signing_public_key_base64": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+  "attestation_request": {
+    "client_id": "11111111111111111111111111111111",
+    "client_nonce": "2222222222222222222222222222222222222222222222222222222222222222",
+    "client_ephemeral_pubkey": "NYBy1jZYgNGu6jKa35EhODhR7SGijjt16WXQ0s0WYlQ="
+  },
+  "attestation_response": {
+    "session_id": "33333333333333333333333333333333",
+    "server_ephemeral_pubkey": "eaYx7t4b+cmPEgMs3q3Q56B5OY/HhriMyEbsia+FpRo=",
+    "code_measurement_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+    "quote_signature": "PWb7nEb9xZu3G4KRFdphTe+g7I8PGBgrzbeCebj4Mhm84jtSKnjD7ABCITRk8HL0Q5T6oUwS5sQue/pJ/NtYAA==",
+    "enclave_mode": "SIGNED_APPLICATION_V2",
+    "timestamp_ms": 1794787200000
+  },
+  "transcript_utf8": "pojian-attestation-v2\n11111111111111111111111111111111\n2222222222222222222222222222222222222222222222222222222222222222\nNYBy1jZYgNGu6jKa35EhODhR7SGijjt16WXQ0s0WYlQ=\n33333333333333333333333333333333\neaYx7t4b+cmPEgMs3q3Q56B5OY/HhriMyEbsia+FpRo=\n4444444444444444444444444444444444444444444444444444444444444444\n1794787200000",
+  "request_key_base64": "47wDBioAixfV5t1Xix92DKgfcUHw6NfSvNLz9/oLX54=",
+  "response_key_base64": "iusg8x8kawJbwZlRFJAaewrcl1v3cJuihZx67r1Ca7A=",
+  "analyze_request": {
+    "session_id": "33333333333333333333333333333333",
+    "client_id": "11111111111111111111111111111111",
+    "request_id": "55555555555555555555555555555555",
+    "client_ephemeral_pubkey": "NYBy1jZYgNGu6jKa35EhODhR7SGijjt16WXQ0s0WYlQ=",
+    "iv_base64": "AAECAwQFBgcICQoL",
+    "ciphertext_base64": "MRAEq9b6RGGoPw0SHBH1gxGl16FMoSvOGP2moWrn8YRxfvzRp0dvnFrNUhN/NczvW4ls+ADtGggoRpBa8tbVgV9ZGFSQzTtJxihx",
+    "expected_state_version": 0,
+    "expected_state_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "request_plaintext": "{\"work_id\":\"vector-work\",\"clean_text\":\"企业减少岗位\"}",
+  "request_aad_utf8": "pojian-v2|request|33333333333333333333333333333333|11111111111111111111111111111111|55555555555555555555555555555555|0|0000000000000000000000000000000000000000000000000000000000000000",
+  "analyze_response": {
+    "status": "OK",
+    "alert_code": null,
+    "new_state_version": 1,
+    "new_state_hash": "be124305d46d5b0c4b4a6e6b6f05c4f9ca4593afdbbc0b634760e53e7ed71c85",
+    "iv_base64": "DA0ODxAREhMUFRYX",
+    "ciphertext_base64": "6OSa6xmxf1IEn9KgVWKAdAzYsaIaxJdSdB4C0cbVv4k2CK7J6arnyqwDPsudsyzQF8fvJzClUiksSVKk9GQXf9v4"
+  },
+  "response_plaintext": "{\"work_id\":\"vector-work\",\"dedup_new_fact_count\":1}",
+  "response_aad_utf8": "pojian-v2|response|33333333333333333333333333333333|11111111111111111111111111111111|55555555555555555555555555555555|OK||1|be124305d46d5b0c4b4a6e6b6f05c4f9ca4593afdbbc0b634760e53e7ed71c85"
+}

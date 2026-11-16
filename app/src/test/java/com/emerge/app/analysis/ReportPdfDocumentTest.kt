@@ -33,8 +33,8 @@ class ReportPdfDocumentTest {
         assertEquals(listOf("8 个", "1+", "1+", "3 个"), document.metrics.map { it.value })
         assertTrue(document.metrics.first().details.contains("观看 11 次"))
         assertTrue(document.metrics.first().details.contains("停留时长 12.0 秒"))
-        assertEquals(listOf("未核实 1 项"), document.metrics[1].details)
-        assertEquals(listOf("未核实 1 项"), document.metrics[2].details)
+        assertEquals(listOf("待分析 1 项"), document.metrics[1].details)
+        assertEquals(listOf("待分析 1 项"), document.metrics[2].details)
         assertTrue(document.metrics[3].details.isEmpty())
         val repeat = document.sections.first().rows.single().cards.first().blocks
             .filterIsInstance<ReportPdfBlock.Metrics>().flatMap { it.items }.single { it.label == "重复依据" }
@@ -46,7 +46,7 @@ class ReportPdfDocumentTest {
             periodExposure = null, hourlyReviews = emptyList(), hourlyClaims = List(24) { 7 },
             emotionExposure = EmotionExposureSummary())
         val document = ReportPdfDocument.from(current)
-        assertEquals(listOf("未统计", "未核实", "未核实", "1 个"), document.metrics.map { it.value })
+        assertEquals(listOf("未统计", "待分析", "待分析", "1 个"), document.metrics.map { it.value })
         assertNull(document.sections.first().rows.single().cards.first().gauge?.fraction)
         assertFalse(document.bodyBlocks().any { it is ReportPdfBlock.Hours })
         assertTrue(document.bodyBlocks().words().contains("旧版本报告没有逐小时统计。"))
@@ -73,7 +73,7 @@ class ReportPdfDocumentTest {
         assertEquals("60.0%", gauge.valueText)
         assertTrue(overview.cards.first().blocks.words().contains("10/20 次"))
         assertTrue(overview.cards.first().blocks.words().contains("0.48"))
-        assertTrue(overview.cards.first().blocks.words().contains("重复依据：未核实"))
+        assertTrue(overview.cards.first().blocks.words().contains("重复依据：待分析"))
         assertFalse(document.bodyBlocks().words().contains(weeklyQuote))
         assertTrue(document.appendix.blocks.words().contains(weeklyQuote))
         assertTrue(document.appendix.blocks.words().contains("独立的历史观察"))

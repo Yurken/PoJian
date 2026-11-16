@@ -1,3 +1,13 @@
+## 复赛工程改造验收（2026-11-16）
+
+- 按 `docs/R3_FINAL_ITERATION_PLAN.md` 在现有 `server/` 原地实现签名加密 V2 语义协议与 Android 端到端闭环，未新建第二套后端目录。旧 `/monitor`、`/analyze`、管理台与更新接口保持原路由和鉴权；未配置签名密钥时 V2 返回 503，不静默降级。
+- 服务端全量 `pytest server/tests`（Python 3.13.2 本地虚拟环境，按 `server/requirements.txt` 安装）：289 passed、218 subtests passed，37.86 s。含既有 12 个测试文件与新增 19 项安全/结构化解析用例，覆盖正常加密往返与持久化重试、签名/随机数/度量篡改、AAD 与响应元数据篡改、版本与哈希双向严格匹配、真实 SQLite 回滚、模型失败不推进状态、客户端状态隔离、会话过期/容量/请求冲突、拒绝回执终态、超大结果不提交、管理员鉴权与密文审计脱敏、历史 ID 去重与同源说明、Span 幻觉降级。使用确定性假上游，未调用付费模型。日志：`app/build/r3-validation/server-pytest.log`。
+- Android：`testDebugUnitTest` 95 个测试类 647 项全部通过（0 失败、0 错误、0 跳过）；`lintDebug` 0 错误、25 警告、1 信息；`assembleDebugAndroidTest` 通过。覆盖旧记录兼容、V2 编解码边界、Keystore 加密检查点、GCM/AAD、端点固定与错误地址阻断、隐私掩码、平台深链、盲区面板、Room 9→10 迁移、跨日去重与重分析。日志：`app/build/r3-validation/android-verify.log`；测试报告：`app/build/reports/tests/testDebugUnitTest/index.html`；Lint：`app/build/reports/lint-results-debug.html`。
+- Room v9→v10 的生产迁移 SQL、触发器与 DAO 查询直接在 SQLite 执行：`scripts/tests/test_daily_topic_rollup.py` 9 项通过；1,000 条记录预热后的**汇总查询**中位 2.031 ms。该数字不含写入、首次回填、原文明细读取与完整 PDF 排版，不能当作完整报告生成耗时。
+- 报告：`docs/作品报告-LaTeX` 经 latexmk + XeLaTeX 编译成功，输出 97 个 PDF 页（正文页码至第 90 页），无 Overfull 警告、无未定义引用；抽查新增段落所在第 25、71 页排版正常。实机截图与攻防大屏截图未替换，报告只新增能力边界与独立验收范围。
+- 新增可见文案逐项核对：均为新功能必需的状态值、按钮名、输入标签、真实数据或错误/阻断反馈；无新增模块介绍、教学说明或营销表达。原 `未核实` 兜底改为 `待分析`，未知仍保留缺失状态，不填虚假 0。
+- 未验证：Android 真机或模拟器运行与截图、真实 HTTPS 部署、商业 API 事实合并/过度推断 F1 与误报率、端到端 P50/P95、完整 PDF 生成性能、旧版覆盖安装兼容性。安全通道默认未启用；启用构建需同时提供 `pojian.secureEndpoint`、`pojian.attestationPublicKey`、`pojian.codeMeasurement` 三个匹配值。本轮未构建 APK、未推送分支、未递增版本或创建 Tag，仅本地提交。
+
 ## 0.6.29 报告重构推送检查（2026-10-19）
 
 - 用户授权推送后获取远端分支与 Tag；远端为 `0f4c414` / 0.6.28 / versionCode 95，无新提交需合并。本轮包含本地报告样式提交 `cc30e26` 与结构重构提交 `d3d1e68`，应用递增为 0.6.29 / 96，准备同名附注 Tag `v0.6.29`；README 与更新日志同步。

@@ -1590,7 +1590,7 @@ def analyze_monitor(source: dict, providers: Providers, fact_cache: FactCheckCac
 
 def make_handler(config: Config, options: Options, budget: DailyBudget, providers: Providers | None = None,
                  stats: admin.Stats | None = None, runtime: RuntimeConfig | None = None,
-                 updates: AppUpdateSource | None = None):
+                 updates: AppUpdateSource | None = None, secure_gateway=None):
     slots = threading.BoundedSemaphore(config.concurrency)
     runtime = runtime or RuntimeConfig(config, options, ":memory:")
     def audio_config():
@@ -1608,6 +1608,14 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
     admin_password = options.admin_password
     admin_configured = bool(admin_password) and not hmac.compare_digest(
         admin_password.encode("utf-8"), config.service_token.encode("utf-8"))
+    # Optional imports preserve dependency-free legacy/offline operation. A
+    # configured signing key must never silently downgrade after an import or
+    # configuration error; startup fails instead.
+    if secure_gateway is None and os.getenv("POJIAN_SIGNING_PRIVATE_KEY"):
+        from secure_gateway import SecureGateway
+        secure_gateway = SecureGateway.from_env()
+    if secure_gateway is not None:
+        secure_gateway.reserve_budget = budget.reserve
 
     class Handler(parent):
         server_version = "PojianMonitorService/1"
@@ -1624,7 +1632,8 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
                                                      vision_configured=runtime.vision_configured,
                                                      retrieval_configured=runtime.retrieval_configured),
                     "settings": settings, "fact_checks": fact_diagnostics.snapshot(),
-                    "provider_calls": providers.diagnostics.snapshot() if hasattr(providers, "diagnostics") else []}
+                    "provider_calls": providers.diagnostics.snapshot() if hasattr(providers, "diagnostics") else [],
+                    "security": secure_gateway.status() if secure_gateway else None}
 
         def _authorized(self) -> bool:
             return admin.bearer_authorized(self.headers.get_all("Authorization", []), config.service_token)
@@ -1745,6 +1754,13 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
         def do_GET(self):
             self._mark()
             path = self.path.split("?")[0]
+            if path in {"/api/v1/health", "/admin/debug/status"}:
+                authorized = self._authorized() if path.startswith("/api/") else self._console_authorized()
+                if not authorized:
+                    return self.send_json(401, {"error": "Invalid service token"})
+                if secure_gateway is None:
+                    return self.send_json(503, {"error": "Signed channel is not configured"})
+                return self.send_json(200, secure_gateway.status())
             if path == "/admin":
                 return self.send_html(admin.admin_html().encode("utf-8"))
             if path == "/app-update":
@@ -1767,6 +1783,32 @@ def make_handler(config: Config, options: Options, budget: DailyBudget, provider
 
         def do_POST(self):
             self._mark()
+            if self.path in {"/api/v1/attestation", "/api/v1/analyze"}:
+                if not self._authorized():
+                    return self.send_json(401, {"error": "Invalid service token"})
+                if secure_gateway is None:
+                    return self.send_json(503, {"error": "Signed channel is not configured"})
+                try:
+                    payload = self._read_json(256 * 1024)
+                except BodyError as error:
+                    return self.send_json(error.status, {"error": str(error)})
+                except ClientError:
+                    return self.send_json(400, {"error": "Invalid encrypted request"})
+                method = secure_gateway.attest if self.path.endswith("attestation") else secure_gateway.analyze
+                try:
+                    status, result = method(payload)
+                except Exception:
+                    # Never let handler tracebacks expose decrypted material
+                    # or operational secrets when storage/crypto fails.
+                    return self.send_json(503, {"error": "Signed channel temporarily unavailable"})
+                return self.send_json(status, result)
+            if self.path in {"/admin/debug/toggle-tamper", "/admin/debug/toggle-rollback"}:
+                if not self._console_authorized():
+                    return self.send_json(401, {"error": "Invalid service token"})
+                if secure_gateway is None:
+                    return self.send_json(503, {"error": "Signed channel is not configured"})
+                status, result = secure_gateway.toggle(self.path.rsplit("-", 1)[1])
+                return self.send_json(status, result)
             if self.path == "/capture-cleanup":
                 return self._capture_cleanup()
             if self.path == "/information-supplement":

@@ -29,7 +29,7 @@ release_id="$(date -u +%Y%m%dT%H%M%SZ)-${revision}-${RANDOM}"
 
 # Package only backend files. Never ship runtime databases or credential files.
 COPYFILE_DISABLE=1 tar --exclude='*/__pycache__' --exclude='*.py[cod]' --exclude='._*' \
-    --exclude='*/.runtime' --exclude='*/.git' --exclude='*/.env*' \
+    --exclude='*/.runtime' --exclude='*/.venv' --exclude='*/.git' --exclude='*/.env*' \
     --exclude='*.sqlite*' --exclude='*.db' --exclude='*.pem' \
     --exclude='*.key' --exclude='*.p12' --exclude='*.pfx' \
     --exclude='*[Cc]redential*' --exclude='*[Ss]ecret*' \

@@ -134,6 +134,16 @@ android {
         require(pojianServiceToken.length <= 512 && pojianServiceToken.all { it.code in 33..126 }) { "Invalid service token format" }
         val escapedServiceToken = pojianServiceToken.replace("\\", "\\\\").replace("\"", "\\\"")
         buildConfigField("String", "POJIAN_SERVICE_TOKEN", "\"$escapedServiceToken\"")
+        // Operator-supplied public trust pins. Never learn these from the network handshake.
+        listOf("secureEndpoint" to "POJIAN_SECURE_ENDPOINT", "attestationPublicKey" to "POJIAN_ATTESTATION_PUBLIC_KEY",
+            "codeMeasurement" to "POJIAN_CODE_MEASUREMENT").forEach { (property, constant) ->
+            val value = providers.gradleProperty("pojian.$property").orNull
+                ?: localServiceProperties.getProperty("pojian.$property", "")
+            require(value.length <= 512 && value.all { it.code in 33..126 && it != '\"' && it != '\\' }) {
+                "Invalid secure channel configuration"
+            }
+            buildConfigField("String", constant, "\"$value\"")
+        }
         // Public release metadata is readable without any download token.
         // Debug builds may override or disable checks; release builds use R2.
         val updateManifestUrl = providers.gradleProperty("pojian.updateManifestUrl").orNull
@@ -183,6 +193,8 @@ tasks.register<JavaExec>("evaluateResearchDatabase") {
 }
 
 dependencies {
+    // Lightweight APIs avoid replacing Android's platform provider and support Android 10+.
+    implementation("org.bouncycastle:bcprov-jdk18on:1.85.2")
     // Bundled Chinese OCR works without a first-run model download or Play Services.
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     implementation(files(sherpaAar).builtBy(prepareSherpa))

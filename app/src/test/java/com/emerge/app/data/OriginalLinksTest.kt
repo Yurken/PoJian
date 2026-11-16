@@ -52,4 +52,17 @@ class OriginalLinksTest {
         assertNull(OriginalLinks.forWork(work("reader", "7000000000000000000")))
         assertNull(OriginalLinks.forWork(work(xhs, "fake-note")))
     }
+    @Test fun searchFallbackIsEncodedExplicitAndCannotBeTreatedAsOriginal() {
+        val packages = listOf(douyin, xhs, "tv.danmaku.bili", "com.zhihu.android", "com.smile.gifmaker")
+        packages.forEach { pkg ->
+            val url = OriginalLinks.searchFallback(pkg, "秋招 A&B？")!!
+            assertTrue(OriginalLinks.isSearchFallback(url, pkg))
+            assertFalse(OriginalLinks.allowed(url, pkg))
+            assertFalse(OriginalLinks.canNavigate(url))
+            assertFalse(OriginalLinks.isSearchFallback(url + "&redirect=evil", pkg))
+        }
+        assertNull(OriginalLinks.searchFallback("unknown", "标题"))
+        assertNull(OriginalLinks.searchFallback(douyin, "我的电话13800138000"))
+        assertNull(OriginalLinks.searchFallback(douyin, ""))
+    }
 }

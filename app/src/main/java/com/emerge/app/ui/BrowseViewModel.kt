@@ -36,6 +36,13 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
     private val semanticsLoaded = MutableStateFlow(false)
     private val semanticsState = MutableStateFlow<List<EventSemantics>>(emptyList())
     val semantics = semanticsState.asStateFlow()
+    val blindSpots = combine(allEvents, semantics) { records, results ->
+        val byId = records.associateBy { it.id }
+        results.groupBy { it.eventId }.values.mapNotNull { versions ->
+            val latest = versions.maxByOrNull { it.analyzedAt } ?: return@mapNotNull null
+            latest.semanticV2?.takeIf { byId[latest.eventId]?.let(latest::validFor) == true }
+        }.groupBy { it.topicName }.mapValues { (_, values) -> values.flatMap { it.blindSpots }.distinct().take(4) }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyMap())
     val analysisStatuses = app.monitorTasks.observeInputStates()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
     val captureEnabled = app.captureSettings.enabled
@@ -215,9 +222,14 @@ class BrowseViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 val (content, progress) = withContext(Dispatchers.Default) {
                     val computationContext = currentCoroutineContext()
-                    val report = CognitiveAnalyzer().analyze(snapshot, selectedPeriod, System.currentTimeMillis(),
+                    val reportNow = System.currentTimeMillis()
+                    val zone = ZoneId.systemDefault()
+                    val today = Instant.ofEpochMilli(reportNow).atZone(zone).toLocalDate()
+                    val rollup = if (selectedPeriod.rollingHours == 0) app.repository.rollupSummary(
+                        today.minusDays(selectedPeriod.calendarDays - 1L), today, zone, reportNow) else null
+                    val report = CognitiveAnalyzer().analyze(snapshot, selectedPeriod, reportNow, zone,
                         purpose = purpose.trim().ifBlank { "未填写" }, checkCancellation = { computationContext.ensureActive() },
-                        semantics = semanticSnapshot, analysisStatuses = statusSnapshot)
+                        semantics = semanticSnapshot, analysisStatuses = statusSnapshot).copy(dailyRollup = rollup)
                     report to ReportAnalysisProgress(snapshot, report)
                 }
                 ensureActive()

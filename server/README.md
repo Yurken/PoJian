@@ -1,6 +1,6 @@
 # 破茧：语义、视觉与外部证据网关
 
-Android 客户端不直接保存模型密钥。网关接收用户明确开启的文字、稳定口播或关键画面，进行结构化与外部证据核查。Python 3.10+，仅使用标准库。
+Android 客户端不直接保存模型密钥。网关接收用户明确开启的文字、稳定口播或关键画面，进行结构化与外部证据核查。Python 3.10+；旧协议仅使用标准库，可选的签名加密 V2 协议依赖 `server/requirements.txt`。
 
 Linux 部署使用服务名 `pojian-backend.service`，端口 `28763`。运行 `bash scripts/deploy-backend.sh YOUR_SSH_HOST` 时显式指定自己的 SSH 主机，配置与 HTTPS 入口见 [后端部署说明](../docs/DEPLOYMENT.md)。
 
@@ -86,12 +86,28 @@ python server/monitor_server.py
 
 监测网关的 `/status`、`/config` 接口仅接受管理台登录会话（`Authorization: Bearer …`），不接受客户端服务令牌。管理台使用账号密码登录（`POST /admin/login`，`EMERGE_ADMIN_USER` / `EMERGE_ADMIN_PASSWORD`）；密码为空或与服务令牌相同时，管理登录返回 `503`，分析接口仍正常工作。会话仅保存在浏览器会话中，12 小时过期，连续 5 次失败锁定 30 秒。升级时保留既有 `EMERGE_SERVICE_TOKEN` 原值，旧 APK 的分析请求继续使用它；仅需另行配置独立管理密码。页面保存的模型密钥写入状态目录的 `runtime-config.json`（0600，优先级高于环境变量）；任何接口都不回传完整密钥。`POST /config/test` 可对文字、视觉、检索分别做连通性测试（真实调用一次提供方，返回延迟或错误）。模型接口换源不会默默携带旧密钥，须显式填写新接口的密钥。
 
+## 签名加密语义协议 V2
+
+仍启动 `server/monitor_server.py`，保留 `/monitor`、`/analyze`、配置和更新接口。先在虚拟环境执行 `python -m pip install -r server/requirements.txt`。Linux 发布脚本为每个版本创建独立虚拟环境，随代码和 systemd 单元一起切换、失败回退。
+
+按 `deploy/linux/backend.env.example` 配置 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL_NAME`、固定的 `POJIAN_SIGNING_PRIVATE_KEY`（Base64 编码的 32 字节 Ed25519 私钥种子）及 `POJIAN_STATE_DB`。不要把私钥放入 APK 或仓库。未配置签名密钥时 V2 返回 503，旧接口继续遵循原有配置；缺少商业模型密钥时不会伪造语义结果。`LLM_RESPONSE_FORMAT` 默认 `json_object`，服务端始终进行严格类型、边界及原文核验；支持供应商约束生成的模型可显式选 `json_schema`。模式差异见 [DeepSeek JSON Output](https://api-docs.deepseek.com/guides/json_mode/) 和 [千问结构化输出](https://help.aliyun.com/zh/model-studio/qwen-structured-output)。
+
+`POST /api/v1/attestation` 和 `POST /api/v1/analyze` 复用服务令牌鉴权。客户端必须预先通过受信任渠道固定服务端验签公钥和本次审核过的代码度量值，不能从握手或 `/api/v1/health` 响应自动采纳信任。应用构建配置见 [复赛实施记录](../docs/R3_FINAL_ITERATION_PLAN.md)。
+
+- 签名绑定协议、客户端标识、随机数、双方临时公钥、会话、代码度量及时间。X25519 与 HKDF-SHA256 派生独立的请求／响应 AES-256-GCM 密钥，附加认证数据绑定会话、请求与状态链字段。会话最多 256 个，120 秒过期。
+- SQLite 按客户端精确比较版本和哈希，事务提交新状态及加密回执；失败推理不推进状态。相同请求只能重放同一结果，认证拒绝同样是终态，每个客户端最多保留 64 个密文回执。客户端先持久化待发送密文与解密密钥，网络中断后重放原请求；成功回执可跨服务重启恢复。未提交请求的临时会话若已过期或丢失，客户端保留本地高水位并阻断，不能自动清空状态规避校验。
+- 单次模型调用生成议题、观点、事实、历史覆盖、过度推断、盲区和表达片段。原文片段只允许 `clean_text` 中的连续子串；无效阳性证据降级。历史覆盖只使用本客户端最多 15 条事实，不把全局公共事实核查缓存当作用户接触史。相同历史 ID 合并计数，同源说明只取实际历史记录字段，模型不能编造“14 条作品”等计数。新增事实和去重事实数量不等于独立来源数量，也不表示完成外部事实核查。
+- `/admin` 的安全审计显示程序度量、最高状态版本及最多 50 条密文摘要；`/admin/debug/status` 与两个 `/admin/debug/toggle-*` 接口沿用管理鉴权。模拟攻击必须另设 `POJIAN_ENABLE_DEBUG=1`，默认关闭。模拟切换不会实际篡改生产代码或删除数据库。
+
+这是应用签名及应用层加密，不是硬件 TEE 远程证明。服务进程会解密，商业模型提供方会接收必要的已脱敏文本；控制服务进程或签名密钥的攻击者不在该签名度量机制的保护范围内。客户端保留的高水位能识别服务器旧快照，不能防止服务端和客户端状态同时被回滚。PII 正则不能保证移除所有身份线索，原文子串校验也不证明语义正确或零误报。
+
 ## 测试
 
 ```sh
+python -m pip install -r server/requirements.txt
 python -m unittest discover -s server/tests -v
 ```
 
-服务端测试使用确定性假模型和假检索，并通过真实本地 HTTP 服务验证认证、协议、事实初筛字段与下游请求、证据引用、身份字段、阶段预算、取证重试与冷却、独立诊断和旧接口兼容；CI 在 PR 及相关分支变更时运行完整套件，失败会阻止 APK 构建。它们不证明真实模型对观点／事实的分类准确率、真实 API 的延迟或可用性。接入自己的 API 后，应先用有明确原始来源的少量图文和口播材料检查筛选结果、引文、条件、费用和错误状态。
+服务端测试使用确定性假模型和假检索，并通过真实本地 HTTP 服务验证认证、协议、事实初筛字段与下游请求、证据引用、身份字段、阶段预算、取证重试与冷却、独立诊断和旧接口兼容；CI 在 PR 及相关分支变更时运行完整套件，失败会阻止 APK 构建。`test_security_attestation_and_rollback.py` 另外验证加密通道、签名与元数据篡改、实际数据库回滚、持久化重试、拒绝回执终态及私有历史去重。它们不证明真实模型对观点／事实的分类准确率、真实 API 的延迟或可用性。接入自己的 API 后，应先用有明确原始来源的少量图文和口播材料检查筛选结果、引文、条件、费用和错误状态。
 
 实现与 Android 限制见 [实时监测说明](../docs/REALTIME_MONITORING.md)。
