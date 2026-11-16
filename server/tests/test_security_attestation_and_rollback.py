@@ -221,7 +221,8 @@ class SecurityTests(unittest.TestCase):
     def test_existing_http_routes_auth_admin_and_cipher_privacy(self):
         budget = monitor.DailyBudget(":memory:", 10)
         config = Config("https://example.org/v1/chat/completions", "model", "key", "token")
-        handler = monitor.make_handler(config, monitor.Options(), budget, secure_gateway=self.gateway)
+        handler = monitor.make_handler(config, monitor.Options(admin_password="security-console-password"),
+                                      budget, secure_gateway=self.gateway)
         http = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=http.serve_forever, daemon=True)
         thread.start()
@@ -240,7 +241,10 @@ class SecurityTests(unittest.TestCase):
             self.assertEqual(request("/api/v1/health")[0], 401)
             self.assertEqual(request("/api/v1/attestation", "POST", body={})[0], 401)
             self.assertEqual(request("/admin/debug/toggle-tamper", "POST")[0], 401)
-            self.assertEqual(request("/admin/debug/toggle-tamper", "POST", "token")[0], 200)
+            login = request("/admin/login", "POST", body={"user": "admin", "password": "security-console-password"})
+            self.assertEqual(login[0], 200)
+            session_token = json.loads(login[1])["token"]
+            self.assertEqual(request("/admin/debug/toggle-tamper", "POST", session_token)[0], 200)
             self.assertEqual(request("/api/v1/health", token="token")[0], 200)
             self.assertNotIn(TEXT.encode(), request("/status", token="token")[1])
         finally:
